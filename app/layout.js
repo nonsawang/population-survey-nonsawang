@@ -4,7 +4,11 @@ import './globals.css';
 export const metadata = {
   title: 'ระบบสำรวจประชากร — รพ.สต.บ้านโนนสว่าง',
   description: 'ระบบสำรวจประชากรและคัดกรองสุขภาพ',
-  viewport: 'width=device-width, initial-scale=1',
+};
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }) {
@@ -16,6 +20,7 @@ export default function RootLayout({ children }) {
         <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&family=Prompt:wght@400;600;700&display=swap" rel="stylesheet" />
       </head>
       <body>
+        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js" />
         <AuthProvider>
           {children}
         </AuthProvider>

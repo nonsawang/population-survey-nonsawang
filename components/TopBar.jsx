@@ -2,16 +2,27 @@
 import { useAuth, ROLE_LABELS } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 
-export default function TopBar({ showAdmin = false, showLogoutConfirm = false }) {
+export default function TopBar({ showAdmin = false }) {
   const { user, logout } = useAuth();
   const router = useRouter();
 
   const handleLogout = () => {
-    if (showLogoutConfirm) {
-      if (!confirm('ออกจากระบบ?')) return;
+    const S = typeof window !== 'undefined' ? window.Swal : null;
+    if (S) {
+      S.fire({
+        title: 'ออกจากระบบ?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'ออกจากระบบ',
+        cancelButtonText: 'ยกเลิก'
+      }).then(r => {
+        if (r.isConfirmed) { logout(); router.push('/login'); }
+      });
+    } else {
+      if (confirm('ออกจากระบบ?')) { logout(); router.push('/login'); }
     }
-    logout();
-    router.push('/login');
   };
 
   return (
