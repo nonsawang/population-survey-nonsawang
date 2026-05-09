@@ -13,8 +13,11 @@ function LoginContent() {
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  
+  // 🟢 ใช้ตัวนี้ตัวเดียวในการล็อค/ปลดล็อคหน้าจอ
+  const [submitting, setSubmitting] = useState(false); 
   const [shake, setShake] = useState(false);
+  const [isCheckingLine, setIsCheckingLine] = useState(false); // กันระบบเช็กซ้ำซ้อน
   
   const cidRef = useRef(null);
   const usernameRef = useRef(null);
@@ -31,15 +34,24 @@ function LoginContent() {
 
   useEffect(() => {
     const processLineLogin = async () => {
-      if (autoLogin === 'true' && lineIdToLogin && !user) {
-        setSuccessMsg('พบข้อมูลบัญชี LINE กำลังตรวจสอบในระบบ...');
-        const res = await loginWithLine(lineIdToLogin);
-        if (res.success) {
-          router.push('/');
-        } else {
-          // 🟢 จุดสำคัญที่แก้: ถ้าหาบัญชีไม่เจอ ให้เด้งเข้าสู่โหมด "ผูกบัญชี" ปลดล็อคฟอร์ม
-          setSuccessMsg('');
-          router.replace(`/login?link_line_id=${lineIdToLogin}&line_name=${lineName || 'LINE'}&picture_url=${pictureUrl || ''}`);
+      if (autoLogin === 'true' && lineIdToLogin && !user && !isCheckingLine) {
+        setIsCheckingLine(true);
+        setSubmitting(true); // 🔒 ล็อคหน้าจอตอนกำลังโหลด
+        setSuccessMsg('กำลังตรวจสอบบัญชี LINE ในระบบ...');
+        
+        try {
+          const res = await loginWithLine(lineIdToLogin);
+          if (res && res.success) {
+            router.push('/');
+          } else {
+            // 🟢 จุดสำคัญ: ถ้าหาบัญชีไม่เจอ ต้อง "ปลดล็อค" หน้าจอให้พิมพ์ได้!
+            setSuccessMsg('');
+            setSubmitting(false); 
+            router.replace(`/login?link_line_id=${lineIdToLogin}&line_name=${lineName || 'LINE'}&picture_url=${pictureUrl || ''}`);
+          }
+        } catch (err) {
+          setSubmitting(false);
+          setError('เกิดข้อผิดพลาดในการเชื่อมต่อ');
         }
       }
     };
@@ -51,7 +63,7 @@ function LoginContent() {
       if (loginMode === 'vhv') cidRef.current?.focus();
       else usernameRef.current?.focus();
     }
-  }, [user, router, autoLogin, lineIdToLogin, loginWithLine, loginMode, linkLineId, lineName, pictureUrl]);
+  }, [user, router, autoLogin, lineIdToLogin, loginWithLine, loginMode, linkLineId, lineName, pictureUrl, isCheckingLine]);
 
   const handleLogin = async () => {
     let finalUser = '';
@@ -146,7 +158,7 @@ function LoginContent() {
             className={`btn w-50 rounded-pill fw-bold ${loginMode === 'vhv' ? 'btn-primary shadow-sm' : 'btn-light text-muted border-0'}`} 
             onClick={() => { setLoginMode('vhv'); setError(''); }}
             style={{transition: 'all 0.3s'}}
-            disabled={autoLogin === 'true'}
+            disabled={submitting} 
           >
             <i className="fa-solid fa-user-nurse me-1"/> อสม.
           </button>
@@ -154,7 +166,7 @@ function LoginContent() {
             className={`btn w-50 rounded-pill fw-bold ${loginMode === 'staff' ? 'btn-primary shadow-sm' : 'btn-light text-muted border-0'}`} 
             onClick={() => { setLoginMode('staff'); setError(''); }}
             style={{transition: 'all 0.3s'}}
-            disabled={autoLogin === 'true'}
+            disabled={submitting}
           >
             <i className="fa-solid fa-user-shield me-1"/> เจ้าหน้าที่
           </button>
@@ -172,7 +184,7 @@ function LoginContent() {
                 onChange={e => setCid(e.target.value.replace(/\D/g, ''))} 
                 onKeyPress={e => e.key === 'Enter' && handleLogin()} 
                 style={{borderLeft:'none',borderColor:'#c5cae9',padding:'14px', fontSize:'1.1rem', letterSpacing:'2px'}} 
-                disabled={autoLogin === 'true'} 
+                disabled={submitting} 
               />
             </div>
           </div>
@@ -182,7 +194,7 @@ function LoginContent() {
               <label className="form-label" style={{fontWeight:600,fontSize:'.85rem',color:'#546e7a'}}><i className="fa-solid fa-user me-1" /> ชื่อผู้ใช้งาน</label>
               <div className="input-group shadow-sm" style={{borderRadius:8, overflow:'hidden'}}>
                 <span className="input-group-text bg-white" style={{borderRight:'none',borderColor:'#c5cae9',color:'#3949ab'}}><i className="fa-solid fa-user" /></span>
-                <input ref={usernameRef} type="text" className="form-control" placeholder="ระบุชื่อผู้ใช้งาน" value={username} onChange={e => setUsername(e.target.value)} onKeyPress={e => e.key === 'Enter' && document.getElementById('pwd')?.focus()} autoCapitalize="none" style={{borderLeft:'none',borderColor:'#c5cae9',padding:'12px 14px'}} disabled={autoLogin === 'true'} />
+                <input ref={usernameRef} type="text" className="form-control" placeholder="ระบุชื่อผู้ใช้งาน" value={username} onChange={e => setUsername(e.target.value)} onKeyPress={e => e.key === 'Enter' && document.getElementById('pwd')?.focus()} autoCapitalize="none" style={{borderLeft:'none',borderColor:'#c5cae9',padding:'12px 14px'}} disabled={submitting} />
               </div>
             </div>
 
@@ -190,8 +202,8 @@ function LoginContent() {
               <label className="form-label" style={{fontWeight:600,fontSize:'.85rem',color:'#546e7a'}}><i className="fa-solid fa-lock me-1" /> รหัสผ่าน</label>
               <div className="input-group shadow-sm" style={{borderRadius:8, overflow:'hidden'}}>
                 <span className="input-group-text bg-white" style={{borderRight:'none',borderColor:'#c5cae9',color:'#3949ab'}}><i className="fa-solid fa-lock" /></span>
-                <input id="pwd" type={showPwd ? 'text' : 'password'} className="form-control" placeholder="ระบุรหัสผ่าน" value={password} onChange={e => setPassword(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleLogin()} style={{borderLeft:'none',borderColor:'#c5cae9',padding:'12px 14px'}} disabled={autoLogin === 'true'} />
-                <button className="btn btn-light bg-white border-start-0" type="button" onClick={() => setShowPwd(!showPwd)} style={{borderColor:'#c5cae9'}} disabled={autoLogin === 'true'}>
+                <input id="pwd" type={showPwd ? 'text' : 'password'} className="form-control" placeholder="ระบุรหัสผ่าน" value={password} onChange={e => setPassword(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleLogin()} style={{borderLeft:'none',borderColor:'#c5cae9',padding:'12px 14px'}} disabled={submitting} />
+                <button className="btn btn-light bg-white border-start-0" type="button" onClick={() => setShowPwd(!showPwd)} style={{borderColor:'#c5cae9'}} disabled={submitting}>
                   <i className={`fa-solid fa-eye${showPwd ? '-slash' : ''} text-muted`} />
                 </button>
               </div>
@@ -200,14 +212,14 @@ function LoginContent() {
         )}
 
         {linkLineId ? (
-          <button className="btn btn-primary w-100 text-white mb-3 shadow-sm" onClick={handleLogin} disabled={submitting || autoLogin === 'true'} style={{background:'linear-gradient(135deg,#1a237e,#3949ab)',border:'none',borderRadius:14,padding:14,fontSize:'1.05rem',fontWeight:700}}>
+          <button className="btn btn-primary w-100 text-white mb-3 shadow-sm" onClick={handleLogin} disabled={submitting} style={{background:'linear-gradient(135deg,#1a237e,#3949ab)',border:'none',borderRadius:14,padding:14,fontSize:'1.05rem',fontWeight:700}}>
             {submitting ? <><span className="spinner-border spinner-border-sm me-2" />กำลังตรวจสอบ...</> : <><i className="fa-solid fa-link me-2" />ยืนยันการผูกบัญชี</>}
           </button>
         ) : (
           <button 
             className="btn w-100 text-white d-flex align-items-center justify-content-center shadow-sm" 
             onClick={handleLineLogin} 
-            disabled={autoLogin === 'true'}
+            disabled={submitting}
             style={{background:'#00B900', border:'none', borderRadius:14, padding:14, fontSize:'1.05rem', fontWeight:700}}
           >
             <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" alt="LINE" className="me-2" style={{width: '24px', height: '24px'}} />
