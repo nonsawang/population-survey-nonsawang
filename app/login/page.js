@@ -14,10 +14,9 @@ function LoginContent() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   
-  // 🟢 ใช้ตัวนี้ตัวเดียวในการล็อค/ปลดล็อคหน้าจอ
-  const [submitting, setSubmitting] = useState(false); 
+  const [submitting, setSubmitting] = useState(false);
   const [shake, setShake] = useState(false);
-  const [isCheckingLine, setIsCheckingLine] = useState(false); // กันระบบเช็กซ้ำซ้อน
+  const [isCheckingLine, setIsCheckingLine] = useState(false); 
   
   const cidRef = useRef(null);
   const usernameRef = useRef(null);
@@ -36,7 +35,7 @@ function LoginContent() {
     const processLineLogin = async () => {
       if (autoLogin === 'true' && lineIdToLogin && !user && !isCheckingLine) {
         setIsCheckingLine(true);
-        setSubmitting(true); // 🔒 ล็อคหน้าจอตอนกำลังโหลด
+        setSubmitting(true);
         setSuccessMsg('กำลังตรวจสอบบัญชี LINE ในระบบ...');
         
         try {
@@ -44,10 +43,10 @@ function LoginContent() {
           if (res && res.success) {
             router.push('/');
           } else {
-            // 🟢 จุดสำคัญ: ถ้าหาบัญชีไม่เจอ ต้อง "ปลดล็อค" หน้าจอให้พิมพ์ได้!
+            // ปลดล็อคหน้าจอและเข้าสู่โหมดผูกบัญชี
             setSuccessMsg('');
             setSubmitting(false); 
-            router.replace(`/login?link_line_id=${lineIdToLogin}&line_name=${lineName || 'LINE'}&picture_url=${pictureUrl || ''}`);
+            router.replace(`/login?link_line_id=${lineIdToLogin}&line_name=${encodeURIComponent(lineName || 'LINE')}&picture_url=${encodeURIComponent(pictureUrl || '')}`);
           }
         } catch (err) {
           setSubmitting(false);
@@ -115,7 +114,6 @@ function LoginContent() {
     const clientId = process.env.NEXT_PUBLIC_LINE_CLIENT_ID;
     const currentDomain = window.location.origin; 
     const redirectUri = encodeURIComponent(`${currentDomain}/api/auth/callback/line`);
-    
     const state = "secure_state";
     const lineLoginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=profile%20openid`;
     window.location.href = lineLoginUrl;
@@ -137,7 +135,7 @@ function LoginContent() {
             ) : (
               <i className="fa-brands fa-line me-2 fa-lg text-success" />
             )}
-            <span>บัญชี LINE นี่ยังไม่เคยเข้าใช้งาน<br/>กรุณากรอกเลขบัตรเพื่อ <b>ผูกบัญชี</b> ในครั้งแรกครับ</span>
+            <span>เชื่อมต่อ LINE <b>{lineName}</b> สำเร็จ<br/>กรุณากรอกข้อมูลเพื่อ <b>ผูกบัญชี</b> ในครั้งแรกครับ</span>
           </div>
         )}
 
@@ -158,7 +156,7 @@ function LoginContent() {
             className={`btn w-50 rounded-pill fw-bold ${loginMode === 'vhv' ? 'btn-primary shadow-sm' : 'btn-light text-muted border-0'}`} 
             onClick={() => { setLoginMode('vhv'); setError(''); }}
             style={{transition: 'all 0.3s'}}
-            disabled={submitting} 
+            disabled={submitting}
           >
             <i className="fa-solid fa-user-nurse me-1"/> อสม.
           </button>
@@ -182,7 +180,7 @@ function LoginContent() {
                 placeholder="กรอกเลขบัตร 13 หลัก" 
                 value={cid} 
                 onChange={e => setCid(e.target.value.replace(/\D/g, ''))} 
-                onKeyPress={e => e.key === 'Enter' && handleLogin()} 
+                onKeyPress={e => e.key === 'Enter' && linkLineId && handleLogin()} 
                 style={{borderLeft:'none',borderColor:'#c5cae9',padding:'14px', fontSize:'1.1rem', letterSpacing:'2px'}} 
                 disabled={submitting} 
               />
@@ -202,7 +200,7 @@ function LoginContent() {
               <label className="form-label" style={{fontWeight:600,fontSize:'.85rem',color:'#546e7a'}}><i className="fa-solid fa-lock me-1" /> รหัสผ่าน</label>
               <div className="input-group shadow-sm" style={{borderRadius:8, overflow:'hidden'}}>
                 <span className="input-group-text bg-white" style={{borderRight:'none',borderColor:'#c5cae9',color:'#3949ab'}}><i className="fa-solid fa-lock" /></span>
-                <input id="pwd" type={showPwd ? 'text' : 'password'} className="form-control" placeholder="ระบุรหัสผ่าน" value={password} onChange={e => setPassword(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleLogin()} style={{borderLeft:'none',borderColor:'#c5cae9',padding:'12px 14px'}} disabled={submitting} />
+                <input id="pwd" type={showPwd ? 'text' : 'password'} className="form-control" placeholder="ระบุรหัสผ่าน" value={password} onChange={e => setPassword(e.target.value)} onKeyPress={e => e.key === 'Enter' && linkLineId && handleLogin()} style={{borderLeft:'none',borderColor:'#c5cae9',padding:'12px 14px'}} disabled={submitting} />
                 <button className="btn btn-light bg-white border-start-0" type="button" onClick={() => setShowPwd(!showPwd)} style={{borderColor:'#c5cae9'}} disabled={submitting}>
                   <i className={`fa-solid fa-eye${showPwd ? '-slash' : ''} text-muted`} />
                 </button>
@@ -211,11 +209,14 @@ function LoginContent() {
           </div>
         )}
 
+        {/* 🟢 ส่วนของปุ่มที่ปรับเปลี่ยน: ซ่อนปุ่มเข้าสู่ระบบปกติ และบังคับใช้ LINE */}
         {linkLineId ? (
+          // โหมดผูกบัญชี (กลับมาจาก LINE): แสดงปุ่มสีน้ำเงินเพื่อให้กดยืนยันข้อมูล
           <button className="btn btn-primary w-100 text-white mb-3 shadow-sm" onClick={handleLogin} disabled={submitting} style={{background:'linear-gradient(135deg,#1a237e,#3949ab)',border:'none',borderRadius:14,padding:14,fontSize:'1.05rem',fontWeight:700}}>
             {submitting ? <><span className="spinner-border spinner-border-sm me-2" />กำลังตรวจสอบ...</> : <><i className="fa-solid fa-link me-2" />ยืนยันการผูกบัญชี</>}
           </button>
         ) : (
+          // โหมดปกติ (หน้าแรก): แสดงแค่ปุ่ม LINE ปุ่มเดียว ไม่มีปุ่มเข้าสู่ระบบปกติ
           <button 
             className="btn w-100 text-white d-flex align-items-center justify-content-center shadow-sm" 
             onClick={handleLineLogin} 
