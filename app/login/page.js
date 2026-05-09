@@ -12,9 +12,6 @@ function LoginContent() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  
-  // 🟢 State สำหรับเช็กสถานะการทำงาน (ให้แสดงบนหน้าจอ)
-  const [debugLog, setDebugLog] = useState('รอการทำงาน...');
 
   const { login, loginWithLine, user } = useAuth(); 
   const router = useRouter();
@@ -27,37 +24,30 @@ function LoginContent() {
   const linkLineId = searchParams.get('link_line_id');
 
   useEffect(() => {
-    // ฟังก์ชันนี้จะทำงานทันทีที่กลับมาจาก LINE
     const handleLineAuth = async () => {
       if (autoLogin === 'true' && lineId) {
         setSubmitting(true);
-        setDebugLog(`1. ได้รับ LINE ID: ${lineId}`);
         setSuccessMsg('กำลังตรวจสอบบัญชีในระบบ...');
         
         try {
-          setDebugLog(`2. กำลังวิ่งไปเช็กที่ Supabase...`);
           const res = await loginWithLine(lineId);
           
           if (res && res.success) {
-            setDebugLog(`3. เจอบัญชีแล้ว! กำลังเข้าสู่ระบบ`);
             router.push('/');
           } else {
-            setDebugLog(`3. ไม่พบบัญชีนี้ กำลังเปลี่ยนหน้าไปโหมดผูกบัญชี`);
             setSubmitting(false);
             setSuccessMsg('');
-            // 🟢 เปลี่ยนหน้าไปโหมดผูกบัญชีทันที
             router.replace(`/login?link_line_id=${lineId}&line_name=${encodeURIComponent(lineName || 'LINE')}&picture_url=${encodeURIComponent(pictureUrl || '')}`);
           }
         } catch (err) {
-          setDebugLog(`❌ ข้อผิดพลาด: ${err.message}`);
-          setError('เกิดข้อผิดพลาด กรุณาลองใหม่');
+          setError('เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่');
           setSubmitting(false);
         }
       }
     };
 
     handleLineAuth();
-  }, [autoLogin, lineId]); // 🟢 ถอด dependency ที่ไม่จำเป็นออก ป้องกันการค้าง
+  }, [autoLogin, lineId]); 
 
   const handleLogin = async () => {
     let finalUser = '', finalPass = '';
@@ -99,16 +89,8 @@ function LoginContent() {
           <p className="text-muted small">รพ.สต.บ้านโนนสว่าง จ.ร้อยเอ็ด</p>
         </div>
 
-        {/* 🛠️ แผงหน้าปัด Debug Mode (จะโชว์เฉพาะตอนที่มีข้อมูลจาก LINE ส่งมา) */}
-        {(autoLogin || linkLineId) && (
-          <div className="alert alert-warning mb-3" style={{fontSize: '0.8rem'}}>
-            <strong>สถานะระบบ:</strong> {debugLog}<br/>
-            <strong>URL Params:</strong> {autoLogin ? 'มี AutoLogin' : 'ไม่มี AutoLogin'} | {linkLineId ? 'มี LinkID' : 'ไม่มี LinkID'}
-          </div>
-        )}
-
-        {error && <div className="alert alert-danger small mb-3 border-0 shadow-sm" style={{borderRadius: 12}}>{error}</div>}
-        {successMsg && <div className="alert alert-primary small mb-3 border-0 shadow-sm" style={{borderRadius: 12}}>{successMsg}</div>}
+        {error && <div className="alert alert-danger small mb-3 border-0 shadow-sm" style={{borderRadius: 12}}><i className="fa-solid fa-circle-exclamation me-2" />{error}</div>}
+        {successMsg && <div className="alert alert-primary small mb-3 border-0 shadow-sm" style={{borderRadius: 12}}><i className="fa-solid fa-circle-info me-2" />{successMsg}</div>}
 
         {!linkLineId && !submitting && (
           <div className="text-center py-4">
@@ -116,12 +98,13 @@ function LoginContent() {
             <button className="btn w-100 py-3 fw-bold text-white shadow-sm mb-2" onClick={handleLineLogin} style={{background:'#00B900', borderRadius:16, fontSize: '1.1rem'}}>
               <i className="fa-brands fa-line me-2 fa-lg" /> เข้าสู่ระบบด้วย LINE
             </button>
+            <small className="text-muted mt-3 d-block">การเข้าใช้งานต้องได้รับการยืนยันตัวตนผ่าน LINE</small>
           </div>
         )}
 
         {linkLineId && (
           <div className="fade-in">
-            <div className="alert alert-info small mb-4 border-0 shadow-sm" style={{borderRadius: 12}}>
+            <div className="alert alert-info small mb-4 border-0 shadow-sm" style={{borderRadius: 12, backgroundColor: '#e8eaf6', color: '#1a237e'}}>
               <i className="fa-solid fa-link me-2" />
               เชื่อมต่อ LINE สำเร็จ! <b>กรุณาระบุตัวตน</b> เพื่อผูกบัญชี
             </div>
@@ -134,17 +117,20 @@ function LoginContent() {
             {loginMode === 'vhv' ? (
               <div className="mb-4">
                 <label className="form-label small fw-bold text-secondary">เลขบัตรประชาชน 13 หลัก</label>
-                <input type="text" maxLength="13" className="form-control form-control-lg text-center shadow-sm" placeholder="กรอกเลข 13 หลัก" value={cid} onChange={e => setCid(e.target.value.replace(/\D/g, ''))} disabled={submitting} style={{borderRadius: 12}} />
+                <input type="text" maxLength="13" className="form-control form-control-lg text-center shadow-sm" placeholder="กรอกเลข 13 หลัก" value={cid} onChange={e => setCid(e.target.value.replace(/\D/g, ''))} disabled={submitting} style={{borderRadius: 12, letterSpacing: '2px', fontWeight: 'bold'}} />
               </div>
             ) : (
               <div className="mb-4">
-                <input type="text" className="form-control shadow-sm mb-3" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} disabled={submitting} />
-                <input type="password" className="form-control shadow-sm" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} disabled={submitting} />
+                <label className="form-label small fw-bold text-secondary">ชื่อผู้ใช้งาน</label>
+                <input type="text" className="form-control shadow-sm mb-3" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} disabled={submitting} style={{borderRadius: 12}} />
+                
+                <label className="form-label small fw-bold text-secondary">รหัสผ่าน</label>
+                <input type="password" className="form-control shadow-sm" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} disabled={submitting} style={{borderRadius: 12}} />
               </div>
             )}
 
-            <button className="btn btn-primary w-100 py-3 fw-bold shadow-sm" onClick={handleLogin} disabled={submitting} style={{borderRadius: 16}}>
-              {submitting ? 'กำลังประมวลผล...' : 'ยืนยันการผูกบัญชี'}
+            <button className="btn btn-primary w-100 py-3 fw-bold shadow-sm" onClick={handleLogin} disabled={submitting} style={{borderRadius: 16, background: 'linear-gradient(45deg, #1a237e, #3949ab)', border: 'none'}}>
+              {submitting ? <><span className="spinner-border spinner-border-sm me-2"/>กำลังประมวลผล...</> : <><i className="fa-solid fa-user-check me-2"/>ยืนยันการผูกบัญชี</>}
             </button>
           </div>
         )}
