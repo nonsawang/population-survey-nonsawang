@@ -1,10 +1,9 @@
 'use client';
-import { useState, useEffect, useRef, Suspense } from 'react'; // 🟢 เพิ่ม Suspense
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase'; 
 
-// 🟢 1. เปลี่ยนชื่อฟังก์ชันเดิมเป็น LoginContent
 function LoginContent() {
   const [loginMode, setLoginMode] = useState('vhv'); 
   const [cid, setCid] = useState(''); 
@@ -33,13 +32,14 @@ function LoginContent() {
   useEffect(() => {
     const processLineLogin = async () => {
       if (autoLogin === 'true' && lineIdToLogin && !user) {
-        setSuccessMsg('พบข้อมูลผูกบัญชี LINE แล้ว กำลังเข้าสู่ระบบ...');
+        setSuccessMsg('พบข้อมูลบัญชี LINE กำลังตรวจสอบในระบบ...');
         const res = await loginWithLine(lineIdToLogin);
         if (res.success) {
           router.push('/');
         } else {
-          setError('เข้าสู่ระบบด้วย LINE ไม่สำเร็จ กรุณาล็อกอินด้วยรหัสผ่าน');
+          // 🟢 จุดสำคัญที่แก้: ถ้าหาบัญชีไม่เจอ ให้เด้งเข้าสู่โหมด "ผูกบัญชี" ปลดล็อคฟอร์ม
           setSuccessMsg('');
+          router.replace(`/login?link_line_id=${lineIdToLogin}&line_name=${lineName || 'LINE'}&picture_url=${pictureUrl || ''}`);
         }
       }
     };
@@ -47,11 +47,11 @@ function LoginContent() {
 
     if (user && !autoLogin) {
       router.push('/');
-    } else if (!autoLogin) {
+    } else if (!autoLogin && !linkLineId) {
       if (loginMode === 'vhv') cidRef.current?.focus();
       else usernameRef.current?.focus();
     }
-  }, [user, router, autoLogin, lineIdToLogin, loginWithLine, loginMode]);
+  }, [user, router, autoLogin, lineIdToLogin, loginWithLine, loginMode, linkLineId, lineName, pictureUrl]);
 
   const handleLogin = async () => {
     let finalUser = '';
@@ -125,7 +125,7 @@ function LoginContent() {
             ) : (
               <i className="fa-brands fa-line me-2 fa-lg text-success" />
             )}
-            <span>เชื่อมต่อ LINE <b>{lineName}</b> สำเร็จ<br/>กรุณาเข้าสู่ระบบเพื่อ <b>ผูกบัญชี</b> ในครั้งแรกครับ</span>
+            <span>บัญชี LINE นี่ยังไม่เคยเข้าใช้งาน<br/>กรุณากรอกเลขบัตรเพื่อ <b>ผูกบัญชี</b> ในครั้งแรกครับ</span>
           </div>
         )}
 
@@ -146,6 +146,7 @@ function LoginContent() {
             className={`btn w-50 rounded-pill fw-bold ${loginMode === 'vhv' ? 'btn-primary shadow-sm' : 'btn-light text-muted border-0'}`} 
             onClick={() => { setLoginMode('vhv'); setError(''); }}
             style={{transition: 'all 0.3s'}}
+            disabled={autoLogin === 'true'}
           >
             <i className="fa-solid fa-user-nurse me-1"/> อสม.
           </button>
@@ -153,6 +154,7 @@ function LoginContent() {
             className={`btn w-50 rounded-pill fw-bold ${loginMode === 'staff' ? 'btn-primary shadow-sm' : 'btn-light text-muted border-0'}`} 
             onClick={() => { setLoginMode('staff'); setError(''); }}
             style={{transition: 'all 0.3s'}}
+            disabled={autoLogin === 'true'}
           >
             <i className="fa-solid fa-user-shield me-1"/> เจ้าหน้าที่
           </button>
@@ -217,10 +219,8 @@ function LoginContent() {
   );
 }
 
-// 🟢 2. สร้าง LoginPage ตัวใหม่ที่เอา <Suspense> มาครอบเนื้อหาข้างบนทั้งหมด
 export default function LoginPage() {
   return (
-    // ใส่ Loading หมุนๆ ไว้ เผื่อตอนหน้าเว็บกำลังโหลด URL ครับ
     <Suspense fallback={<div className="login-bg d-flex justify-content-center align-items-center"><div className="spinner-border text-white" role="status"></div></div>}>
       <LoginContent />
     </Suspense>
