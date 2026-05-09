@@ -1,8 +1,9 @@
 'use client';
-import { useState, useEffect, useRef, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase'; 
+import liff from '@line/liff';
 
 function LoginContent() {
   const [loginMode, setLoginMode] = useState('vhv'); 
@@ -11,50 +12,66 @@ function LoginContent() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState(true); // 🟢 ให้โหลดตั้งแต่เริ่มเพื่อรอ LIFF
+
+  // 🟢 State สำหรับเก็บข้อมูลจาก LIFF โดยตรง
+  const [liffData, setLiffData] = useState(null);
 
   const { login, loginWithLine, user } = useAuth(); 
   const router = useRouter();
-  const searchParams = useSearchParams(); 
 
-  // ดึงค่าที่ LINE ส่งกลับมาผ่าน URL
-  const autoLogin = searchParams.get('auto_login');
-  const lineId = searchParams.get('line_id');
-  const lineName = searchParams.get('line_name');
-  const pictureUrl = searchParams.get('picture_url');
-  const linkLineId = searchParams.get('link_line_id');
-
+  // 🚀 เริ่มต้นระบบ LIFF ทันทีที่โหลดหน้าเว็บ
   useEffect(() => {
-    const handleLineAuth = async () => {
-      if (autoLogin === 'true' && lineId) {
-        setSubmitting(true);
-        setSuccessMsg('กำลังตรวจสอบบัญชี LINE...');
+    const initLiff = async () => {
+      try {
+        await liff.init({ liffId: process.env.NEXT_PUBLIC_LIFF_ID });
         
-        try {
-          const res = await loginWithLine(lineId);
+        // ถ้าเปิดผ่านแอป LINE (Rich Menu) หรือเคยล็อกอินไว้แล้ว มันจะเข้าเงื่อนไขนี้ทันที!
+        if (liff.isLoggedIn()) {
+          setSuccessMsg('กำลังเชื่อมต่อฐานข้อมูล รพ.สต....');
+          const profile = await liff.getProfile();
+          
+          const currentLineId = profile.userId;
+          const currentPicUrl = profile.pictureUrl;
+          
+          // เช็กกับ Supabase ว่าเคยผูกบัญชีหรือยัง
+          const res = await loginWithLine(currentLineId);
           
           if (res && res.success) {
-            // 🟢 ถ้าผูกไว้แล้ว -> อัปเดตรูปโปรไฟล์ให้เป็นปัจจุบัน แล้วเข้าหน้าหลัก
-            if (pictureUrl) {
-              await supabase.from('app_users').update({ avatar_url: pictureUrl }).eq('line_user_id', lineId);
+            // ถ้าเคยผูกแล้ว -> อัปเดตรูปเผื่อเปลี่ยนใหม่ แล้วพุ่งเข้าหน้าหลักเลย
+            if (currentPicUrl) {
+              await supabase.from('app_users').update({ avatar_url: currentPicUrl }).eq('line_user_id', currentLineId);
             }
             router.push('/');
           } else {
-            // 🔴 ถ้ายังไม่เคยผูก -> เปลี่ยนสถานะหน้าจอให้แสดงช่องกรอกเลขบัตรเพื่อ "ผูกบัญชี"
+            // 🔴 ถ้ายังไม่เคยผูกบัญชี -> โชว์หน้ากรอกเลขบัตร
+            setLiffData({
+              lineId: currentLineId,
+              lineName: profile.displayName,
+              pictureUrl: currentPicUrl
+            });
             setSubmitting(false);
             setSuccessMsg('');
-            router.replace(`/login?link_line_id=${lineId}&line_name=${encodeURIComponent(lineName || 'LINE')}&picture_url=${encodeURIComponent(pictureUrl || '')}`);
           }
-        } catch (err) {
-          setError('การเชื่อมต่อผิดพลาด');
+        } else {
+          // ถ้าไม่ได้ล็อกอิน (เปิดใน Chrome แบบปกติ) ให้โชว์ปุ่มสีเขียว
           setSubmitting(false);
         }
+      } catch (err) {
+        console.error('LIFF Init Error:', err);
+        setError('ไม่สามารถเรียกใช้งาน LINE ได้ กรุณารีเฟรชหน้าจอ');
+        setSubmitting(false);
       }
     };
-    handleLineAuth();
-  }, [autoLogin, lineId, router]);
 
-const handleLogin = async () => {
+    if (!user) {
+      initLiff();
+    } else {
+      router.push('/');
+    }
+  }, [loginWithLine, router, user]);
+
+  const handleLogin = async () => {
     let finalUser = '', finalPass = '';
     if (loginMode === 'vhv') {
       const cleanCid = cid.replace(/\D/g, '');
@@ -67,28 +84,24 @@ const handleLogin = async () => {
 
     setSubmitting(true); setError('');
 
-    // 🟢 1. ถ้าเป็นการผูกบัญชีใหม่ ให้ไปอัปเดตข้อมูลใน Supabase ก่อนเลยครับ
-    if (linkLineId) {
+    // 🟢 ถ้ากำลังอยู่ในขั้นตอนการผูกบัญชี (มี liffData) ให้บันทึกลง Supabase
+    if (liffData) {
       const { error: updateError } = await supabase
         .from('app_users')
         .update({ 
-          line_user_id: linkLineId, 
-          avatar_url: pictureUrl 
+          line_user_id: liffData.lineId, 
+          avatar_url: liffData.pictureUrl 
         })
         .eq('username', finalUser);
         
       if (updateError) {
-        console.error("Update Error:", updateError);
-        setError('ไม่สามารถบันทึกข้อมูลการผูกบัญชีได้');
+        setError('ไม่สามารถบันทึกข้อมูลการผูกบัญชีได้ เลขบัตรอาจไม่ถูกต้อง');
         setSubmitting(false);
         return;
       }
     }
 
-    // 🟢 2. หลังจากอัปเดต DB เสร็จแล้วค่อยสั่ง Login 
-    // วิธีนี้จะทำให้ฟังก์ชัน login ไปดึงค่า avatar_url ตัวใหม่ที่เราเพิ่งบันทึกมาสร้าง Session ครับ
     const res = await login(finalUser, finalPass);
-    
     if (res.success) {
       router.push('/');
     } else {
@@ -97,10 +110,11 @@ const handleLogin = async () => {
     }
   };
 
+  // ฟังก์ชันกดปุ่ม LINE (กรณีไม่ได้เปิดผ่านแอป LINE)
   const handleLineLogin = () => {
-    const clientId = process.env.NEXT_PUBLIC_LINE_CLIENT_ID;
-    const redirectUri = encodeURIComponent(`${window.location.origin}/api/auth/callback/line`);
-    window.location.href = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=secure&scope=profile%20openid`;
+    if (!liff.isLoggedIn()) {
+      liff.login(); // คำสั่งของ LIFF จะจัดการล็อกอินให้อัตโนมัติ ปลอดภัยกว่า
+    }
   };
 
   return (
@@ -113,11 +127,13 @@ const handleLogin = async () => {
         </div>
 
         {error && <div className="alert alert-danger small mb-3 border-0 shadow-sm">{error}</div>}
-        {successMsg && <div className="alert alert-primary small mb-3 border-0 shadow-sm">{successMsg}</div>}
+        {successMsg && <div className="alert alert-primary small mb-3 border-0 shadow-sm">
+          <span className="spinner-border spinner-border-sm me-2" />{successMsg}
+        </div>}
 
-        {/* หน้าแรก: บังคับกด LINE */}
-        {!linkLineId && !submitting && (
-          <div className="text-center py-4">
+        {/* 🟢 หน้าแรก: โชว์ปุ่ม LINE (เฉพาะกรณีที่ยังไม่ได้ล็อกอิน LIFF) */}
+        {!liffData && !submitting && (
+          <div className="text-center py-4 fade-in">
             <p className="mb-4" style={{color: '#546e7a', fontWeight: 500}}>กรุณาเข้าสู่ระบบด้วย LINE เพื่อดำเนินการต่อ</p>
             <button className="btn w-100 py-3 fw-bold text-white shadow-sm" onClick={handleLineLogin} style={{background:'#00B900', borderRadius:16, fontSize: '1.1rem'}}>
               <i className="fa-brands fa-line me-2 fa-lg" /> เข้าสู่ระบบด้วย LINE
@@ -125,37 +141,41 @@ const handleLogin = async () => {
           </div>
         )}
 
-        {/* หน้าผูกบัญชี: จะแสดงรูปโปรไฟล์ที่ดึงมาจาก LINE ให้เห็นด้วย */}
-        {linkLineId && (
+        {/* 🟢 หน้าผูกบัญชี: จะแสดงเมื่อ LIFF ดึงข้อมูลได้ แต่ไม่เจอในฐานข้อมูลเรา */}
+        {liffData && !submitting && (
           <div className="fade-in">
             <div className="d-flex align-items-center p-3 mb-4 shadow-sm" style={{borderRadius: 15, backgroundColor: '#f5f5f5'}}>
-              <img src={pictureUrl} alt="Profile" className="rounded-circle me-3 shadow-sm" style={{width: '50px', height: '50px', border: '2px solid white'}} />
+              {liffData.pictureUrl ? (
+                <img src={liffData.pictureUrl} alt="Profile" className="rounded-circle me-3 shadow-sm" style={{width: '50px', height: '50px', border: '2px solid white'}} />
+              ) : (
+                <i className="fa-solid fa-circle-user fa-3x text-secondary me-3" />
+              )}
               <div>
                 <div className="small text-muted">ยินดีต้อนรับคุณ</div>
-                <div className="fw-bold text-primary">{lineName}</div>
+                <div className="fw-bold text-primary">{liffData.lineName}</div>
               </div>
             </div>
 
-            <p className="small text-center text-muted mb-4">กรุณาระบุเลขบัตรประชาชนเพื่อผูกบัญชีเข้ากับระบบ</p>
+            <p className="small text-center text-muted mb-4">ระบบตรวจพบการใช้งานครั้งแรก<br/>กรุณาระบุเลขบัตรประชาชนเพื่อ <b>ผูกบัญชี</b></p>
 
             <div className="d-flex mb-4 p-1 rounded-pill bg-light">
-              <button className={`btn w-50 rounded-pill fw-bold ${loginMode === 'vhv' ? 'btn-primary' : 'btn-light'}`} onClick={() => setLoginMode('vhv')} disabled={submitting}>อสม.</button>
-              <button className={`btn w-50 rounded-pill fw-bold ${loginMode === 'staff' ? 'btn-primary' : 'btn-light'}`} onClick={() => setLoginMode('staff')} disabled={submitting}>เจ้าหน้าที่</button>
+              <button className={`btn w-50 rounded-pill fw-bold ${loginMode === 'vhv' ? 'btn-primary' : 'btn-light text-muted'}`} onClick={() => setLoginMode('vhv')}>อสม.</button>
+              <button className={`btn w-50 rounded-pill fw-bold ${loginMode === 'staff' ? 'btn-primary' : 'btn-light text-muted'}`} onClick={() => setLoginMode('staff')}>เจ้าหน้าที่</button>
             </div>
 
             <div className="mb-4">
               {loginMode === 'vhv' ? (
-                <input type="text" maxLength="13" className="form-control form-control-lg text-center shadow-sm" placeholder="เลขบัตรประชาชน 13 หลัก" value={cid} onChange={e => setCid(e.target.value.replace(/\D/g, ''))} disabled={submitting} style={{borderRadius: 12}} />
+                <input type="text" maxLength="13" className="form-control form-control-lg text-center shadow-sm" placeholder="เลขบัตรประชาชน 13 หลัก" value={cid} onChange={e => setCid(e.target.value.replace(/\D/g, ''))} style={{borderRadius: 12}} />
               ) : (
                 <div className="mb-3">
-                  <input type="text" className="form-control mb-2" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} disabled={submitting} />
-                  <input type="password" className="form-control" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} disabled={submitting} />
+                  <input type="text" className="form-control mb-2 shadow-sm" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} style={{borderRadius: 12}} />
+                  <input type="password" className="form-control shadow-sm" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} style={{borderRadius: 12}} />
                 </div>
               )}
             </div>
 
-            <button className="btn btn-primary w-100 py-3 fw-bold shadow-sm" onClick={handleLogin} disabled={submitting} style={{borderRadius: 16, background: 'linear-gradient(45deg, #1a237e, #3949ab)', border: 'none'}}>
-              {submitting ? 'กำลังประมวลผล...' : 'ยืนยันการผูกบัญชี LINE'}
+            <button className="btn btn-primary w-100 py-3 fw-bold shadow-sm" onClick={handleLogin} style={{borderRadius: 16, background: 'linear-gradient(45deg, #1a237e, #3949ab)', border: 'none'}}>
+              ยืนยันการผูกบัญชี LINE
             </button>
           </div>
         )}
