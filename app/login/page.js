@@ -54,11 +54,11 @@ function LoginContent() {
     handleLineAuth();
   }, [autoLogin, lineId, router]);
 
-  const handleLogin = async () => {
+const handleLogin = async () => {
     let finalUser = '', finalPass = '';
     if (loginMode === 'vhv') {
       const cleanCid = cid.replace(/\D/g, '');
-      if (cleanCid.length !== 13) { setError('กรุณากรอกเลขบัตรให้ครบ 13 หลัก'); return; }
+      if (cleanCid.length !== 13) { setError('กรุณากรอกเลขบัตร 13 หลัก'); return; }
       finalUser = 'vhv' + cleanCid.slice(-6); finalPass = cleanCid;
     } else {
       if (!username || !password) { setError('กรุณากรอกข้อมูลให้ครบ'); return; }
@@ -66,16 +66,30 @@ function LoginContent() {
     }
 
     setSubmitting(true); setError('');
+
+    // 🟢 1. ถ้าเป็นการผูกบัญชีใหม่ ให้ไปอัปเดตข้อมูลใน Supabase ก่อนเลยครับ
+    if (linkLineId) {
+      const { error: updateError } = await supabase
+        .from('app_users')
+        .update({ 
+          line_user_id: linkLineId, 
+          avatar_url: pictureUrl 
+        })
+        .eq('username', finalUser);
+        
+      if (updateError) {
+        console.error("Update Error:", updateError);
+        setError('ไม่สามารถบันทึกข้อมูลการผูกบัญชีได้');
+        setSubmitting(false);
+        return;
+      }
+    }
+
+    // 🟢 2. หลังจากอัปเดต DB เสร็จแล้วค่อยสั่ง Login 
+    // วิธีนี้จะทำให้ฟังก์ชัน login ไปดึงค่า avatar_url ตัวใหม่ที่เราเพิ่งบันทึกมาสร้าง Session ครับ
     const res = await login(finalUser, finalPass);
     
     if (res.success) {
-      if (linkLineId) {
-        // 🟢 จังหวะสำคัญ: บันทึก LINE ID และรูปโปรไฟล์ลงฐานข้อมูลพร้อมกับการ Login ครั้งแรก
-        await supabase.from('app_users').update({ 
-          line_user_id: linkLineId, 
-          avatar_url: pictureUrl 
-        }).eq('username', finalUser);
-      }
       router.push('/');
     } else {
       setSubmitting(false);
