@@ -340,11 +340,35 @@ export default function SurveyPage() {
       <div className="container py-3" style={{maxWidth:600}}>
         <h5 className="text-center mb-3 fw-bold" style={{color:'var(--primary)'}}><i className="fa-solid fa-clipboard-user"/> ระบบสำรวจประชากร</h5>
 
-        <div className="fab-container">
-          <a href="/screening" className="fab-btn bg-success"><i className="fa-solid fa-clipboard-check fa-lg"/></a>
-          <a href="/dashboard" className="fab-btn" style={{background:'var(--primary)'}}><i className="fa-solid fa-chart-line fa-lg"/></a>
-        </div>
+<div className="fab-container">
+          {/* 🟢 เช็กสิทธิ์: ถ้าไม่ใช่ อสม. ถึงจะมองเห็นปุ่ม Screening */}
+          {user?.role !== 'vhv' && (
+            <a href="/screening" className="fab-btn bg-success">
+              <i className="fa-solid fa-clipboard-check fa-lg"/>
+            </a>
+          )}
+          
+          {/* 🟢 เช็กสิทธิ์: ถ้าไม่ใช่ อสม. ถึงจะมองเห็นปุ่ม Dashboard */}
+          {user?.role !== 'vhv' && (
+            <a href="/dashboard" className="fab-btn" style={{background:'var(--primary)'}}>
+              <i className="fa-solid fa-chart-line fa-lg"/>
+            </a>
+          )}
 
+{/* 3. ปุ่มแดชบอร์ดใหม่ (GAS) */}
+          <a 
+            // 🟢 แนบ username ของคนที่ล็อกอินอยู่ ส่งไปให้ GAS ด้วย
+            href={`https://script.google.com/macros/s/AKfycbxodmongrNvVdVwSGld4uwC6hiu7F6RYyCpr7HSEe9ZJDDCZjxS9feQSEqKuD1QRhFu/exec?page=dashboard&token=b69b0981-78df-41e2-998e-f21aee9b730d&user=${user?.username || 'admin'}`} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="fab-btn" 
+            style={{background:'#f59e0b'}} 
+            title="แดชบอร์ด GAS"
+          >
+            <i className="fa-solid fa-chart-pie fa-lg"/>
+          </a>
+        </div>
+          
         {/* Search */}
         <div className="card border-0 shadow-sm mb-4 fade-in" style={{borderRadius:16}}>
           <div className="card-body p-4">
