@@ -1,10 +1,11 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react'; // 🟢 เพิ่ม Suspense
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase'; 
 
-export default function LoginPage() {
+// 🟢 1. เปลี่ยนชื่อฟังก์ชันเดิมเป็น LoginContent
+function LoginContent() {
   const [loginMode, setLoginMode] = useState('vhv'); 
   const [cid, setCid] = useState(''); 
   
@@ -98,10 +99,8 @@ export default function LoginPage() {
     }
   };
 
-const handleLineLogin = () => {
+  const handleLineLogin = () => {
     const clientId = process.env.NEXT_PUBLIC_LINE_CLIENT_ID;
-    
-    // 🟢 ดึงโดเมนปัจจุบันอัตโนมัติ (ฉลาดขึ้น ไม่ต้องฮาร์ดโค้ด)
     const currentDomain = window.location.origin; 
     const redirectUri = encodeURIComponent(`${currentDomain}/api/auth/callback/line`);
     
@@ -109,6 +108,7 @@ const handleLineLogin = () => {
     const lineLoginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=profile%20openid`;
     window.location.href = lineLoginUrl;
   };
+
   return (
     <div className="login-bg">
       <div className={`login-card ${shake ? 'shake' : ''}`} style={{animation: shake ? 'shake 0.45s ease-in-out' : 'fadeInUp 0.6s ease-out'}}>
@@ -197,7 +197,6 @@ const handleLineLogin = () => {
           </div>
         )}
 
-        {/* 🟢 ส่วนของปุ่ม (สลับตามสถานการณ์) */}
         {linkLineId ? (
           <button className="btn btn-primary w-100 text-white mb-3 shadow-sm" onClick={handleLogin} disabled={submitting || autoLogin === 'true'} style={{background:'linear-gradient(135deg,#1a237e,#3949ab)',border:'none',borderRadius:14,padding:14,fontSize:'1.05rem',fontWeight:700}}>
             {submitting ? <><span className="spinner-border spinner-border-sm me-2" />กำลังตรวจสอบ...</> : <><i className="fa-solid fa-link me-2" />ยืนยันการผูกบัญชี</>}
@@ -213,8 +212,17 @@ const handleLineLogin = () => {
             เข้าสู่ระบบด้วย LINE
           </button>
         )}
-
       </div>
     </div>
+  );
+}
+
+// 🟢 2. สร้าง LoginPage ตัวใหม่ที่เอา <Suspense> มาครอบเนื้อหาข้างบนทั้งหมด
+export default function LoginPage() {
+  return (
+    // ใส่ Loading หมุนๆ ไว้ เผื่อตอนหน้าเว็บกำลังโหลด URL ครับ
+    <Suspense fallback={<div className="login-bg d-flex justify-content-center align-items-center"><div className="spinner-border text-white" role="status"></div></div>}>
+      <LoginContent />
+    </Suspense>
   );
 }
