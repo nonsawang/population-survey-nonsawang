@@ -17,6 +17,7 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams(); 
 
+  // ดึงค่าที่ LINE ส่งกลับมาผ่าน URL
   const autoLogin = searchParams.get('auto_login');
   const lineId = searchParams.get('line_id');
   const lineName = searchParams.get('line_name');
@@ -27,33 +28,37 @@ function LoginContent() {
     const handleLineAuth = async () => {
       if (autoLogin === 'true' && lineId) {
         setSubmitting(true);
-        setSuccessMsg('กำลังตรวจสอบบัญชีในระบบ...');
+        setSuccessMsg('กำลังตรวจสอบบัญชี LINE...');
         
         try {
           const res = await loginWithLine(lineId);
           
           if (res && res.success) {
+            // 🟢 ถ้าผูกไว้แล้ว -> อัปเดตรูปโปรไฟล์ให้เป็นปัจจุบัน แล้วเข้าหน้าหลัก
+            if (pictureUrl) {
+              await supabase.from('app_users').update({ avatar_url: pictureUrl }).eq('line_user_id', lineId);
+            }
             router.push('/');
           } else {
+            // 🔴 ถ้ายังไม่เคยผูก -> เปลี่ยนสถานะหน้าจอให้แสดงช่องกรอกเลขบัตรเพื่อ "ผูกบัญชี"
             setSubmitting(false);
             setSuccessMsg('');
             router.replace(`/login?link_line_id=${lineId}&line_name=${encodeURIComponent(lineName || 'LINE')}&picture_url=${encodeURIComponent(pictureUrl || '')}`);
           }
         } catch (err) {
-          setError('เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่');
+          setError('การเชื่อมต่อผิดพลาด');
           setSubmitting(false);
         }
       }
     };
-
     handleLineAuth();
-  }, [autoLogin, lineId]); 
+  }, [autoLogin, lineId, router]);
 
   const handleLogin = async () => {
     let finalUser = '', finalPass = '';
     if (loginMode === 'vhv') {
       const cleanCid = cid.replace(/\D/g, '');
-      if (cleanCid.length !== 13) { setError('กรุณากรอกเลขบัตร 13 หลัก'); return; }
+      if (cleanCid.length !== 13) { setError('กรุณากรอกเลขบัตรให้ครบ 13 หลัก'); return; }
       finalUser = 'vhv' + cleanCid.slice(-6); finalPass = cleanCid;
     } else {
       if (!username || !password) { setError('กรุณากรอกข้อมูลให้ครบ'); return; }
@@ -65,7 +70,11 @@ function LoginContent() {
     
     if (res.success) {
       if (linkLineId) {
-        await supabase.from('app_users').update({ line_user_id: linkLineId, avatar_url: pictureUrl }).eq('username', finalUser);
+        // 🟢 จังหวะสำคัญ: บันทึก LINE ID และรูปโปรไฟล์ลงฐานข้อมูลพร้อมกับการ Login ครั้งแรก
+        await supabase.from('app_users').update({ 
+          line_user_id: linkLineId, 
+          avatar_url: pictureUrl 
+        }).eq('username', finalUser);
       }
       router.push('/');
     } else {
@@ -89,48 +98,50 @@ function LoginContent() {
           <p className="text-muted small">รพ.สต.บ้านโนนสว่าง จ.ร้อยเอ็ด</p>
         </div>
 
-        {error && <div className="alert alert-danger small mb-3 border-0 shadow-sm" style={{borderRadius: 12}}><i className="fa-solid fa-circle-exclamation me-2" />{error}</div>}
-        {successMsg && <div className="alert alert-primary small mb-3 border-0 shadow-sm" style={{borderRadius: 12}}><i className="fa-solid fa-circle-info me-2" />{successMsg}</div>}
+        {error && <div className="alert alert-danger small mb-3 border-0 shadow-sm">{error}</div>}
+        {successMsg && <div className="alert alert-primary small mb-3 border-0 shadow-sm">{successMsg}</div>}
 
+        {/* หน้าแรก: บังคับกด LINE */}
         {!linkLineId && !submitting && (
           <div className="text-center py-4">
             <p className="mb-4" style={{color: '#546e7a', fontWeight: 500}}>กรุณาเข้าสู่ระบบด้วย LINE เพื่อดำเนินการต่อ</p>
-            <button className="btn w-100 py-3 fw-bold text-white shadow-sm mb-2" onClick={handleLineLogin} style={{background:'#00B900', borderRadius:16, fontSize: '1.1rem'}}>
+            <button className="btn w-100 py-3 fw-bold text-white shadow-sm" onClick={handleLineLogin} style={{background:'#00B900', borderRadius:16, fontSize: '1.1rem'}}>
               <i className="fa-brands fa-line me-2 fa-lg" /> เข้าสู่ระบบด้วย LINE
             </button>
-            <small className="text-muted mt-3 d-block">การเข้าใช้งานต้องได้รับการยืนยันตัวตนผ่าน LINE</small>
           </div>
         )}
 
+        {/* หน้าผูกบัญชี: จะแสดงรูปโปรไฟล์ที่ดึงมาจาก LINE ให้เห็นด้วย */}
         {linkLineId && (
           <div className="fade-in">
-            <div className="alert alert-info small mb-4 border-0 shadow-sm" style={{borderRadius: 12, backgroundColor: '#e8eaf6', color: '#1a237e'}}>
-              <i className="fa-solid fa-link me-2" />
-              เชื่อมต่อ LINE สำเร็จ! <b>กรุณาระบุตัวตน</b> เพื่อผูกบัญชี
+            <div className="d-flex align-items-center p-3 mb-4 shadow-sm" style={{borderRadius: 15, backgroundColor: '#f5f5f5'}}>
+              <img src={pictureUrl} alt="Profile" className="rounded-circle me-3 shadow-sm" style={{width: '50px', height: '50px', border: '2px solid white'}} />
+              <div>
+                <div className="small text-muted">ยินดีต้อนรับคุณ</div>
+                <div className="fw-bold text-primary">{lineName}</div>
+              </div>
             </div>
 
-            <div className="d-flex mb-4 p-1 rounded-pill bg-light shadow-sm">
-              <button className={`btn w-50 rounded-pill fw-bold ${loginMode === 'vhv' ? 'btn-primary shadow-sm' : 'btn-light text-muted'}`} onClick={() => setLoginMode('vhv')} disabled={submitting}>อสม.</button>
-              <button className={`btn w-50 rounded-pill fw-bold ${loginMode === 'staff' ? 'btn-primary shadow-sm' : 'btn-light text-muted'}`} onClick={() => setLoginMode('staff')} disabled={submitting}>เจ้าหน้าที่</button>
+            <p className="small text-center text-muted mb-4">กรุณาระบุเลขบัตรประชาชนเพื่อผูกบัญชีเข้ากับระบบ</p>
+
+            <div className="d-flex mb-4 p-1 rounded-pill bg-light">
+              <button className={`btn w-50 rounded-pill fw-bold ${loginMode === 'vhv' ? 'btn-primary' : 'btn-light'}`} onClick={() => setLoginMode('vhv')} disabled={submitting}>อสม.</button>
+              <button className={`btn w-50 rounded-pill fw-bold ${loginMode === 'staff' ? 'btn-primary' : 'btn-light'}`} onClick={() => setLoginMode('staff')} disabled={submitting}>เจ้าหน้าที่</button>
             </div>
 
-            {loginMode === 'vhv' ? (
-              <div className="mb-4">
-                <label className="form-label small fw-bold text-secondary">เลขบัตรประชาชน 13 หลัก</label>
-                <input type="text" maxLength="13" className="form-control form-control-lg text-center shadow-sm" placeholder="กรอกเลข 13 หลัก" value={cid} onChange={e => setCid(e.target.value.replace(/\D/g, ''))} disabled={submitting} style={{borderRadius: 12, letterSpacing: '2px', fontWeight: 'bold'}} />
-              </div>
-            ) : (
-              <div className="mb-4">
-                <label className="form-label small fw-bold text-secondary">ชื่อผู้ใช้งาน</label>
-                <input type="text" className="form-control shadow-sm mb-3" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} disabled={submitting} style={{borderRadius: 12}} />
-                
-                <label className="form-label small fw-bold text-secondary">รหัสผ่าน</label>
-                <input type="password" className="form-control shadow-sm" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} disabled={submitting} style={{borderRadius: 12}} />
-              </div>
-            )}
+            <div className="mb-4">
+              {loginMode === 'vhv' ? (
+                <input type="text" maxLength="13" className="form-control form-control-lg text-center shadow-sm" placeholder="เลขบัตรประชาชน 13 หลัก" value={cid} onChange={e => setCid(e.target.value.replace(/\D/g, ''))} disabled={submitting} style={{borderRadius: 12}} />
+              ) : (
+                <div className="mb-3">
+                  <input type="text" className="form-control mb-2" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} disabled={submitting} />
+                  <input type="password" className="form-control" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} disabled={submitting} />
+                </div>
+              )}
+            </div>
 
             <button className="btn btn-primary w-100 py-3 fw-bold shadow-sm" onClick={handleLogin} disabled={submitting} style={{borderRadius: 16, background: 'linear-gradient(45deg, #1a237e, #3949ab)', border: 'none'}}>
-              {submitting ? <><span className="spinner-border spinner-border-sm me-2"/>กำลังประมวลผล...</> : <><i className="fa-solid fa-user-check me-2"/>ยืนยันการผูกบัญชี</>}
+              {submitting ? 'กำลังประมวลผล...' : 'ยืนยันการผูกบัญชี LINE'}
             </button>
           </div>
         )}
@@ -141,7 +152,7 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="login-bg d-flex justify-content-center align-items-center"><div className="spinner-border text-white" role="status"></div></div>}>
+    <Suspense fallback={<div className="login-bg d-flex justify-content-center align-items-center"><div className="spinner-border text-white"></div></div>}>
       <LoginContent />
     </Suspense>
   );
