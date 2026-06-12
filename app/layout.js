@@ -1,4 +1,5 @@
 import { AuthProvider } from '@/lib/auth';
+import Script from 'next/script'; // 🟢 ดึง Script ของ Next.js มาใช้
 import './globals.css';
 
 export const metadata = {
@@ -20,11 +21,13 @@ export default function RootLayout({ children }) {
         <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&family=Prompt:wght@400;600;700&display=swap" rel="stylesheet" />
       </head>
       <body>
-        <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js" />
         <AuthProvider>
           {children}
         </AuthProvider>
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer />
+
+        {/* 🟢 ใช้ Script ของ Next.js แทนการพิมพ์แท็ก script ตรงๆ เพื่อป้องกัน Error หน้าขาว */}
+        <Script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js" strategy="beforeInteractive" />
+        <Script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" strategy="lazyOnload" />
       </body>
     </html>
   );

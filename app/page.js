@@ -165,7 +165,7 @@ export default function SurveyPage() {
   const [moveTarget, setMoveTarget] = useState(null);
   const [moveMoo, setMoveMoo] = useState('');
   const [moveHouse, setMoveHouse] = useState('');
-  // ✅ VHV change modal — เก็บ house/moo ตอนเปิด ไม่ผูกกับช่องค้นหา
+  // ✅ VHV change modal
   const [showVhvModal, setShowVhvModal] = useState(false);
   const [selectedVhv, setSelectedVhv] = useState('');
   const [vhvHouse, setVhvHouse] = useState('');
@@ -173,6 +173,9 @@ export default function SurveyPage() {
   // ✅ Add person modal
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState({ cid:'', title:'นาย', fname:'', lname:'', birth_day:'', birth_month:'', birth_year:'', relation:'ผู้อาศัย', type:'3', chronic:'ปกติ (ไม่มีโรค)', chronicOther:'', vhv:'' });
+
+  // 🟢 เพิ่ม State สำหรับสถานะปุ่มดึงพิกัด GPS
+  const [savingGps, setSavingGps] = useState(false);
 
   // ✅ จำกัดหมู่สำหรับ vhv
   const allowedMoos = (user?.role === 'vhv' && user?.moo) ? user.moo.split(',').map(m => m.trim()) : null;
@@ -259,6 +262,59 @@ export default function SurveyPage() {
     if (!error) {
       swal({icon:'success',title:'ย้ายที่อยู่เรียบร้อย',showConfirmButton:false,timer:1500}).then(() => searchDataSilent());
     } else swal({icon:'error',title:'ย้ายไม่สำเร็จ',text:error.message});
+  };
+
+  // 🟢 ฟังก์ชันดึงพิกัด GPS จากมือถือและบันทึกลงฐานข้อมูล Supabase
+  const handleSaveGPS = () => {
+    if (!navigator.geolocation) {
+      swal({ icon: 'error', title: 'ไม่รองรับ GPS', text: 'เบราว์เซอร์หรือมือถือของคุณไม่รองรับการดึงพิกัด' });
+      return;
+    }
+
+    setSavingGps(true);
+    showLoading('กำลังค้นหาสัญญาณ GPS...');
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+
+        // อัปเดตพิกัดให้ "ทุกคน" ที่อยู่ในหมู่และบ้านเลขที่นี้พร้อมกัน (คอลัมน์ house และ moo)
+        const { error } = await supabase
+          .from('population')
+          .update({ 
+            latitude: latitude, 
+            longitude: longitude, 
+            updated_at: new Date().toISOString() 
+          })
+          .eq('house', house.trim())
+          .eq('moo', moo);
+
+        closeLoading();
+        setSavingGps(false);
+
+        if (error) {
+          swal({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: error.message });
+        } else {
+          swal({ 
+            icon: 'success', 
+            title: 'พิกัดถูกบันทึกแล้ว!', 
+            text: `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
+            timer: 2500,
+            showConfirmButton: false
+          });
+        }
+      },
+      (error) => {
+        closeLoading();
+        setSavingGps(false);
+        let msg = 'เกิดข้อผิดพลาดในการดึงพิกัด';
+        if (error.code === 1) msg = 'คุณไม่อนุญาตให้เข้าถึงตำแหน่ง (กรุณาเปิด GPS และอนุญาตให้เว็บเข้าถึง)';
+        if (error.code === 2) msg = 'ไม่สามารถระบุตำแหน่งได้ (อาจอยู่ในที่อับสัญญาณ)';
+        if (error.code === 3) msg = 'หมดเวลาเชื่อมต่อ GPS';
+        swal({ icon: 'error', title: 'ดึงพิกัดไม่สำเร็จ', text: msg });
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   };
 
   // ✅ เพิ่มผู้อาศัยใหม่
@@ -429,7 +485,7 @@ export default function SurveyPage() {
                   <div className="bg-info text-white rounded-circle d-flex align-items-center justify-content-center" style={{width:30,height:30,fontSize:'.85rem',fontWeight:'bold',flexShrink:0}}>3</div>
                   <div>
                     <h6 className="fw-bold text-info mb-1"><i className="fa-solid fa-user-plus me-1"/> เพิ่มผู้อาศัยใหม่</h6>
-                    <small className="text-muted">กดปุ่ม &quot;เพิ่มผู้อาศัย&quot; ด้านล่าง → กรอกข้อมูล → เลือก อสม.</small>
+                    <small className="text-muted">กดปุ่ม "เพิ่มผู้อาศัย" ด้านล่าง → กรอกข้อมูล → เลือก อสม.</small>
                   </div>
                 </div>
               </div>
@@ -466,14 +522,33 @@ export default function SurveyPage() {
               </div>
             ) : (
               <>
-                {/* ✅ Header + ปุ่มเปลี่ยน อสม. */}
-                <div className="alert border-0 shadow-sm d-flex justify-content-between align-items-center mb-3" style={{background:'white',borderRadius:12}}>
-                  <div>
-                    <div className="small text-muted"><i className="fa-solid fa-location-dot text-primary"/> ม.{moo} บ้านเลขที่ {house}</div>
-                    <div className="mt-1"><i className="fa-solid fa-user-nurse text-success"/> อสม: <strong>{results[0]?.vhv || 'ไม่ระบุ'}</strong></div>
+                {/* 🟢 อัปเดตส่วนหัวข้อบ้าน พร้อมปุ่มบันทึก GPS */}
+                <div className="alert border-0 shadow-sm mb-3" style={{background:'white',borderRadius:12}}>
+                  <div className="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                      <div className="small text-muted"><i className="fa-solid fa-house text-primary me-1"/> ม.{moo} บ้านเลขที่ <span className="fw-bold text-dark">{house}</span></div>
+                      <div className="mt-1"><i className="fa-solid fa-user-nurse text-success me-1"/> อสม: <strong>{results[0]?.vhv || 'ไม่ระบุ'}</strong></div>
+                    </div>
+                    <button onClick={openVhvModal} className="btn btn-sm btn-light border rounded-pill text-muted" style={{fontSize: '.75rem'}}>เปลี่ยน อสม.</button>
                   </div>
-                  <button onClick={openVhvModal} className="btn btn-sm btn-light border rounded-pill">เปลี่ยน</button>
+                  
+                  <hr className="my-2" style={{opacity: 0.1}}/>
+                  
+                  <button 
+                    onClick={handleSaveGPS} 
+                    disabled={savingGps}
+                    className="btn btn-sm w-100 rounded-pill fw-bold d-flex align-items-center justify-content-center" 
+                    style={{background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', height: '40px'}}
+                  >
+                    {savingGps ? (
+                      <><span className="spinner-border spinner-border-sm me-2"/> กำลังหาพิกัด...</>
+                    ) : (
+                      <><i className="fa-solid fa-location-crosshairs fa-lg me-2"/> บันทึกพิกัด GPS บ้านหลังนี้</>
+                    )}
+                  </button>
                 </div>
+                {/* 🟢 จบส่วนหัวข้อบ้าน */}
+
                 <div className="mb-2 text-muted small">พบ <strong>{results.length}</strong> คน</div>
                 {results.map(p => <PersonCard key={p.personId} person={p} onSave={handleSave} onMove={p => setMoveTarget(p)} onRefresh={searchData} />)}
                 <div className="mt-4 border-top pt-3 fade-in">

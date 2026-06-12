@@ -27,8 +27,10 @@ export default function TopBar({ showAdmin = false }) {
 
   return (
     <div className="top-bar">
-      <div><i className="fa-solid fa-hospital me-2" style={{opacity:.7}} /><strong>รพ.สต.บ้านโนนสว่าง</strong></div>
-      <div style={{display:'flex',alignItems:'center',gap:12}}>
+      <div style={{cursor:'pointer'}} onClick={() => router.push('/')}>
+        <i className="fa-solid fa-hospital me-2" style={{opacity:.7}} /><strong>รพ.สต.บ้านโนนสว่าง</strong>
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:15}}>
         {user && (
           // 🟢 ปรับให้ใช้ flex เพื่อให้รูปภาพและข้อความอยู่กึ่งกลางบรรทัดเดียวกัน
           <span style={{opacity:.9, fontSize:'.85rem', display:'flex', alignItems:'center', gap:'6px'}}>
@@ -49,6 +51,17 @@ export default function TopBar({ showAdmin = false }) {
               {user.displayName || user.username}{' '}
               <span style={{opacity:.6,fontSize:'.78em'}}>({ROLE_LABELS[user.role] || user.role})</span>
             </span>
+          </span>
+        )}
+
+        {/* 🟢 ปุ่มลิงก์ไปหน้าแผนที่ (แสดงเมื่อล็อกอินแล้ว) */}
+        {user && (
+          <span 
+            style={{cursor:'pointer', color:'white', fontSize:'.85rem', fontWeight:'bold', display:'flex', alignItems:'center', gap:'4px', background:'rgba(255,255,255,0.15)', padding:'4px 10px', borderRadius:'20px'}} 
+            onClick={() => router.push('/map')}
+            title="ดูแผนที่พิกัดบ้าน"
+          >
+            <i className="fa-solid fa-map-location-dot" /> แผนที่
           </span>
         )}
 
