@@ -42,7 +42,7 @@ function PersonCard({ person, onSave, onMove, onRefresh }) {
     setSaving(false);
   };
 
-  const doSaveRisk = async () => {
+ const doSaveRisk = async () => {
     if (!smokeStatus && !alcoStatus) { swal({icon:'warning',title:'กรุณาเลือกสถานะบุหรี่หรือสุรา',timer:1500,showConfirmButton:false}); return; }
     setSaving(true);
     showLoading('กำลังบันทึก...');
@@ -55,7 +55,18 @@ function PersonCard({ person, onSave, onMove, onRefresh }) {
       updated_at: new Date().toISOString()
     }).eq('person_id', person.personId);
     closeLoading(); setSaving(false);
-    if (!error) { Toast('success','บันทึกคัดกรองบุหรี่/สุราเรียบร้อย'); onRefresh(); }
+    if (!error) { 
+      swal({
+        icon: 'success',
+        title: 'บันทึกสำเร็จ!',
+        text: 'บันทึกข้อมูลคัดกรองบุหรี่/สุราเรียบร้อยแล้ว',
+        timer: 2000,
+        showConfirmButton: false
+      }).then(() => {
+        // ให้มันรอจน Alert ปิดไปก่อน แล้วค่อยรีเฟรชข้อมูล
+        onRefresh();
+      }); // ✅ จุดที่ 1: เติม }); เพื่อปิดคำสั่ง .then
+    }   // ✅ จุดที่ 2: เติม } เพื่อปิดเงื่อนไข if (!error)
     else swal({icon:'error',title:'ผิดพลาด',text:error.message});
   };
 
@@ -550,7 +561,7 @@ export default function SurveyPage() {
                 {/* 🟢 จบส่วนหัวข้อบ้าน */}
 
                 <div className="mb-2 text-muted small">พบ <strong>{results.length}</strong> คน</div>
-                {results.map(p => <PersonCard key={p.personId} person={p} onSave={handleSave} onMove={p => setMoveTarget(p)} onRefresh={searchData} />)}
+               {results.map(p => <PersonCard key={p.personId} person={p} onSave={handleSave} onMove={p => setMoveTarget(p)} onRefresh={searchDataSilent} />)}
                 <div className="mt-4 border-top pt-3 fade-in">
                   <button onClick={() => openAddModal(house, moo, results[0]?.vhv || 'ไม่ระบุ')} className="btn btn-outline-primary w-100 dashed-border rounded-pill">
                     <i className="fa-solid fa-user-plus me-1"/> เพิ่มผู้อาศัย
