@@ -42,7 +42,7 @@ function PersonCard({ person, onSave, onMove, onRefresh }) {
     setSaving(false);
   };
 
-const doSaveRisk = async () => {
+  const doSaveRisk = async () => {
     if (!smokeStatus && !alcoStatus) { swal({icon:'warning',title:'กรุณาเลือกสถานะบุหรี่หรือสุรา',timer:1500,showConfirmButton:false}); return; }
     setSaving(true);
     showLoading('กำลังบันทึก...');
@@ -55,17 +55,7 @@ const doSaveRisk = async () => {
       updated_at: new Date().toISOString()
     }).eq('person_id', person.personId);
     closeLoading(); setSaving(false);
-    if (!error) { 
-      // ✅ เปลี่ยนจาก Toast มาใช้ swal (SweetAlert2) แบบเด้งกลางจอ
-      swal({
-        icon: 'success',
-        title: 'บันทึกสำเร็จ!',
-        text: 'บันทึกข้อมูลคัดกรองบุหรี่/สุราเรียบร้อยแล้ว',
-        timer: 2000,
-        showConfirmButton: false
-      });
-      onRefresh(); 
-    }
+    if (!error) { Toast('success','บันทึกคัดกรองบุหรี่/สุราเรียบร้อย'); onRefresh(); }
     else swal({icon:'error',title:'ผิดพลาด',text:error.message});
   };
 
