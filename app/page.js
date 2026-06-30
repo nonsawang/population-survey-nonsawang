@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { calculateAge, sanitizeInput, validateCID, parseBirthToISO, VALID_MOOS, CHRONIC_LIST } from '@/lib/utils';
 import TopBar from '@/components/TopBar';
+import { writeLog } from '@/lib/logger';
 
 // ✅ SweetAlert2 — ใช้ CDN จาก layout.js (window.Swal)
 const getSwal = () => typeof window !== 'undefined' ? window.Swal : null;
@@ -16,7 +17,10 @@ const closeLoading = () => { const S = getSwal(); return S ? S.close() : null; }
 // ═══════════════════════════════════════════
 // PersonCard — การ์ดแต่ละคน
 // ═══════════════════════════════════════════
-function PersonCard({ person, onSave, onMove, onRefresh }) {
+// ═══════════════════════════════════════════
+// PersonCard — การ์ดแต่ละคน (อัปเดตพร้อม Activity Log)
+// ═══════════════════════════════════════════
+function PersonCard({ person, onSave, onMove, onRefresh, user }) { // 🎯 เติม user เข้ามาใน props
   const [relValue, setRelValue] = useState(person.relation);
   const [chronicValue, setChronicValue] = useState('');
   const [chronicOther, setChronicOther] = useState('');
@@ -42,20 +46,30 @@ function PersonCard({ person, onSave, onMove, onRefresh }) {
     setSaving(false);
   };
 
- const doSaveRisk = async () => {
+  const doSaveRisk = async () => {
     if (!smokeStatus && !alcoStatus) { swal({icon:'warning',title:'กรุณาเลือกสถานะบุหรี่หรือสุรา',timer:1500,showConfirmButton:false}); return; }
     setSaving(true);
     showLoading('กำลังบันทึก...');
+    
     const fScore = smokeStatus === 'สูบ' ? ['f1','f2','f3','f4','f5','f6'].reduce((s,k) => s + (parseInt(fagerAnswers[k]) || 0), 0) : null;
     const aScore = alcoStatus === 'ดื่ม' ? ['a1','a2','a3','a4','a5'].reduce((s,k) => s + (parseInt(assistAnswers[k]) || 0), 0) : null;
+    
     const { error } = await supabase.from('population').update({
       smoking_status: smokeStatus || null, alcohol_status: alcoStatus || null,
       fagerstrom_score: fScore, fagerstrom_answers: smokeStatus === 'สูบ' ? JSON.stringify(fagerAnswers) : null,
       assist_score: aScore, assist_answers: alcoStatus === 'ดื่ม' ? JSON.stringify(assistAnswers) : null,
       updated_at: new Date().toISOString()
     }).eq('person_id', person.personId);
+    
     closeLoading(); setSaving(false);
+    
     if (!error) { 
+      // ---------------------------------------------------------
+      // 🎯 จุดฝังโค้ด Tracking (บันทึก RISK_BEHAVIOR ลง Activity Log)
+      // ---------------------------------------------------------
+      const detailStr = `บุหรี่: ${smokeStatus || 'ไม่ระบุ'} | สุรา: ${alcoStatus || 'ไม่ระบุ'}`;
+      await writeLog(user?.userId, user?.username, 'RISK_BEHAVIOR', detailStr, person.personId);
+
       swal({
         icon: 'success',
         title: 'บันทึกสำเร็จ!',
@@ -63,10 +77,9 @@ function PersonCard({ person, onSave, onMove, onRefresh }) {
         timer: 2000,
         showConfirmButton: false
       }).then(() => {
-        // ให้มันรอจน Alert ปิดไปก่อน แล้วค่อยรีเฟรชข้อมูล
         onRefresh();
-      }); // ✅ จุดที่ 1: เติม }); เพื่อปิดคำสั่ง .then
-    }   // ✅ จุดที่ 2: เติม } เพื่อปิดเงื่อนไข if (!error)
+      }); 
+    } 
     else swal({icon:'error',title:'ผิดพลาด',text:error.message});
   };
 
@@ -76,7 +89,6 @@ function PersonCard({ person, onSave, onMove, onRefresh }) {
 
   return (
     <div className={`card card-person border-type${person.residencyType} fade-in`} style={{opacity: saving ? 0.6 : 1, pointerEvents: saving ? 'none' : 'auto'}}>
-      {/* ✅ Spinner มุมขวาบนตอนบันทึก */}
       {saving && <div style={{position:'absolute',top:10,right:10,zIndex:5}}><span className="spinner-border spinner-border-sm text-primary"/></div>}
       <div className="card-body p-3">
         {/* Header */}
@@ -236,10 +248,25 @@ export default function SurveyPage() {
     setResults(mapped);
   };
 
-  const handleSave = async (personId, newType, relation, chronic) => {
-    const { error } = await supabase.from('population').update({ residency_type: String(newType), relation: sanitizeInput(relation), chronic: chronic || '-', updated_at: new Date().toISOString() }).eq('person_id', personId);
-    if (error) swal({icon:'error',title:'บันทึกไม่สำเร็จ',text:error.message});
-    // ✅ ไม่แสดง Toast — ใช้ spinner ในการ์ดแทน + refresh ข้อมูลเงียบๆ
+const handleSave = async (personId, newType, relation, chronic) => {
+    const { error } = await supabase
+      .from('population')
+      .update({ 
+        residency_type: String(newType), 
+        relation: sanitizeInput(relation), 
+        chronic: chronic || '-', 
+        updated_at: new Date().toISOString() 
+      })
+      .eq('person_id', personId);
+      
+    if (error) {
+      swal({icon:'error',title:'บันทึกไม่สำเร็จ',text:error.message});
+    } else {
+      // 🎯 [เพิ่มใหม่] บันทึก Activity Log: UPDATE_STATUS
+      const detailStr = `เปลี่ยน Type->${newType} | ${relation}`;
+      await writeLog(user?.userId, user?.username, 'UPDATE_STATUS', detailStr, personId);
+    }
+    
     await searchDataSilent();
   };
 
@@ -253,13 +280,27 @@ export default function SurveyPage() {
     setSelectedVhv(results?.[0]?.vhv || '');
     setShowVhvModal(true);
   };
-  const submitVhvChange = async () => {
+const submitVhvChange = async () => {
     if (!selectedVhv) { swal({icon:'warning',title:'กรุณาเลือก อสม.'}); return; }
     showLoading('กำลังอัปเดต...');
-    await supabase.from('population').update({ vhv: selectedVhv, updated_at: new Date().toISOString() }).eq('house', vhvHouse).eq('moo', vhvMoo);
+    
+    const { error } = await supabase.from('population').update({ 
+      vhv: selectedVhv, 
+      updated_at: new Date().toISOString() 
+    }).eq('house', vhvHouse).eq('moo', vhvMoo);
+    
     closeLoading(); setShowVhvModal(false);
-    Toast('success','อัปเดต อสม. เรียบร้อย');
-    searchDataSilent();
+    
+    if (!error) {
+      // 🎯 [เพิ่มใหม่] บันทึก Activity Log: CHANGE_VHV
+      const detailStr = `เปลี่ยน อสม. บ้านเลขที่ ${vhvHouse} ม.${vhvMoo} เป็น ${selectedVhv}`;
+      await writeLog(user?.userId, user?.username, 'CHANGE_VHV', detailStr, `${vhvMoo}-${vhvHouse}`);
+      
+      Toast('success','อัปเดต อสม. เรียบร้อย');
+      searchDataSilent();
+    } else {
+      swal({icon:'error',title:'ไม่สำเร็จ',text:error.message});
+    }
   };
 
   // ✅ ย้ายบ้าน
@@ -268,11 +309,29 @@ export default function SurveyPage() {
     showLoading('กำลังย้าย...');
     const { data: targetRows } = await supabase.from('population').select('vhv').eq('house', moveHouse.trim()).eq('moo', moveMoo).limit(1);
     const newVhv = (targetRows && targetRows[0]?.vhv) || 'ไม่ระบุ';
-    const { error } = await supabase.from('population').update({ house: moveHouse.trim(), moo: moveMoo, vhv: newVhv, updated_at: new Date().toISOString() }).eq('person_id', moveTarget.personId);
-    closeLoading(); setMoveTarget(null);
+    
+    const { error } = await supabase.from('population').update({ 
+      house: moveHouse.trim(), 
+      moo: moveMoo, 
+      vhv: newVhv, 
+      updated_at: new Date().toISOString() 
+    }).eq('person_id', moveTarget.personId);
+    
+    closeLoading(); 
+    
     if (!error) {
-      swal({icon:'success',title:'ย้ายที่อยู่เรียบร้อย',showConfirmButton:false,timer:1500}).then(() => searchDataSilent());
-    } else swal({icon:'error',title:'ย้ายไม่สำเร็จ',text:error.message});
+      // 🎯 [เพิ่มใหม่] บันทึก Activity Log: MOVE_HOUSE
+      const detailStr = `ย้ายไปบ้านเลขที่ ${moveHouse.trim()} ม.${moveMoo}`;
+      await writeLog(user?.userId, user?.username, 'MOVE_HOUSE', detailStr, moveTarget.personId);
+
+      swal({icon:'success',title:'ย้ายที่อยู่เรียบร้อย',showConfirmButton:false,timer:1500}).then(() => {
+        setMoveTarget(null);
+        searchDataSilent();
+      });
+    } else {
+      setMoveTarget(null);
+      swal({icon:'error',title:'ย้ายไม่สำเร็จ',text:error.message});
+    }
   };
 
   // 🟢 ฟังก์ชันดึงพิกัด GPS จากมือถือและบันทึกลงฐานข้อมูล Supabase
@@ -338,6 +397,7 @@ export default function SurveyPage() {
     if (!f.fname?.trim()) { swal({icon:'warning',title:'กรุณากรอกชื่อจริง'}); return; }
     if (!f.lname?.trim()) { swal({icon:'warning',title:'กรุณากรอกนามสกุล'}); return; }
     if (!f.vhv) { swal({icon:'warning',title:'กรุณาเลือก อสม.'}); return; }
+    
     // CID validation
     let cleanCid = null;
     if (f.cid && f.cid.trim() && f.cid.trim() !== '-') {
@@ -345,16 +405,17 @@ export default function SurveyPage() {
       if (!cidResult.valid) { swal({icon:'error',title:'เลขบัตรประชาชนไม่ถูกต้อง',text:'ตรวจสอบ 13 หลักและ checksum'}); return; }
       cleanCid = cidResult.clean;
     }
+    
     // Build birth ISO
     let birthISO = null;
     if (f.birth_day && f.birth_month && f.birth_year) {
       const y = parseInt(f.birth_year) - 543;
       birthISO = `${y}-${f.birth_month}-${f.birth_day}`;
     }
+    
     // Chronic
     let chronicVal = f.chronic === '__OTHER__' ? (f.chronicOther?.trim() || '-') : f.chronic;
 
-    // ✅ ถ้ามี existingId = ย้ายคนเดิมมาบ้านนี้ (update) / ถ้าไม่มี = เพิ่มคนใหม่ (insert)
     const existingId = f.existingPersonId || null;
     const recordId = existingId || ('P-' + Date.now());
     const isUpdate = !!existingId;
@@ -367,8 +428,15 @@ export default function SurveyPage() {
       residency_type: f.type || '3', chronic: chronicVal || '-', vhv: sanitizeInput(f.vhv),
       updated_at: new Date().toISOString(), status: 'Active'
     });
+    
     closeLoading(); setShowAddModal(false);
+    
     if (!error) {
+      // 🎯 [เพิ่มใหม่] บันทึก Activity Log: ADD_PERSON
+      const actionType = isUpdate ? 'MOVE_IN' : 'ADD_PERSON';
+      const detailStr = isUpdate ? `ย้าย ${f.fname} เข้าบ้านเลขที่ ${house.trim()} ม.${moo}` : `เพิ่มผู้อาศัยใหม่ (${f.fname}) บ้านเลขที่ ${house.trim()} ม.${moo}`;
+      await writeLog(user?.userId, user?.username, actionType, detailStr, recordId);
+
       const msg = isUpdate ? 'ย้ายมาบ้านนี้เรียบร้อย' : 'เพิ่มผู้อาศัยใหม่เรียบร้อย';
       swal({icon:'success',title:'สำเร็จ!',text:msg,showConfirmButton:false,timer:1500}).then(() => searchDataSilent());
     } else swal({icon:'error',title:'ไม่สำเร็จ',text:error.message});
@@ -561,7 +629,7 @@ export default function SurveyPage() {
                 {/* 🟢 จบส่วนหัวข้อบ้าน */}
 
                 <div className="mb-2 text-muted small">พบ <strong>{results.length}</strong> คน</div>
-               {results.map(p => <PersonCard key={p.personId} person={p} onSave={handleSave} onMove={p => setMoveTarget(p)} onRefresh={searchDataSilent} />)}
+               {results.map(p => <PersonCard key={p.personId} person={p} onSave={handleSave} onMove={p => setMoveTarget(p)} onRefresh={searchDataSilent} user={user} />)}
                 <div className="mt-4 border-top pt-3 fade-in">
                   <button onClick={() => openAddModal(house, moo, results[0]?.vhv || 'ไม่ระบุ')} className="btn btn-outline-primary w-100 dashed-border rounded-pill">
                     <i className="fa-solid fa-user-plus me-1"/> เพิ่มผู้อาศัย
