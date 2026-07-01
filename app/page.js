@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
-import { calculateAge, sanitizeInput, validateCID, parseBirthToISO, VALID_MOOS, CHRONIC_LIST } from '@/lib/utils';
+import { calculateAge, sanitizeInput, validateCID, VALID_MOOS, CHRONIC_LIST } from '@/lib/utils';
 import TopBar from '@/components/TopBar';
 import { writeLog } from '@/lib/logger';
 
@@ -17,9 +17,6 @@ const closeLoading = () => { const S = getSwal(); return S ? S.close() : null; }
 // ═══════════════════════════════════════════
 // PersonCard — การ์ดแต่ละคน
 // ═══════════════════════════════════════════
-// ═══════════════════════════════════════════
-// PersonCard — การ์ดแต่ละคน (อัปเดตพร้อม Activity Log)
-// ═══════════════════════════════════════════
 function PersonCard({ person, onSave, onMove, onRefresh, user }) {
   const [relValue, setRelValue] = useState(person.relation);
   const [chronicValue, setChronicValue] = useState('');
@@ -30,14 +27,19 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
   const [alcoStatus, setAlcoStatus] = useState(person.alcoholStatus || '');
   const [fagerAnswers, setFagerAnswers] = useState(person.fagerstromAnswers || {});
   const [assistAnswers, setAssistAnswers] = useState(person.assistAnswers || {});
-  
-  // State ของคัดกรองพยาธิใบไม้ตับ
-  const [ovAnswers, setOvAnswers] = useState(person.ovAnswers || { q1: '', q2: '', q3: '', q4: '', q5: '' });
   const [saving, setSaving] = useState(false);
 
-  // เช็คว่ามีข้อมูลคัดกรองเดิมหรือไม่ เพื่อควบคุมการพับ/กางของฟอร์ม
-  const hasOvData = !!(person.ovAnswers && person.ovAnswers.q1); 
-  const [ovOpen, setOvOpen] = useState(!hasOvData); 
+  // 🎯 State ของคัดกรองพยาธิใบไม้ตับ
+  const [ovAnswers, setOvAnswers] = useState({ q1: '', q2: '', q3: '', q4: '', q5: '' });
+  const [ovOpen, setOvOpen] = useState(true);
+
+  // 🎯 เพิ่ม useEffect เพื่อดึงข้อมูลเดิมมาแสดงเสมอเมื่อเปิดบ้าน
+  useEffect(() => {
+    const newOv = person.ovAnswers || { q1: '', q2: '', q3: '', q4: '', q5: '' };
+    setOvAnswers(newOv);
+    const hasData = !!newOv.q1;
+    setOvOpen(!hasData); // ถ้ามีข้อมูลแล้วให้พับกล่อง (false) ถ้าไม่มีให้เปิด (true)
+  }, [JSON.stringify(person.ovAnswers)]);
 
   useEffect(() => {
     const cc = (!person.chronic || person.chronic === '-') ? 'ปกติ (ไม่มีโรค)' : person.chronic;
@@ -52,6 +54,9 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
     await onSave(person.personId, type, relValue, getChronicFinal());
     setSaving(false);
   };
+
+  // เช็คว่าเคยมีข้อมูลถูกกรอกไว้ไหม
+  const hasOvData = !!ovAnswers.q1;
 
   // ฟังก์ชันเช็คความเสี่ยง (ตอบ "เคย" หรือ "พบ" ในข้อ 1-3 ถือว่าเสี่ยงทันที)
   const checkOvRisk = () => {
@@ -220,7 +225,6 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
               </button>
             </div>
             
-            {/* 🎯 จัดรูปแบบข้อคำถามให้อยู่ด้านบนของช่องตอบคำถาม */}
             <div className={`risk-body ${ovOpen ? 'open' : ''}`}>
               <div className="mt-3">
                 <div className="mb-2">
@@ -330,31 +334,86 @@ export default function SurveyPage() {
     }
   }, [user]);
 
-  const searchData = async () => {
+ const searchData = async () => {
     if (!moo || !house.trim()) { swal({icon:'warning',title:'กรุณาระบุข้อมูลให้ครบ'}); return; }
-    // ✅ ตรวจสิทธิ์หมู่สำหรับ vhv
     if (allowedMoos && !allowedMoos.includes(moo)) { swal({icon:'error',title:'ไม่มีสิทธิ์เข้าถึงหมู่ ' + moo}); return; }
     setSearching(true); showLoading('กำลังค้นหา...');
+    
     const { data, error } = await supabase.from('population').select('*').eq('house', house.trim()).eq('moo', moo).order('fname');
+    
     closeLoading(); setSearching(false);
     if (error) { swal({icon:'error',title:'ค้นหาไม่สำเร็จ',text:error.message}); return; }
+    
     const mapped = (data || []).map(r => {
       let fa = {}; try { if (r.fagerstrom_answers) fa = JSON.parse(r.fagerstrom_answers); } catch(e) {}
       let aa = {}; try { if (r.assist_answers) aa = JSON.parse(r.assist_answers); } catch(e) {}
-      return { personId: r.person_id, cid: r.cid||'-', fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''), age: calculateAge(r.birth_date), relation: r.relation||'ไม่ระบุ', residencyType: r.residency_type||'3', chronic: r.chronic||'-', vhv: r.vhv||'ไม่ระบุ', smokingStatus: r.smoking_status||'', alcoholStatus: r.alcohol_status||'', fagerstromScore: r.fagerstrom_score, assistScore: r.assist_score, fagerstromAnswers: fa, assistAnswers: aa };
+      
+      // 🎯 สิ่งที่เพิ่มเข้ามา: ดึงข้อมูล OV จากฐานข้อมูล (ถ้าเป็น null ให้แปลงเป็นค่าว่าง)
+      const ov = {
+        q1: r.ov_q1 || '',
+        q2: r.ov_q2 || '',
+        q3: r.ov_q3 || '',
+        q4: r.ov_q4 || '',
+        q5: r.ov_q5 || ''
+      };
+
+      return { 
+        personId: r.person_id, 
+        cid: r.cid||'-', 
+        fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''), 
+        age: calculateAge(r.birth_date), 
+        relation: r.relation||'ไม่ระบุ', 
+        residencyType: r.residency_type||'3', 
+        chronic: r.chronic||'-', 
+        vhv: r.vhv||'ไม่ระบุ', 
+        smokingStatus: r.smoking_status||'', 
+        alcoholStatus: r.alcohol_status||'', 
+        fagerstromScore: r.fagerstrom_score, 
+        assistScore: r.assist_score, 
+        fagerstromAnswers: fa, 
+        assistAnswers: aa,
+        // 🎯 สิ่งที่เพิ่มเข้ามา: ส่งข้อมูล OV ที่จัดแล้วเข้าไปใน prop ของ PersonCard
+        ovAnswers: ov 
+      };
     });
     setResults(mapped);
     setShowGuide(false);
   };
-
   // ✅ Refresh เงียบๆ — ไม่แสดง Swal loading (ใช้หลังบันทึก Type)
-  const searchDataSilent = async () => {
+const searchDataSilent = async () => {
     if (!moo || !house.trim()) return;
     const { data } = await supabase.from('population').select('*').eq('house', house.trim()).eq('moo', moo).order('fname');
+    
     const mapped = (data || []).map(r => {
       let fa = {}; try { if (r.fagerstrom_answers) fa = JSON.parse(r.fagerstrom_answers); } catch(e) {}
       let aa = {}; try { if (r.assist_answers) aa = JSON.parse(r.assist_answers); } catch(e) {}
-      return { personId: r.person_id, cid: r.cid||'-', fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''), age: calculateAge(r.birth_date), relation: r.relation||'ไม่ระบุ', residencyType: r.residency_type||'3', chronic: r.chronic||'-', vhv: r.vhv||'ไม่ระบุ', smokingStatus: r.smoking_status||'', alcoholStatus: r.alcohol_status||'', fagerstromScore: r.fagerstrom_score, assistScore: r.assist_score, fagerstromAnswers: fa, assistAnswers: aa };
+      
+      // 🎯 เพิ่มดึงข้อมูล OV
+      const ov = {
+        q1: r.ov_q1 || '',
+        q2: r.ov_q2 || '',
+        q3: r.ov_q3 || '',
+        q4: r.ov_q4 || '',
+        q5: r.ov_q5 || ''
+      };
+
+      return { 
+        personId: r.person_id, 
+        cid: r.cid||'-', 
+        fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''), 
+        age: calculateAge(r.birth_date), 
+        relation: r.relation||'ไม่ระบุ', 
+        residencyType: r.residency_type||'3', 
+        chronic: r.chronic||'-', 
+        vhv: r.vhv||'ไม่ระบุ', 
+        smokingStatus: r.smoking_status||'', 
+        alcoholStatus: r.alcohol_status||'', 
+        fagerstromScore: r.fagerstrom_score, 
+        assistScore: r.assist_score, 
+        fagerstromAnswers: fa, 
+        assistAnswers: aa,
+        ovAnswers: ov // 🎯 ส่งเข้าไปที่ PersonCard
+      };
     });
     setResults(mapped);
   };
