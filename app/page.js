@@ -20,7 +20,7 @@ const closeLoading = () => { const S = getSwal(); return S ? S.close() : null; }
 // ═══════════════════════════════════════════
 // PersonCard — การ์ดแต่ละคน (อัปเดตพร้อม Activity Log)
 // ═══════════════════════════════════════════
-function PersonCard({ person, onSave, onMove, onRefresh, user }) { // 🎯 เติม user เข้ามาใน props
+function PersonCard({ person, onSave, onMove, onRefresh, user }) {
   const [relValue, setRelValue] = useState(person.relation);
   const [chronicValue, setChronicValue] = useState('');
   const [chronicOther, setChronicOther] = useState('');
@@ -30,6 +30,8 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) { // 🎯 เ�
   const [alcoStatus, setAlcoStatus] = useState(person.alcoholStatus || '');
   const [fagerAnswers, setFagerAnswers] = useState(person.fagerstromAnswers || {});
   const [assistAnswers, setAssistAnswers] = useState(person.assistAnswers || {});
+  // ✅ เพิ่มการจัดการ ovAnswers ให้ปลอดภัย
+  const [ovAnswers, setOvAnswers] = useState(person.ovAnswers || { q1: '', q2: '', q3: '', q4: '', q5: '' });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -46,78 +48,84 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) { // 🎯 เ�
     setSaving(false);
   };
 
+  // ✅ ฟังก์ชันคัดกรองพยาธิใบไม้ตับ
+  const saveOvScreening = async (ovData) => {
+    setSaving(true);
+    showLoading('กำลังบันทึกข้อมูลคัดกรอง...');
+    const { error } = await supabase.from('population').update({
+      ov_q1: ovData.q1, ov_q2: ovData.q2, ov_q3: ovData.q3, ov_q4: ovData.q4, ov_q5: ovData.q5,
+      ov_date: new Date().toISOString(), updated_at: new Date().toISOString()
+    }).eq('person_id', person.personId);
+
+    closeLoading();
+    setSaving(false);
+
+    if (!error) {
+      await writeLog(user?.userId, user?.username, 'SCREENING_OV', `คัดกรองพยาธิใบไม้ตับ | Q5: ${ovData.q5}`, person.personId);
+      swal({ icon: 'success', title: 'บันทึกสำเร็จ!', text: 'บันทึกข้อมูลคัดกรองเรียบร้อย', timer: 2000, showConfirmButton: false }).then(onRefresh);
+    } else {
+      swal({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: error.message });
+    }
+  };
+
   const doSaveRisk = async () => {
-    if (!smokeStatus && !alcoStatus) { swal({icon:'warning',title:'กรุณาเลือกสถานะบุหรี่หรือสุรา',timer:1500,showConfirmButton:false}); return; }
+    if (!smokeStatus && !alcoStatus) { swal({ icon: 'warning', title: 'กรุณาเลือกสถานะบุหรี่หรือสุรา', timer: 1500, showConfirmButton: false }); return; }
     setSaving(true);
     showLoading('กำลังบันทึก...');
-    
-    const fScore = smokeStatus === 'สูบ' ? ['f1','f2','f3','f4','f5','f6'].reduce((s,k) => s + (parseInt(fagerAnswers[k]) || 0), 0) : null;
-    const aScore = alcoStatus === 'ดื่ม' ? ['a1','a2','a3','a4','a5'].reduce((s,k) => s + (parseInt(assistAnswers[k]) || 0), 0) : null;
-    
+
+    const fScore = smokeStatus === 'สูบ' ? ['f1', 'f2', 'f3', 'f4', 'f5', 'f6'].reduce((s, k) => s + (parseInt(fagerAnswers[k]) || 0), 0) : null;
+    const aScore = alcoStatus === 'ดื่ม' ? ['a1', 'a2', 'a3', 'a4', 'a5'].reduce((s, k) => s + (parseInt(assistAnswers[k]) || 0), 0) : null;
+
     const { error } = await supabase.from('population').update({
       smoking_status: smokeStatus || null, alcohol_status: alcoStatus || null,
       fagerstrom_score: fScore, fagerstrom_answers: smokeStatus === 'สูบ' ? JSON.stringify(fagerAnswers) : null,
       assist_score: aScore, assist_answers: alcoStatus === 'ดื่ม' ? JSON.stringify(assistAnswers) : null,
       updated_at: new Date().toISOString()
     }).eq('person_id', person.personId);
-    
-    closeLoading(); setSaving(false);
-    
-    if (!error) { 
-      // ---------------------------------------------------------
-      // 🎯 จุดฝังโค้ด Tracking (บันทึก RISK_BEHAVIOR ลง Activity Log)
-      // ---------------------------------------------------------
-      const detailStr = `บุหรี่: ${smokeStatus || 'ไม่ระบุ'} | สุรา: ${alcoStatus || 'ไม่ระบุ'}`;
-      await writeLog(user?.userId, user?.username, 'RISK_BEHAVIOR', detailStr, person.personId);
 
-      swal({
-        icon: 'success',
-        title: 'บันทึกสำเร็จ!',
-        text: 'บันทึกข้อมูลคัดกรองบุหรี่/สุราเรียบร้อยแล้ว',
-        timer: 2000,
-        showConfirmButton: false
-      }).then(() => {
-        onRefresh();
-      }); 
-    } 
-    else swal({icon:'error',title:'ผิดพลาด',text:error.message});
+    closeLoading(); setSaving(false);
+
+    if (!error) {
+      await writeLog(user?.userId, user?.username, 'RISK_BEHAVIOR', `บุหรี่: ${smokeStatus || 'ไม่ระบุ'} | สุรา: ${alcoStatus || 'ไม่ระบุ'}`, person.personId);
+      swal({ icon: 'success', title: 'บันทึกสำเร็จ!', timer: 2000, showConfirmButton: false }).then(onRefresh);
+    } else swal({ icon: 'error', title: 'ผิดพลาด', text: error.message });
   };
 
-  const fT = ['f1','f2','f3','f4','f5','f6'].reduce((s,k) => s + (parseInt(fagerAnswers[k]) || 0), 0);
-  const aT = ['a1','a2','a3','a4','a5'].reduce((s,k) => s + (parseInt(assistAnswers[k]) || 0), 0);
-  const rels = ['เจ้าบ้าน','ผู้อาศัย','บิดา/มารดา','เขย/สะใภ้','บุตร/หลาน','เช่าอาศัย','อื่นๆ'];
+  const fT = ['f1', 'f2', 'f3', 'f4', 'f5', 'f6'].reduce((s, k) => s + (parseInt(fagerAnswers[k]) || 0), 0);
+  const aT = ['a1', 'a2', 'a3', 'a4', 'a5'].reduce((s, k) => s + (parseInt(assistAnswers[k]) || 0), 0);
+  const rels = ['เจ้าบ้าน', 'ผู้อาศัย', 'บิดา/มารดา', 'เขย/สะใภ้', 'บุตร/หลาน', 'เช่าอาศัย', 'อื่นๆ'];
 
   return (
-    <div className={`card card-person border-type${person.residencyType} fade-in`} style={{opacity: saving ? 0.6 : 1, pointerEvents: saving ? 'none' : 'auto'}}>
-      {saving && <div style={{position:'absolute',top:10,right:10,zIndex:5}}><span className="spinner-border spinner-border-sm text-primary"/></div>}
+    <div className={`card card-person border-type${person.residencyType} fade-in`} style={{ opacity: saving ? 0.6 : 1, pointerEvents: saving ? 'none' : 'auto' }}>
+      {saving && <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 5 }}><span className="spinner-border spinner-border-sm text-primary" /></div>}
       <div className="card-body p-3">
         {/* Header */}
         <div className="d-flex justify-content-between align-items-center mb-2">
-          <h6 className="fw-bold mb-0" style={{color:'var(--primary)'}}>
+          <h6 className="fw-bold mb-0" style={{ color: 'var(--primary)' }}>
             {person.fullname}
-            {person.smokingStatus && person.smokingStatus !== '-' && person.smokingStatus !== '' && <span className="badge ms-1" style={{fontSize:'.65rem',background:'#6f42c1',color:'white'}}><i className="fa-solid fa-smoking me-1"/>{person.smokingStatus === 'สูบ' ? 'สูบ' : 'เลิกแล้ว'}</span>}
-            {person.alcoholStatus && person.alcoholStatus !== '-' && person.alcoholStatus !== '' && <span className="badge ms-1" style={{fontSize:'.65rem',background:'#0d6efd',color:'white'}}><i className="fa-solid fa-wine-bottle me-1"/>{person.alcoholStatus === 'ดื่ม' ? 'ดื่ม' : 'เลิกแล้ว'}</span>}
+            {person.smokingStatus && person.smokingStatus !== '-' && person.smokingStatus !== '' && <span className="badge ms-1" style={{ fontSize: '.65rem', background: '#6f42c1', color: 'white' }}><i className="fa-solid fa-smoking me-1" />{person.smokingStatus === 'สูบ' ? 'สูบ' : 'เลิกแล้ว'}</span>}
+            {person.alcoholStatus && person.alcoholStatus !== '-' && person.alcoholStatus !== '' && <span className="badge ms-1" style={{ fontSize: '.65rem', background: '#0d6efd', color: 'white' }}><i className="fa-solid fa-wine-bottle me-1" />{person.alcoholStatus === 'ดื่ม' ? 'ดื่ม' : 'เลิกแล้ว'}</span>}
           </h6>
-          <span className="badge bg-light text-dark border" style={{fontSize:'.8em'}}>อายุ {person.age}</span>
+          <span className="badge bg-light text-dark border" style={{ fontSize: '.8em' }}>อายุ {person.age}</span>
         </div>
 
         {/* Relation + Chronic */}
-        <div className="row g-2 mb-3 p-2 rounded-3 mx-0" style={{background:'#f8f9fa'}}>
+        <div className="row g-2 mb-3 p-2 rounded-3 mx-0" style={{ background: '#f8f9fa' }}>
           <div className="col-6 px-1">
-            <label className="text-muted" style={{fontSize:'.68em',fontWeight:600}}>สถานะในบ้าน</label>
-            <select className="form-select form-select-sm border-0 fw-bold" style={{fontSize:'.85rem',color:'var(--primary)'}} value={relValue} onChange={e => { setRelValue(e.target.value); doSave(person.residencyType); }}>
+            <label className="text-muted" style={{ fontSize: '.68em', fontWeight: 600 }}>สถานะในบ้าน</label>
+            <select className="form-select form-select-sm border-0 fw-bold" style={{ fontSize: '.85rem', color: 'var(--primary)' }} value={relValue} onChange={e => { setRelValue(e.target.value); doSave(person.residencyType); }}>
               {rels.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
           <div className="col-6 px-1">
-            <label className="text-muted" style={{fontSize:'.68em',fontWeight:600}}>โรคประจำตัว</label>
-            <select className="form-select form-select-sm border-0 fw-bold text-danger" style={{fontSize:'.85rem'}} value={chronicValue} onChange={e => { setChronicValue(e.target.value); setShowOther(e.target.value === '__OTHER__'); if (e.target.value !== '__OTHER__') doSave(person.residencyType); }}>
+            <label className="text-muted" style={{ fontSize: '.68em', fontWeight: 600 }}>โรคประจำตัว</label>
+            <select className="form-select form-select-sm border-0 fw-bold text-danger" style={{ fontSize: '.85rem' }} value={chronicValue} onChange={e => { setChronicValue(e.target.value); setShowOther(e.target.value === '__OTHER__'); if (e.target.value !== '__OTHER__') doSave(person.residencyType); }}>
               {CHRONIC_LIST.map(c => <option key={c} value={c}>{c}</option>)}
               <option value="__OTHER__">อื่นๆ (ระบุ)</option>
             </select>
             {showOther && (
               <div className="input-group input-group-sm mt-1">
-                <input type="text" className="form-control border-danger" style={{fontSize:'.8rem'}} placeholder="ระบุโรค..." value={chronicOther} onChange={e => setChronicOther(e.target.value)} onKeyDown={e => e.key === 'Enter' && doSave(person.residencyType)} />
+                <input type="text" className="form-control border-danger" style={{ fontSize: '.8rem' }} placeholder="ระบุโรค..." value={chronicOther} onChange={e => setChronicOther(e.target.value)} onKeyDown={e => e.key === 'Enter' && doSave(person.residencyType)} />
                 <button className="btn btn-danger btn-sm" onClick={() => doSave(person.residencyType)}><i className="fa-solid fa-check" /></button>
               </div>
             )}
@@ -126,48 +134,62 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) { // 🎯 เ�
 
         {/* Type Buttons */}
         <div className="row g-1 mb-1">
-          {[{t:'1',label:'Type 1',desc:'มีชื่อ+อยู่จริง',cls:'success'},{t:'2',label:'Type 2',desc:'มีชื่อ+ไม่อยู่',cls:'warning'},{t:'3',label:'Type 3',desc:'ไม่มีชื่อ+มาอยู่',cls:'danger'}].map(({t,label,desc,cls}) => (
+          {[{ t: '1', label: 'Type 1', desc: 'มีชื่อ+อยู่จริง', cls: 'success' }, { t: '2', label: 'Type 2', desc: 'มีชื่อ+ไม่อยู่', cls: 'warning' }, { t: '3', label: 'Type 3', desc: 'ไม่มีชื่อ+มาอยู่', cls: 'danger' }].map(({ t, label, desc, cls }) => (
             <div className="col-4" key={t}>
               <button onClick={() => doSave(t)} className={`btn btn-sm btn-type w-100 h-100 py-2 ${person.residencyType == t ? `btn-${cls} active-type` : `btn-outline-${cls}`}`}>
-                <div className="fw-bold">{label}</div><div style={{fontSize:'.62rem'}}>{desc}</div>
+                <div className="fw-bold">{label}</div><div style={{ fontSize: '.62rem' }}>{desc}</div>
               </button>
             </div>
           ))}
         </div>
         <div className="d-flex gap-1 mt-1">
-          <button onClick={() => { const S=getSwal(); S && S.fire({title:'ยืนยัน?',text:`บันทึก ${person.fullname} เป็น "เสียชีวิต"`,icon:'warning',showCancelButton:true,confirmButtonColor:'#1f2937',confirmButtonText:'ยืนยัน',cancelButtonText:'ยกเลิก'}).then(r=>{if(r.isConfirmed)doSave('4');}); }} className={`btn btn-sm btn-type ${person.residencyType == 4 ? 'btn-dark active-type' : 'btn-outline-dark'} flex-fill`}><i className="fa-solid fa-skull"/> เสียชีวิต</button>
-          <button onClick={() => { const S=getSwal(); S && S.fire({title:'ยืนยันจำหน่าย?',text:`จำหน่าย ${person.fullname} ออกจากพื้นที่`,icon:'warning',showCancelButton:true,confirmButtonColor:'#6b7280',confirmButtonText:'ยืนยัน',cancelButtonText:'ยกเลิก'}).then(r=>{if(r.isConfirmed)doSave('0');}); }} className={`btn btn-sm btn-type ${person.residencyType == 0 ? 'btn-secondary active-type' : 'btn-outline-secondary'} flex-fill`}><i className="fa-solid fa-ban"/> จำหน่าย</button>
-          <button onClick={() => onMove(person)} className="btn btn-sm btn-outline-dark flex-fill dashed-border"><i className="fa-solid fa-truck-moving"/> ย้าย</button>
+          <button onClick={() => { const S = getSwal(); S && S.fire({ title: 'ยืนยัน?', text: `บันทึก ${person.fullname} เป็น "เสียชีวิต"`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#1f2937', confirmButtonText: 'ยืนยัน', cancelButtonText: 'ยกเลิก' }).then(r => { if (r.isConfirmed) doSave('4'); }); }} className={`btn btn-sm btn-type ${person.residencyType == 4 ? 'btn-dark active-type' : 'btn-outline-dark'} flex-fill`}><i className="fa-solid fa-skull" /> เสียชีวิต</button>
+          <button onClick={() => { const S = getSwal(); S && S.fire({ title: 'ยืนยันจำหน่าย?', text: `จำหน่าย ${person.fullname} ออกจากพื้นที่`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#6b7280', confirmButtonText: 'ยืนยัน', cancelButtonText: 'ยกเลิก' }).then(r => { if (r.isConfirmed) doSave('0'); }); }} className={`btn btn-sm btn-type ${person.residencyType == 0 ? 'btn-secondary active-type' : 'btn-outline-secondary'} flex-fill`}><i className="fa-solid fa-ban" /> จำหน่าย</button>
+          <button onClick={() => onMove(person)} className="btn btn-sm btn-outline-dark flex-fill dashed-border"><i className="fa-solid fa-truck-moving" /> ย้าย</button>
         </div>
 
-        {/* ─── Risk Section ─── */}
+        {/* ─── Risk Section (บุหรี่/สุรา) ─── */}
         <div className="risk-section">
           <div className="d-flex align-items-center justify-content-between">
-            <span className="small text-muted fw-bold"><i className="fa-solid fa-triangle-exclamation text-warning me-1"/>คัดกรองบุหรี่/สุรา</span>
+            <span className="small text-muted fw-bold"><i className="fa-solid fa-triangle-exclamation text-warning me-1" />คัดกรองบุหรี่/สุรา</span>
             <button className="btn btn-outline-secondary risk-toggle-btn" onClick={() => setRiskOpen(!riskOpen)}>
-              <i className={`fa-solid fa-chevron-${riskOpen ? 'up' : 'down'}`}/> {person.smokingStatus || person.alcoholStatus ? 'แก้ไข' : 'บันทึก'}
+              <i className={`fa-solid fa-chevron-${riskOpen ? 'up' : 'down'}`} /> {person.smokingStatus || person.alcoholStatus ? 'แก้ไข' : 'บันทึก'}
             </button>
           </div>
           <div className={`risk-body ${riskOpen ? 'open' : ''}`}>
-            <div className="mt-2"><label className="small fw-bold text-muted mb-1"><i className="fa-solid fa-smoking text-secondary me-1"/>การสูบบุหรี่</label>
+            <div className="mt-2"><label className="small fw-bold text-muted mb-1"><i className="fa-solid fa-smoking text-secondary me-1" />การสูบบุหรี่</label>
               <select className="form-select form-select-sm" value={smokeStatus} onChange={e => setSmokeStatus(e.target.value)}>
                 <option value="">เลือก</option><option value="ไม่สูบ ไม่เคยสูบบุหรี่">ไม่สูบ ไม่เคยสูบบุหรี่</option><option value="ไม่สูบ เคยสูบบุหรี่แต่เลิกแล้ว">เคยสูบแต่เลิกแล้ว</option><option value="สูบ">สูบ</option>
               </select>
             </div>
-            {smokeStatus === 'สูบ' && <div className="sub-test"><div className="d-flex justify-content-between align-items-center mb-2"><span className="text-primary fw-bold" style={{fontSize:'.78rem'}}>Fagerstrom</span><span className={`score-badge ${fT<=3?'score-low':fT<=6?'score-med':'score-high'}`}>คะแนน {fT}</span></div>
-              {[{k:'f1',q:'สูบวันละกี่มวน?',o:[['0','≤10'],['1','11-20'],['2','21-30'],['3','≥31']]},{k:'f2',q:'มวนแรกหลังตื่น?',o:[['3','ภายใน 5 นาที'],['2','6-30 นาที'],['1','31-60 นาที'],['0','>60 นาที']]},{k:'f3',q:'สูบจัดชั่วโมงแรก?',o:[['1','ใช่'],['0','ไม่ใช่']]},{k:'f4',q:'มวนที่ไม่อยากเลิก?',o:[['1','มวนแรกเช้า'],['0','มวนอื่น']]},{k:'f5',q:'ลำบากในเขตปลอดบุหรี่?',o:[['1','ลำบาก'],['0','ไม่ลำบาก']]},{k:'f6',q:'สูบแม้เจ็บป่วย?',o:[['1','ใช่'],['0','ไม่ใช่']]}].map(({k,q,o})=><div key={k}><label>{q}</label><select className="form-select form-select-sm mb-2" value={fagerAnswers[k]||''} onChange={e=>setFagerAnswers({...fagerAnswers,[k]:e.target.value})}><option value="">เลือก</option>{o.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>)}
+            {smokeStatus === 'สูบ' && <div className="sub-test"><div className="d-flex justify-content-between align-items-center mb-2"><span className="text-primary fw-bold" style={{ fontSize: '.78rem' }}>Fagerstrom</span><span className={`score-badge ${fT <= 3 ? 'score-low' : fT <= 6 ? 'score-med' : 'score-high'}`}>คะแนน {fT}</span></div>
+              {[{ k: 'f1', q: 'สูบวันละกี่มวน?', o: [['0', '≤10'], ['1', '11-20'], ['2', '21-30'], ['3', '≥31']] }, { k: 'f2', q: 'มวนแรกหลังตื่น?', o: [['3', 'ภายใน 5 นาที'], ['2', '6-30 นาที'], ['1', '31-60 นาที'], ['0', '>60 นาที']] }, { k: 'f3', q: 'สูบจัดชั่วโมงแรก?', o: [['1', 'ใช่'], ['0', 'ไม่ใช่']] }, { k: 'f4', q: 'มวนที่ไม่อยากเลิก?', o: [['1', 'มวนแรกเช้า'], ['0', 'มวนอื่น']] }, { k: 'f5', q: 'ลำบากในเขตปลอดบุหรี่?', o: [['1', 'ลำบาก'], ['0', 'ไม่ลำบาก']] }, { k: 'f6', q: 'สูบแม้เจ็บป่วย?', o: [['1', 'ใช่'], ['0', 'ไม่ใช่']] }].map(({ k, q, o }) => <div key={k}><label>{q}</label><select className="form-select form-select-sm mb-2" value={fagerAnswers[k] || ''} onChange={e => setFagerAnswers({ ...fagerAnswers, [k]: e.target.value })}><option value="">เลือก</option>{o.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>)}
             </div>}
-            <div className="mt-2"><label className="small fw-bold text-muted mb-1"><i className="fa-solid fa-wine-bottle text-secondary me-1"/>การดื่มสุรา</label>
+            <div className="mt-2"><label className="small fw-bold text-muted mb-1"><i className="fa-solid fa-wine-bottle text-secondary me-1" />การดื่มสุรา</label>
               <select className="form-select form-select-sm" value={alcoStatus} onChange={e => setAlcoStatus(e.target.value)}>
                 <option value="">เลือก</option><option value="ไม่ดื่ม/ตลอดชีวิตไม่เคยดื่มเลย">ไม่ดื่ม/ไม่เคยดื่ม</option><option value="เคยดื่มแต่หยุดแล้ว 1 ปีขึ้นไป">เคยดื่มแต่หยุดแล้ว</option><option value="ดื่ม">ดื่ม</option>
               </select>
             </div>
-            {alcoStatus === 'ดื่ม' && <div className="sub-test"><div className="d-flex justify-content-between align-items-center mb-2"><span className="text-success fw-bold" style={{fontSize:'.78rem'}}>ASSIST</span><span className={`score-badge ${aT<=10?'score-low':aT<=26?'score-med':'score-high'}`}>คะแนน {aT}</span></div>
-              {[{k:'a1',q:'ดื่มบ่อยแค่ไหน?',o:[['6','เกือบทุกวัน'],['4','ทุกสัปดาห์'],['3','ทุกเดือน'],['2','ครั้งสองครั้ง'],['0','ไม่เคย']]},{k:'a2',q:'อยากดื่มมากๆ?',o:[['6','เกือบทุกวัน'],['5','ทุกสัปดาห์'],['4','ทุกเดือน'],['3','ครั้งสองครั้ง'],['0','ไม่เคย']]},{k:'a3',q:'เกิดปัญหา?',o:[['7','เกือบทุกวัน'],['6','ทุกสัปดาห์'],['5','ทุกเดือน'],['4','ครั้งสองครั้ง'],['0','ไม่เคย']]},{k:'a4',q:'เสียงาน/การเรียน?',o:[['8','เกือบทุกวัน'],['7','ทุกสัปดาห์'],['6','ทุกเดือน'],['5','ครั้งสองครั้ง'],['0','ไม่เคย']]},{k:'a5',q:'คนอื่นตักเตือน?',o:[['3','เคย (ก่อน 3 เดือน)'],['6','เคย (ใน 3 เดือน)'],['0','ไม่เคย']]}].map(({k,q,o})=><div key={k}><label>{q}</label><select className="form-select form-select-sm mb-2" value={assistAnswers[k]||''} onChange={e=>setAssistAnswers({...assistAnswers,[k]:e.target.value})}><option value="">เลือก</option>{o.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>)}
+            {alcoStatus === 'ดื่ม' && <div className="sub-test"><div className="d-flex justify-content-between align-items-center mb-2"><span className="text-success fw-bold" style={{ fontSize: '.78rem' }}>ASSIST</span><span className={`score-badge ${aT <= 10 ? 'score-low' : aT <= 26 ? 'score-med' : 'score-high'}`}>คะแนน {aT}</span></div>
+              {[{ k: 'a1', q: 'ดื่มบ่อยแค่ไหน?', o: [['6', 'เกือบทุกวัน'], ['4', 'ทุกสัปดาห์'], ['3', 'ทุกเดือน'], ['2', 'ครั้งสองครั้ง'], ['0', 'ไม่เคย']] }, { k: 'a2', q: 'อยากดื่มมากๆ?', o: [['6', 'เกือบทุกวัน'], ['5', 'ทุกสัปดาห์'], ['4', 'ทุกเดือน'], ['3', 'ครั้งสองครั้ง'], ['0', 'ไม่เคย']] }, { k: 'a3', q: 'เกิดปัญหา?', o: [['7', 'เกือบทุกวัน'], ['6', 'ทุกสัปดาห์'], ['5', 'ทุกเดือน'], ['4', 'ครั้งสองครั้ง'], ['0', 'ไม่เคย']] }, { k: 'a4', q: 'เสียงาน/การเรียน?', o: [['8', 'เกือบทุกวัน'], ['7', 'ทุกสัปดาห์'], ['6', 'ทุกเดือน'], ['5', 'ครั้งสองครั้ง'], ['0', 'ไม่เคย']] }, { k: 'a5', q: 'คนอื่นตักเตือน?', o: [['3', 'เคย (ก่อน 3 เดือน)'], ['6', 'เคย (ใน 3 เดือน)'], ['0', 'ไม่เคย']] }].map(({ k, q, o }) => <div key={k}><label>{q}</label><select className="form-select form-select-sm mb-2" value={assistAnswers[k] || ''} onChange={e => setAssistAnswers({ ...assistAnswers, [k]: e.target.value })}><option value="">เลือก</option>{o.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>)}
             </div>}
-            <button onClick={doSaveRisk} className="btn btn-sm btn-primary w-100 rounded-pill mt-3 fw-bold" disabled={saving}><i className="fa-solid fa-save me-1"/> บันทึกคัดกรองบุหรี่/สุรา</button>
+            <button onClick={doSaveRisk} className="btn btn-sm btn-primary w-100 rounded-pill mt-3 fw-bold" disabled={saving}><i className="fa-solid fa-save me-1" /> บันทึกคัดกรองบุหรี่/สุรา</button>
           </div>
         </div>
+
+        {/* ─── Liver Fluke Screening Section (OV) ─── */}
+        {person.age >= 15 && (
+          <div className="risk-section mt-3 border-top pt-3">
+            <h6 className="small text-danger fw-bold"><i className="fa-solid fa-microscope me-1" />คัดกรองพยาธิใบไม้ตับ (ปี 2569)</h6>
+            <select className="form-select form-select-sm mb-2" value={ovAnswers.q1} onChange={e => setOvAnswers({ ...ovAnswers, q1: e.target.value })}><option value="">1. เคยตรวจพบพยาธิ?</option><option value="ไม่เคยตรวจ">ไม่เคยตรวจ</option><option value="ตรวจแต่ไม่พบ">ตรวจแต่ไม่พบ</option><option value="ตรวจแล้วพบไข่พยาธิ">ตรวจแล้วพบไข่พยาธิ</option><option value="จำไม่ได้">จำไม่ได้</option></select>
+            <select className="form-select form-select-sm mb-2" value={ovAnswers.q2} onChange={e => setOvAnswers({ ...ovAnswers, q2: e.target.value })}><option value="">2. เคยรักษาด้วยยาฆ่าพยาธิ?</option>{['ไม่เคย', 'เคย 1 ครั้ง', 'เคย 2 ครั้ง', 'เคย 3 ครั้ง', 'เคยมากกว่า 3 ครั้ง', 'จำไม่ได้'].map(o => <option key={o} value={o}>{o}</option>)}</select>
+            <select className="form-select form-select-sm mb-2" value={ovAnswers.q3} onChange={e => setOvAnswers({ ...ovAnswers, q3: e.target.value })}><option value="">3. เคยทานปลาน้ำจืดดิบ/ปลาร้าไม่สุก?</option><option value="ไม่เคย">ไม่เคย</option><option value="เคย">เคย</option></select>
+            <select className="form-select form-select-sm mb-2" value={ovAnswers.q4} onChange={e => setOvAnswers({ ...ovAnswers, q4: e.target.value })}><option value="">4. โรคประจำตัว?</option><option value="ไม่เป็น">ไม่เป็น</option><option value="ตับอักเสบ บี">ตับอักเสบ บี</option><option value="ตับอักเสบ ซี">ตับอักเสบ ซี</option><option value="เบาหวาน">เบาหวาน</option><option value="อื่นๆ">อื่นๆ</option></select>
+            <select className="form-select form-select-sm mb-2" value={ovAnswers.q5} onChange={e => setOvAnswers({ ...ovAnswers, q5: e.target.value })}><option value="">5. ต้องการตรวจ OV-ATK จากปัสสาวะ?</option><option value="ต้องการตรวจ">ต้องการตรวจ</option><option value="ไม่ต้องการตรวจ">ไม่ต้องการตรวจ</option></select>
+            <button onClick={() => saveOvScreening(ovAnswers)} className="btn btn-sm btn-danger w-100 rounded-pill mt-2 fw-bold" disabled={saving}><i className="fa-solid fa-save me-1" /> บันทึกข้อมูลคัดกรอง</button>
+          </div>
+        )}
+        
       </div>
     </div>
   );
