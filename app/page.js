@@ -30,9 +30,14 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
   const [alcoStatus, setAlcoStatus] = useState(person.alcoholStatus || '');
   const [fagerAnswers, setFagerAnswers] = useState(person.fagerstromAnswers || {});
   const [assistAnswers, setAssistAnswers] = useState(person.assistAnswers || {});
-  // ✅ เพิ่มการจัดการ ovAnswers ให้ปลอดภัย
+  
+  // State ของคัดกรองพยาธิใบไม้ตับ
   const [ovAnswers, setOvAnswers] = useState(person.ovAnswers || { q1: '', q2: '', q3: '', q4: '', q5: '' });
   const [saving, setSaving] = useState(false);
+
+  // เช็คว่ามีข้อมูลคัดกรองเดิมหรือไม่ เพื่อควบคุมการพับ/กางของฟอร์ม
+  const hasOvData = !!(person.ovAnswers && person.ovAnswers.q1); 
+  const [ovOpen, setOvOpen] = useState(!hasOvData); 
 
   useEffect(() => {
     const cc = (!person.chronic || person.chronic === '-') ? 'ปกติ (ไม่มีโรค)' : person.chronic;
@@ -48,10 +53,21 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
     setSaving(false);
   };
 
-  // ✅ ฟังก์ชันคัดกรองพยาธิใบไม้ตับ
+  // 🎯 ฟังก์ชันเช็คความเสี่ยง (ตอบ "เคย" หรือ "พบ" ในข้อ 1-3 ถือว่าเสี่ยงทันที)
+  const checkOvRisk = () => {
+    const isQ1Risk = ovAnswers.q1 === 'ตรวจแล้วพบไข่พยาธิ';
+    const isQ2Risk = typeof ovAnswers.q2 === 'string' && ovAnswers.q2.includes('เคย') && ovAnswers.q2 !== 'ไม่เคย';
+    const isQ3Risk = ovAnswers.q3 === 'เคย';
+    
+    // หากข้อใดข้อหนึ่งเป็นจริง จะคืนค่าความเสี่ยงเป็น true
+    return isQ1Risk || isQ2Risk || isQ3Risk;
+  };
+  const isAtRisk = checkOvRisk(); // เก็บสถานะความเสี่ยงไว้ใช้แสดงผล
+
   const saveOvScreening = async (ovData) => {
     setSaving(true);
     showLoading('กำลังบันทึกข้อมูลคัดกรอง...');
+    
     const { error } = await supabase.from('population').update({
       ov_q1: ovData.q1, ov_q2: ovData.q2, ov_q3: ovData.q3, ov_q4: ovData.q4, ov_q5: ovData.q5,
       ov_date: new Date().toISOString(), updated_at: new Date().toISOString()
@@ -61,8 +77,14 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
     setSaving(false);
 
     if (!error) {
-      await writeLog(user?.userId, user?.username, 'SCREENING_OV', `คัดกรองพยาธิใบไม้ตับ | Q5: ${ovData.q5}`, person.personId);
-      swal({ icon: 'success', title: 'บันทึกสำเร็จ!', text: 'บันทึกข้อมูลคัดกรองเรียบร้อย', timer: 2000, showConfirmButton: false }).then(onRefresh);
+      // 🎯 เปลี่ยนข้อความ Log ให้สอดคล้องกับระบบใหม่
+      const riskText = isAtRisk ? 'มีความเสี่ยง' : 'ไม่มีความเสี่ยง';
+      await writeLog(user?.userId, user?.username, 'SCREENING_OV', `คัดกรองพยาธิฯ | Q5: ${ovData.q5} | ประเมิน: ${riskText}`, person.personId);
+      
+      swal({ icon: 'success', title: 'บันทึกสำเร็จ!', text: 'บันทึกข้อมูลคัดกรองเรียบร้อย', timer: 2000, showConfirmButton: false }).then(() => {
+        setOvOpen(false); // บันทึกเสร็จให้พับฟอร์มเก็บ
+        onRefresh();
+      });
     } else {
       swal({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: error.message });
     }
@@ -87,7 +109,10 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
 
     if (!error) {
       await writeLog(user?.userId, user?.username, 'RISK_BEHAVIOR', `บุหรี่: ${smokeStatus || 'ไม่ระบุ'} | สุรา: ${alcoStatus || 'ไม่ระบุ'}`, person.personId);
-      swal({ icon: 'success', title: 'บันทึกสำเร็จ!', timer: 2000, showConfirmButton: false }).then(onRefresh);
+      swal({ icon: 'success', title: 'บันทึกสำเร็จ!', timer: 2000, showConfirmButton: false }).then(() => {
+        setRiskOpen(false); 
+        onRefresh();
+      });
     } else swal({ icon: 'error', title: 'ผิดพลาด', text: error.message });
   };
 
@@ -149,7 +174,7 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
         </div>
 
         {/* ─── Risk Section (บุหรี่/สุรา) ─── */}
-        <div className="risk-section">
+        <div className="risk-section mt-3 border-top pt-3">
           <div className="d-flex align-items-center justify-content-between">
             <span className="small text-muted fw-bold"><i className="fa-solid fa-triangle-exclamation text-warning me-1" />คัดกรองบุหรี่/สุรา</span>
             <button className="btn btn-outline-secondary risk-toggle-btn" onClick={() => setRiskOpen(!riskOpen)}>
@@ -180,16 +205,37 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
         {/* ─── Liver Fluke Screening Section (OV) ─── */}
         {person.age >= 15 && (
           <div className="risk-section mt-3 border-top pt-3">
-            <h6 className="small text-danger fw-bold"><i className="fa-solid fa-microscope me-1" />คัดกรองพยาธิใบไม้ตับ (ปี 2569)</h6>
-            <select className="form-select form-select-sm mb-2" value={ovAnswers.q1} onChange={e => setOvAnswers({ ...ovAnswers, q1: e.target.value })}><option value="">1. เคยตรวจพบพยาธิ?</option><option value="ไม่เคยตรวจ">ไม่เคยตรวจ</option><option value="ตรวจแต่ไม่พบ">ตรวจแต่ไม่พบ</option><option value="ตรวจแล้วพบไข่พยาธิ">ตรวจแล้วพบไข่พยาธิ</option><option value="จำไม่ได้">จำไม่ได้</option></select>
-            <select className="form-select form-select-sm mb-2" value={ovAnswers.q2} onChange={e => setOvAnswers({ ...ovAnswers, q2: e.target.value })}><option value="">2. เคยรักษาด้วยยาฆ่าพยาธิ?</option>{['ไม่เคย', 'เคย 1 ครั้ง', 'เคย 2 ครั้ง', 'เคย 3 ครั้ง', 'เคยมากกว่า 3 ครั้ง', 'จำไม่ได้'].map(o => <option key={o} value={o}>{o}</option>)}</select>
-            <select className="form-select form-select-sm mb-2" value={ovAnswers.q3} onChange={e => setOvAnswers({ ...ovAnswers, q3: e.target.value })}><option value="">3. เคยทานปลาน้ำจืดดิบ/ปลาร้าไม่สุก?</option><option value="ไม่เคย">ไม่เคย</option><option value="เคย">เคย</option></select>
-            <select className="form-select form-select-sm mb-2" value={ovAnswers.q4} onChange={e => setOvAnswers({ ...ovAnswers, q4: e.target.value })}><option value="">4. โรคประจำตัว?</option><option value="ไม่เป็น">ไม่เป็น</option><option value="ตับอักเสบ บี">ตับอักเสบ บี</option><option value="ตับอักเสบ ซี">ตับอักเสบ ซี</option><option value="เบาหวาน">เบาหวาน</option><option value="อื่นๆ">อื่นๆ</option></select>
-            <select className="form-select form-select-sm mb-2" value={ovAnswers.q5} onChange={e => setOvAnswers({ ...ovAnswers, q5: e.target.value })}><option value="">5. ต้องการตรวจ OV-ATK จากปัสสาวะ?</option><option value="ต้องการตรวจ">ต้องการตรวจ</option><option value="ไม่ต้องการตรวจ">ไม่ต้องการตรวจ</option></select>
-            <button onClick={() => saveOvScreening(ovAnswers)} className="btn btn-sm btn-danger w-100 rounded-pill mt-2 fw-bold" disabled={saving}><i className="fa-solid fa-save me-1" /> บันทึกข้อมูลคัดกรอง</button>
+            <div className="d-flex align-items-center justify-content-between">
+              <div>
+                <span className="small text-danger fw-bold"><i className="fa-solid fa-microscope me-1" />คัดกรองพยาธิใบไม้ตับ (ปี 69)</span>
+                {/* 🎯 แสดงผลลัพธ์ว่าเสี่ยงหรือไม่เสี่ยง เมื่อมีข้อมูลแล้ว */}
+                {hasOvData && (
+                  <span className={`badge ms-2 ${isAtRisk ? 'bg-danger' : 'bg-success'}`} style={{ fontSize: '.65rem' }}>
+                    {isAtRisk ? (
+                      <><i className="fa-solid fa-circle-exclamation me-1" /> มีความเสี่ยง</>
+                    ) : (
+                      <><i className="fa-solid fa-check-circle me-1" /> ไม่มีความเสี่ยง</>
+                    )}
+                  </span>
+                )}
+              </div>
+              <button className="btn btn-outline-secondary risk-toggle-btn" onClick={() => setOvOpen(!ovOpen)}>
+                <i className={`fa-solid fa-chevron-${ovOpen ? 'up' : 'down'}`} /> {hasOvData ? 'แก้ไข' : 'บันทึก'}
+              </button>
+            </div>
+            
+            <div className={`risk-body ${ovOpen ? 'open' : ''}`}>
+              <div className="mt-2">
+                <select className="form-select form-select-sm mb-2" value={ovAnswers.q1} onChange={e => setOvAnswers({ ...ovAnswers, q1: e.target.value })}><option value="">1. เคยตรวจพบพยาธิ?</option><option value="ไม่เคยตรวจ">ไม่เคยตรวจ</option><option value="ตรวจแต่ไม่พบ">ตรวจแต่ไม่พบ</option><option value="ตรวจแล้วพบไข่พยาธิ">ตรวจแล้วพบไข่พยาธิ</option><option value="จำไม่ได้">จำไม่ได้</option></select>
+                <select className="form-select form-select-sm mb-2" value={ovAnswers.q2} onChange={e => setOvAnswers({ ...ovAnswers, q2: e.target.value })}><option value="">2. เคยรักษาด้วยยาฆ่าพยาธิ?</option>{['ไม่เคย', 'เคย 1 ครั้ง', 'เคย 2 ครั้ง', 'เคย 3 ครั้ง', 'เคยมากกว่า 3 ครั้ง', 'จำไม่ได้'].map(o => <option key={o} value={o}>{o}</option>)}</select>
+                <select className="form-select form-select-sm mb-2" value={ovAnswers.q3} onChange={e => setOvAnswers({ ...ovAnswers, q3: e.target.value })}><option value="">3. เคยทานปลาน้ำจืดดิบ/ปลาร้าไม่สุก?</option><option value="ไม่เคย">ไม่เคย</option><option value="เคย">เคย</option></select>
+                <select className="form-select form-select-sm mb-2" value={ovAnswers.q4} onChange={e => setOvAnswers({ ...ovAnswers, q4: e.target.value })}><option value="">4. โรคประจำตัว?</option><option value="ไม่เป็น">ไม่เป็น</option><option value="ตับอักเสบ บี">ตับอักเสบ บี</option><option value="ตับอักเสบ ซี">ตับอักเสบ ซี</option><option value="เบาหวาน">เบาหวาน</option><option value="อื่นๆ">อื่นๆ</option></select>
+                <select className="form-select form-select-sm mb-2" value={ovAnswers.q5} onChange={e => setOvAnswers({ ...ovAnswers, q5: e.target.value })}><option value="">5. ต้องการตรวจ OV-ATK จากปัสสาวะ?</option><option value="ต้องการตรวจ">ต้องการตรวจ</option><option value="ไม่ต้องการตรวจ">ไม่ต้องการตรวจ</option></select>
+                <button onClick={() => saveOvScreening(ovAnswers)} className="btn btn-sm btn-danger w-100 rounded-pill mt-2 fw-bold" disabled={saving}><i className="fa-solid fa-save me-1" /> บันทึกข้อมูลคัดกรอง</button>
+              </div>
+            </div>
           </div>
         )}
-        
       </div>
     </div>
   );
