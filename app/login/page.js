@@ -11,8 +11,8 @@ function LoginContent() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('กำลังเตรียมระบบ...');
-  const [submitting, setSubmitting] = useState(true);
+  const [successMsg, setSuccessMsg] = useState('กำลังเตรียมระบบ LINE...');
+  const [submitting, setSubmitting] = useState(true); 
 
   const [liffData, setLiffData] = useState(null);
   const { login, loginWithLine, user } = useAuth(); 
@@ -35,11 +35,10 @@ function LoginContent() {
           const res = await loginWithLine(currentLineId);
           
           if (res && res.success) {
-            // ถ้าเคยผูกแล้ว -> อัปเดตรูปเผื่อเปลี่ยนใหม่ แล้วเข้าหน้าหลัก
             if (currentPicUrl) {
               await supabase.from('app_users').update({ avatar_url: currentPicUrl }).eq('line_user_id', currentLineId);
             }
-            window.location.replace('/'); // ใช้ window.location ชัวร์กว่าในการโหลดข้อมูลใหม่
+            window.location.replace('/'); // 🟢 ใช้ Hard Redirect เพื่อเคลียร์แคชและเข้าหน้าหลักทันที
           } else {
             // 🔴 ถ้ายังไม่เคยผูกบัญชี -> โชว์หน้ากรอกเลขบัตร
             setLiffData({
@@ -52,11 +51,13 @@ function LoginContent() {
           }
         } else {
           setSubmitting(false);
+          setSuccessMsg('');
         }
       } catch (err) {
         console.error('LIFF Init Error:', err);
         setError('ไม่สามารถเรียกใช้งาน LINE ได้ กรุณารีเฟรชหน้าจอ');
         setSubmitting(false);
+        setSuccessMsg('');
       }
     };
 
@@ -67,62 +68,52 @@ function LoginContent() {
     }
   }, [loginWithLine, user]);
 
-  // 🎯 ฟังก์ชันจัดการเมื่อกดปุ่ม "ยืนยันการผูกบัญชี"
   const handleLogin = async () => {
-    try {
-      let finalUser = '', finalPass = '';
-      
-      // 1. จัดเตรียมข้อมูลก่อน
-      if (loginMode === 'vhv') {
-        const cleanCid = cid.replace(/\D/g, '');
-        if (cleanCid.length !== 13) { setError('กรุณากรอกเลขบัตร 13 หลัก'); return; }
-        finalUser = 'vhv' + cleanCid.slice(-6); 
-        finalPass = cleanCid;
-      } else {
-        if (!username || !password) { setError('กรุณากรอกข้อมูลให้ครบ'); return; }
-        finalUser = username.trim().toLowerCase(); 
-        finalPass = password;
-      }
+    let finalUser = '', finalPass = '';
+    
+    // 🎯 ดึงเลขบัตรประชาชนมาแปลงเป็น Username ตามตรรกะเดิมของคุณ (vhv + เลขท้าย 6 ตัว)
+    if (loginMode === 'vhv') {
+      const cleanCid = cid.replace(/\D/g, '');
+      if (cleanCid.length !== 13) { setError('กรุณากรอกเลขบัตร 13 หลัก'); return; }
+      finalUser = 'vhv' + cleanCid.slice(-6); 
+      finalPass = cleanCid;
+    } else {
+      if (!username || !password) { setError('กรุณากรอกข้อมูลให้ครบ'); return; }
+      finalUser = username.trim().toLowerCase(); 
+      finalPass = password;
+    }
 
-      setSubmitting(true); 
-      setError('');
-      setSuccessMsg('กำลังตรวจสอบข้อมูลของคุณ...');
+    setSubmitting(true); 
+    setError('');
+    setSuccessMsg('กำลังบันทึกข้อมูลการผูกบัญชี LINE...'); // 🟢 แสดงข้อความบอกสถานะให้ผู้ใช้ทราบ
 
-      // 2. ล็อกอินด้วยระบบปกติก่อน เพื่อยืนยันว่าเลขบัตร/รหัสผ่าน ถูกต้องจริงๆ
-      const res = await login(finalUser, finalPass);
-
-      if (res && res.success) {
-        // 3. ถ้ารหัสถูกต้อง และมาจากการใช้งาน LINE -> ทำการผูกบัญชี
-        if (liffData) {
-          setSuccessMsg('รหัสถูกต้อง กำลังผูกบัญชีเข้ากับ LINE...');
-          const { error: updateError } = await supabase
-            .from('app_users')
-            .update({ 
-              line_user_id: liffData.lineId, 
-              avatar_url: liffData.pictureUrl 
-            })
-            .eq('username', finalUser);
-
-          if (updateError) {
-            console.error('Update LINE ID Error:', updateError);
-            // อนุโลมให้ผ่านไปได้แม้จะอัปเดต LINE ID ไม่สำเร็จ (ระบบหลักเข้าได้แล้ว)
-          }
-        }
-
-        // 4. พาไปหน้าหลัก
-        window.location.replace('/');
-      } else {
-        // ถ้ารหัสผิด ให้หยุดหมุน และโชว์ Error
+    // 🟢 ขั้นตอนการอัปเดตผูกบัญชีลงตาราง app_users โดยใช้ Username ที่แปลงแล้วไป Match
+    if (liffData) {
+      const { error: updateError } = await supabase
+        .from('app_users')
+        .update({ 
+          line_user_id: liffData.lineId, 
+          avatar_url: liffData.pictureUrl 
+        })
+        .eq('username', finalUser);
+        
+      if (updateError) {
+        setError('ไม่สามารถผูกบัญชีได้ กรุณาตรวจสอบเลขบัตรประชาชนอีกครั้ง');
         setSubmitting(false);
         setSuccessMsg('');
-        setError(loginMode === 'vhv' ? 'ไม่พบข้อมูล อสม. หรือเลขบัตรไม่ถูกต้อง' : res.error);
+        return;
       }
-    } catch (err) {
-      // 🎯 ดักจับ Error ขั้นรุนแรง เพื่อไม่ให้หน้าจอค้าง
-      console.error('Login Process Error:', err);
-      setError('เกิดข้อผิดพลาดของระบบ: ' + (err.message || 'ไม่ทราบสาเหตุ'));
+    }
+
+    // เรียกฟังก์ชันล็อกอินหลักของระบบ
+    setSuccessMsg('ผูกบัญชีสำเร็จ กำลังนำคุณเข้าสู่ระบบสำรวจ...');
+    const res = await login(finalUser, finalPass);
+    if (res.success) {
+      window.location.replace('/'); // 🟢 บังคับโหลดหน้าจอสำรวจและคัดกรองใหม่ทันที ป้องกันอาการค้าง
+    } else {
       setSubmitting(false);
       setSuccessMsg('');
+      setError(loginMode === 'vhv' ? 'ไม่พบข้อมูล อสม. ในระบบ หรือรหัสผ่านไม่ถูกต้อง' : res.error);
     }
   };
 
@@ -142,16 +133,16 @@ function LoginContent() {
         </div>
 
         {error && <div className="alert alert-danger small mb-3 border-0 shadow-sm">{error}</div>}
-        
-        {/* 🟢 หน้ากำลังโหลด */}
+
+        {/* 🟢 ส่วนที่เพิ่มใหม่: หน้าจอแสดง Spinner และข้อความค่านำทาง ป้องกันหน้าจอค้างนิ่ง */}
         {submitting && (
           <div className="text-center py-5 fade-in">
-            <span className="spinner-border text-primary mb-3" style={{width: '3rem', height: '3rem'}} />
-            <h6 className="text-muted fw-bold">{successMsg}</h6>
+            <span className="spinner-border text-primary mb-3" style={{width: '2.5rem', height: '2.5rem'}} />
+            <p className="text-muted small fw-bold mb-0">{successMsg || 'กำลังประมวลผล...'}</p>
           </div>
         )}
 
-        {/* 🟢 หน้าแรก: โชว์ปุ่ม LINE (เฉพาะกรณีที่ยังไม่ได้ล็อกอิน LIFF) */}
+        {/* 🟢 หน้าแรก: โชว์ปุ่ม LINE */}
         {!liffData && !submitting && (
           <div className="text-center py-4 fade-in">
             <p className="mb-4" style={{color: '#546e7a', fontWeight: 500}}>กรุณาเข้าสู่ระบบด้วย LINE เพื่อดำเนินการต่อ</p>
@@ -161,7 +152,7 @@ function LoginContent() {
           </div>
         )}
 
-        {/* 🟢 หน้าผูกบัญชี: จะแสดงเมื่อ LIFF ดึงข้อมูลได้ แต่ไม่เจอในฐานข้อมูลเรา */}
+        {/* 🟢 หน้าผูกบัญชี */}
         {liffData && !submitting && (
           <div className="fade-in">
             <div className="d-flex align-items-center p-3 mb-4 shadow-sm" style={{borderRadius: 15, backgroundColor: '#f5f5f5'}}>
