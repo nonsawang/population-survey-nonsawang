@@ -38,7 +38,9 @@ function LoginContent() {
             if (currentPicUrl) {
               await supabase.from('app_users').update({ avatar_url: currentPicUrl }).eq('line_user_id', currentLineId);
             }
-            window.location.replace('/'); // 🟢 ใช้ Hard Redirect เพื่อเคลียร์แคชและเข้าหน้าหลักทันที
+            // 🎯 ใช้ router.replace เพื่อการเข้าหน้าหลักอย่างสมบูรณ์แบบ
+            router.refresh();
+            router.replace('/'); 
           } else {
             // 🔴 ถ้ายังไม่เคยผูกบัญชี -> โชว์หน้ากรอกเลขบัตร
             setLiffData({
@@ -64,56 +66,69 @@ function LoginContent() {
     if (!user) {
       initLiff();
     } else {
-      window.location.replace('/');
+      router.replace('/');
     }
-  }, [loginWithLine, user]);
+  }, [loginWithLine, user, router]);
 
+  // 🎯 ฟังก์ชันจัดการเมื่อกดปุ่ม "ยืนยันการผูกบัญชี" หรือ "เข้าสู่ระบบ"
   const handleLogin = async () => {
-    let finalUser = '', finalPass = '';
-    
-    // 🎯 ดึงเลขบัตรประชาชนมาแปลงเป็น Username ตามตรรกะเดิมของคุณ (vhv + เลขท้าย 6 ตัว)
-    if (loginMode === 'vhv') {
-      const cleanCid = cid.replace(/\D/g, '');
-      if (cleanCid.length !== 13) { setError('กรุณากรอกเลขบัตร 13 หลัก'); return; }
-      finalUser = 'vhv' + cleanCid.slice(-6); 
-      finalPass = cleanCid;
-    } else {
-      if (!username || !password) { setError('กรุณากรอกข้อมูลให้ครบ'); return; }
-      finalUser = username.trim().toLowerCase(); 
-      finalPass = password;
-    }
+    try {
+      let finalUser = '', finalPass = '';
+      
+      // 1. แปลงข้อมูลเลขบัตรให้เป็น Username
+      if (loginMode === 'vhv') {
+        const cleanCid = cid.replace(/\D/g, '');
+        if (cleanCid.length !== 13) { setError('กรุณากรอกเลขบัตร 13 หลัก'); return; }
+        finalUser = 'vhv' + cleanCid.slice(-6); 
+        finalPass = cleanCid;
+      } else {
+        if (!username || !password) { setError('กรุณากรอกข้อมูลให้ครบ'); return; }
+        finalUser = username.trim().toLowerCase(); 
+        finalPass = password;
+      }
 
-    setSubmitting(true); 
-    setError('');
-    setSuccessMsg('กำลังบันทึกข้อมูลการผูกบัญชี LINE...'); // 🟢 แสดงข้อความบอกสถานะให้ผู้ใช้ทราบ
+      setSubmitting(true); 
+      setError('');
+      setSuccessMsg('กำลังตรวจสอบข้อมูลของคุณ...');
 
-    // 🟢 ขั้นตอนการอัปเดตผูกบัญชีลงตาราง app_users โดยใช้ Username ที่แปลงแล้วไป Match
-    if (liffData) {
-      const { error: updateError } = await supabase
-        .from('app_users')
-        .update({ 
-          line_user_id: liffData.lineId, 
-          avatar_url: liffData.pictureUrl 
-        })
-        .eq('username', finalUser);
-        
-      if (updateError) {
-        setError('ไม่สามารถผูกบัญชีได้ กรุณาตรวจสอบเลขบัตรประชาชนอีกครั้ง');
+      // 2. เรียกฟังก์ชันล็อกอิน
+      const res = await login(finalUser, finalPass);
+
+      if (res && res.success) {
+        // 3. ถ้ารหัสถูกต้อง และมาจากการใช้งาน LINE -> ทำการผูกบัญชี
+        if (liffData) {
+          setSuccessMsg('ผูกบัญชีสำเร็จ กำลังนำท่านเข้าสู่ระบบ...');
+          
+          // 🎯 ปล่อยให้ระบบอัปเดตข้อมูลเป็น "พื้นหลัง" โดยไม่ใช้ await มาบล็อกการย้ายหน้า
+          supabase
+            .from('app_users')
+            .update({ 
+              line_user_id: liffData.lineId, 
+              avatar_url: liffData.pictureUrl 
+            })
+            .eq('username', finalUser)
+            .then(() => console.log('LINE ID Linked Successfully!'))
+            .catch((err) => console.error('LINE Link Error:', err));
+
+        } else {
+          setSuccessMsg('เข้าสู่ระบบสำเร็จ กำลังนำท่านเข้าสู่ระบบ...');
+        }
+
+        // 🎯 4. พาผู้ใช้พุ่งไปที่หน้าหลัก (app/page.js) ทันที
+        router.refresh();
+        router.replace('/'); 
+
+      } else {
+        // ถ้ารหัสผิด ให้หยุดหมุน และโชว์ Error
         setSubmitting(false);
         setSuccessMsg('');
-        return;
+        setError(loginMode === 'vhv' ? 'ไม่พบข้อมูล อสม. หรือเลขบัตรไม่ถูกต้อง' : res.error);
       }
-    }
-
-    // เรียกฟังก์ชันล็อกอินหลักของระบบ
-    setSuccessMsg('ผูกบัญชีสำเร็จ กำลังนำคุณเข้าสู่ระบบสำรวจ...');
-    const res = await login(finalUser, finalPass);
-    if (res.success) {
-      window.location.replace('/'); // 🟢 บังคับโหลดหน้าจอสำรวจและคัดกรองใหม่ทันที ป้องกันอาการค้าง
-    } else {
+    } catch (err) {
+      console.error('Login Process Error:', err);
+      setError('เกิดข้อผิดพลาดของระบบ: ' + (err.message || 'ไม่ทราบสาเหตุ'));
       setSubmitting(false);
       setSuccessMsg('');
-      setError(loginMode === 'vhv' ? 'ไม่พบข้อมูล อสม. ในระบบ หรือรหัสผ่านไม่ถูกต้อง' : res.error);
     }
   };
 
@@ -134,7 +149,7 @@ function LoginContent() {
 
         {error && <div className="alert alert-danger small mb-3 border-0 shadow-sm">{error}</div>}
 
-        {/* 🟢 ส่วนที่เพิ่มใหม่: หน้าจอแสดง Spinner และข้อความค่านำทาง ป้องกันหน้าจอค้างนิ่ง */}
+        {/* 🟢 หน้าจอแสดง Spinner */}
         {submitting && (
           <div className="text-center py-5 fade-in">
             <span className="spinner-border text-primary mb-3" style={{width: '2.5rem', height: '2.5rem'}} />
