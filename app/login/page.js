@@ -38,11 +38,9 @@ function LoginContent() {
             if (currentPicUrl) {
               await supabase.from('app_users').update({ avatar_url: currentPicUrl }).eq('line_user_id', currentLineId);
             }
-            // 🎯 ใช้ router.replace เพื่อการเข้าหน้าหลักอย่างสมบูรณ์แบบ
             router.refresh();
             router.replace('/'); 
           } else {
-            // 🔴 ถ้ายังไม่เคยผูกบัญชี -> โชว์หน้ากรอกเลขบัตร
             setLiffData({
               lineId: currentLineId,
               lineName: profile.displayName,
@@ -70,17 +68,20 @@ function LoginContent() {
     }
   }, [loginWithLine, user, router]);
 
-  // 🎯 ฟังก์ชันจัดการเมื่อกดปุ่ม "ยืนยันการผูกบัญชี" หรือ "เข้าสู่ระบบ"
   const handleLogin = async () => {
     try {
       let finalUser = '', finalPass = '';
       
-      // 1. แปลงข้อมูลเลขบัตรให้เป็น Username
+      // 🎯 1. ตรรกะแปลงเลขบัตร (ตามที่คุณออกแบบไว้)
       if (loginMode === 'vhv') {
-        const cleanCid = cid.replace(/\D/g, '');
-        if (cleanCid.length !== 13) { setError('กรุณากรอกเลขบัตร 13 หลัก'); return; }
+        const cleanCid = cid.replace(/\D/g, ''); // กรองเอาเฉพาะตัวเลข
+        if (cleanCid.length !== 13) { 
+          setError('กรุณากรอกเลขบัตร 13 หลักให้ครบถ้วน'); 
+          return; 
+        }
+        // 🎯 แปลงข้อมูล: นำ vhv มาต่อด้วยเลขบัตร 6 หลักสุดท้าย
         finalUser = 'vhv' + cleanCid.slice(-6); 
-        finalPass = cleanCid;
+        finalPass = cleanCid; // ใช้รหัสผ่านเป็นเลขบัตรเต็ม 13 หลัก
       } else {
         if (!username || !password) { setError('กรุณากรอกข้อมูลให้ครบ'); return; }
         finalUser = username.trim().toLowerCase(); 
@@ -91,7 +92,7 @@ function LoginContent() {
       setError('');
       setSuccessMsg('กำลังตรวจสอบข้อมูลของคุณ...');
 
-      // 2. เรียกฟังก์ชันล็อกอิน
+      // 2. เรียกฟังก์ชันล็อกอิน เพื่อยืนยันว่ารหัสผ่านถูกต้อง
       const res = await login(finalUser, finalPass);
 
       if (res && res.success) {
@@ -99,7 +100,7 @@ function LoginContent() {
         if (liffData) {
           setSuccessMsg('ผูกบัญชีสำเร็จ กำลังนำท่านเข้าสู่ระบบ...');
           
-          // 🎯 ปล่อยให้ระบบอัปเดตข้อมูลเป็น "พื้นหลัง" โดยไม่ใช้ await มาบล็อกการย้ายหน้า
+          // 🎯 ทำการผูกบัญชีลงฐานข้อมูล โดยอ้างอิงจาก finalUser (ที่แปลงค่าแล้ว)
           supabase
             .from('app_users')
             .update({ 
@@ -114,12 +115,11 @@ function LoginContent() {
           setSuccessMsg('เข้าสู่ระบบสำเร็จ กำลังนำท่านเข้าสู่ระบบ...');
         }
 
-        // 🎯 4. พาผู้ใช้พุ่งไปที่หน้าหลัก (app/page.js) ทันที
+        // 4. พาผู้ใช้พุ่งไปที่หน้าหลัก (app/page.js) ทันที
         router.refresh();
         router.replace('/'); 
 
       } else {
-        // ถ้ารหัสผิด ให้หยุดหมุน และโชว์ Error
         setSubmitting(false);
         setSuccessMsg('');
         setError(loginMode === 'vhv' ? 'ไม่พบข้อมูล อสม. หรือเลขบัตรไม่ถูกต้อง' : res.error);
@@ -149,7 +149,6 @@ function LoginContent() {
 
         {error && <div className="alert alert-danger small mb-3 border-0 shadow-sm">{error}</div>}
 
-        {/* 🟢 หน้าจอแสดง Spinner */}
         {submitting && (
           <div className="text-center py-5 fade-in">
             <span className="spinner-border text-primary mb-3" style={{width: '2.5rem', height: '2.5rem'}} />
@@ -157,7 +156,6 @@ function LoginContent() {
           </div>
         )}
 
-        {/* 🟢 หน้าแรก: โชว์ปุ่ม LINE */}
         {!liffData && !submitting && (
           <div className="text-center py-4 fade-in">
             <p className="mb-4" style={{color: '#546e7a', fontWeight: 500}}>กรุณาเข้าสู่ระบบด้วย LINE เพื่อดำเนินการต่อ</p>
@@ -167,7 +165,6 @@ function LoginContent() {
           </div>
         )}
 
-        {/* 🟢 หน้าผูกบัญชี */}
         {liffData && !submitting && (
           <div className="fade-in">
             <div className="d-flex align-items-center p-3 mb-4 shadow-sm" style={{borderRadius: 15, backgroundColor: '#f5f5f5'}}>
