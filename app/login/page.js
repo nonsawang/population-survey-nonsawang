@@ -5,6 +5,14 @@ import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase'; 
 import liff from '@line/liff';
 
+// 🎯 1. ฟังก์ชันสำหรับเข้ารหัสผ่านแบบ SHA-256 (เพื่อให้ตรงกับฐานข้อมูล)
+async function hashPassword(password) {
+  const msgBuffer = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 function LoginContent() {
   const [loginMode, setLoginMode] = useState('vhv'); 
   const [cid, setCid] = useState(''); 
@@ -15,16 +23,12 @@ function LoginContent() {
   const [submitting, setSubmitting] = useState(true); 
 
   const [liffData, setLiffData] = useState(null);
-  // 🎯 1. ดึง loading มาจาก useAuth เพื่อใช้เป็นตัวกั้น Race Condition
   const { login, loginWithLine, user, loading } = useAuth(); 
   const router = useRouter();
 
-  // 🚀 2. ควบคุม Flow การทำงานด้วย useEffect ตัวเดียว
   useEffect(() => {
-    // 🎯 กฎข้อที่ 1: ถ้าระบบ Auth ยังเช็ค sessionStorage ไม่เสร็จ ให้หยุดรอ
     if (loading) return;
 
-    // 🎯 กฎข้อที่ 2: ถ้าเช็คเสร็จแล้วพบว่า "มีบัญชีอยู่แล้ว" (ล็อกอินสำเร็จ) ให้ย้ายหน้าทันที
     if (user) {
       setSuccessMsg('เข้าสู่ระบบสำเร็จ กำลังพาท่านเข้าสู่หน้าหลัก...');
       setSubmitting(true);
@@ -32,7 +36,6 @@ function LoginContent() {
       return; 
     }
 
-    // 🎯 กฎข้อที่ 3: ถ้า "ไม่มีบัญชี" จริงๆ ถึงจะเรียกใช้งาน LIFF
     const initLiff = async () => {
       try {
         await liff.init({ liffId: process.env.NEXT_PUBLIC_LIFF_ID });
@@ -46,8 +49,6 @@ function LoginContent() {
           
           const res = await loginWithLine(currentLineId);
           
-          // ถ้า loginWithLine สำเร็จ ตัวแปร user ใน AuthContext จะเปลี่ยนค่าเอง
-          // และจะทำให้ useEffect ตัวนี้ถูกเรียกซ้ำ เข้าสู่ "กฎข้อที่ 2" อัตโนมัติ!
           if (res && res.success) {
             if (currentPicUrl) {
               await supabase.from('app_users').update({ avatar_url: currentPicUrl }).eq('line_user_id', currentLineId);
@@ -74,56 +75,63 @@ function LoginContent() {
     };
 
     initLiff();
-  }, [user, loading, loginWithLine]); // เฝ้าดูการเปลี่ยนแปลงของ user และ loading
+  }, [user, loading, loginWithLine]); 
 
-  // 🎯 3. ฟังก์ชันล็อกอิน
   const handleLogin = async () => {
-    let finalUser = '', finalPass = '';
-    
-    if (loginMode === 'vhv') {
-      const cleanCid = cid.replace(/\D/g, '');
-      if (cleanCid.length !== 13) { setError('กรุณากรอกเลขบัตร 13 หลัก'); return; }
-      finalUser = 'vhv' + cleanCid.slice(-6); 
-      finalPass = cleanCid;
-    } else {
-      if (!username || !password) { setError('กรุณากรอกข้อมูลให้ครบ'); return; }
-      finalUser = username.trim().toLowerCase(); 
-      finalPass = password;
-    }
+    try {
+      let finalUser = '', finalPass = '';
+      
+      if (loginMode === 'vhv') {
+        const cleanCid = cid.replace(/\D/g, '');
+        if (cleanCid.length !== 13) { setError('กรุณากรอกเลขบัตร 13 หลัก'); return; }
+        finalUser = 'vhv' + cleanCid.slice(-6); 
+        finalPass = cleanCid;
+      } else {
+        if (!username || !password) { setError('กรุณากรอกข้อมูลให้ครบ'); return; }
+        finalUser = username.trim().toLowerCase(); 
+        finalPass = password;
+      }
 
-    setSubmitting(true); 
-    setError('');
+      setSubmitting(true); 
+      setError('');
 
-    // ผูกบัญชี LINE ก่อน
-    if (liffData) {
-      setSuccessMsg('กำลังผูกบัญชี LINE...');
-      const { error: updateError } = await supabase
-        .from('app_users')
-        .update({ 
-          line_user_id: liffData.lineId, 
-          avatar_url: liffData.pictureUrl 
-        })
-        .eq('username', finalUser);
-        
-      if (updateError) {
-        setError('ไม่สามารถบันทึกข้อมูลการผูกบัญชีได้ เลขบัตรอาจไม่ถูกต้อง');
+      // ผูกบัญชี LINE ก่อน (ถ้ามี)
+      if (liffData) {
+        setSuccessMsg('กำลังผูกบัญชี LINE...');
+        const { error: updateError } = await supabase
+          .from('app_users')
+          .update({ 
+            line_user_id: liffData.lineId, 
+            avatar_url: liffData.pictureUrl 
+          })
+          .eq('username', finalUser);
+          
+        if (updateError) {
+          setError('ไม่สามารถบันทึกข้อมูลการผูกบัญชีได้ เลขบัตรอาจไม่ถูกต้อง');
+          setSubmitting(false);
+          setSuccessMsg('');
+          return;
+        }
+      }
+
+      setSuccessMsg('กำลังตรวจสอบข้อมูลเข้าสู่ระบบ...');
+      
+      // 🎯 2. ทำการเข้ารหัส Password เป็น SHA-256 (64 ตัวอักษร) ก่อนส่งไปเช็ค!
+      const hashedPass = await hashPassword(finalPass);
+      
+      // ส่งข้อมูลที่แปลงรหัสแล้ว ไปตรวจสอบกับฐานข้อมูล
+      const res = await login(finalUser, hashedPass);
+      
+      if (!res || !res.success) {
         setSubmitting(false);
         setSuccessMsg('');
-        return;
+        setError(loginMode === 'vhv' ? 'ไม่พบข้อมูล อสม. ในระบบ หรือเลขบัตรไม่ถูกต้อง' : res.error);
       }
-    }
-
-    setSuccessMsg('กำลังตรวจสอบข้อมูลเข้าสู่ระบบ...');
-    
-    // เรียกฟังก์ชันล็อกอิน
-    const res = await login(finalUser, finalPass);
-    
-    // 🎯 ไม่ต้องสั่ง window.location ตรงนี้แล้ว!
-    // ถ้า login สำเร็จ (res.success === true) ตัวแปร user จะมีค่า -> useEffect ด้านบนจะเตะผู้ใช้ไปหน้า '/' ทันที
-    if (!res || !res.success) {
+    } catch (err) {
+      console.error('Login Process Error:', err);
+      setError('เกิดข้อผิดพลาดของระบบ กรุณาลองใหม่');
       setSubmitting(false);
       setSuccessMsg('');
-      setError(loginMode === 'vhv' ? 'ไม่พบข้อมูล อสม. ในระบบ หรือเลขบัตรไม่ถูกต้อง' : res.error);
     }
   };
 
