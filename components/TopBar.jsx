@@ -1,6 +1,7 @@
 'use client';
 import { useAuth, ROLE_LABELS } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
+import ProfileAvatar from '@/components/ProfileAvatar';
 
 export default function TopBar({ showAdmin = false }) {
   const { user, logout } = useAuth();
@@ -36,16 +37,7 @@ export default function TopBar({ showAdmin = false }) {
           <span style={{opacity:.9, fontSize:'.85rem', display:'flex', alignItems:'center', gap:'6px'}}>
             
             {/* 🟢 เช็กว่ามีรูปโปรไฟล์ LINE หรือไม่ */}
-            {user.avatarUrl ? (
-              <img 
-                src={user.avatarUrl} 
-                alt="Profile" 
-                className="rounded-circle shadow-sm" 
-                style={{ width: '28px', height: '28px', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.5)' }} 
-              />
-            ) : (
-              <i className="fa-solid fa-circle-user fa-lg" />
-            )}
+            <ProfileAvatar src={user.avatarUrl} name={user.displayName || user.username} size={32} className="shadow-sm" />
 
             <span>
               {user.displayName || user.username}{' '}

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import liff from '@line/liff';
+import ProfileAvatar from '@/components/ProfileAvatar';
 
 async function hashPassword(password) {
   const msgBuffer = new TextEncoder().encode(password);
@@ -45,17 +46,9 @@ function LoginContent() {
           const currentLineId = profile.userId;
           const currentPicUrl = profile.pictureUrl;
 
-          const res = await loginWithLine(currentLineId);
+          const res = await loginWithLine(currentLineId, currentPicUrl || '');
 
-          if (res && res.success) {
-            // ผูกแล้ว → user state เปลี่ยน → useEffect redirect เอง
-            if (currentPicUrl) {
-              await supabase
-                .from('app_users')
-                .update({ avatar_url: currentPicUrl })
-                .eq('line_user_id', currentLineId);
-            }
-          } else {
+          if (!res?.success) {
             // ยังไม่เคยผูก → โชว์ฟอร์มกรอกเลขบัตร
             setLiffData({
               lineId: currentLineId,
@@ -229,16 +222,7 @@ function LoginContent() {
               className="d-flex align-items-center p-3 mb-4 shadow-sm"
               style={{ borderRadius: 15, backgroundColor: '#f5f5f5' }}
             >
-              {liffData.pictureUrl ? (
-                <img
-                  src={liffData.pictureUrl}
-                  alt="Profile"
-                  className="rounded-circle me-3 shadow-sm"
-                  style={{ width: '50px', height: '50px', border: '2px solid white' }}
-                />
-              ) : (
-                <i className="fa-solid fa-circle-user fa-3x text-secondary me-3" />
-              )}
+              <ProfileAvatar src={liffData.pictureUrl} name={liffData.lineName} size={50} className="me-3 shadow-sm" />
               <div>
                 <div className="small text-muted">ยินดีต้อนรับคุณ</div>
                 <div className="fw-bold text-primary">{liffData.lineName}</div>
