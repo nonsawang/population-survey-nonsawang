@@ -53,6 +53,12 @@ export default function TopBar({ showAdmin = false }) {
           </a>
         )}
 
+        {['staff', 'admin'].includes(user?.role) && (
+          <a className="top-bar-link" href="/hosxp-review">
+            <i className="fa-solid fa-list-check" /> ตรวจสอบก่อนส่ง HOSxP
+          </a>
+        )}
+
         {showAdmin && user?.role === 'admin' && (
           <a className="top-bar-link" href="/admin">
             <i className="fa-solid fa-users-gear" /> ผู้ดูแล
