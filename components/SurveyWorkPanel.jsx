@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { VALID_MOOS } from '@/lib/utils';
 import { summarizeSurvey, vhvName } from '@/lib/survey-work';
 import StaffSurveyOverview from '@/components/StaffSurveyOverview';
+import { inSurveyScope } from '@/lib/population-status';
 
 const PAGE_SIZE = 20;
 const labels = { notStarted: 'ยังไม่เริ่ม', partial: 'สำรวจบางส่วน', complete: 'สำรวจครบ' };
@@ -12,6 +13,7 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
   const [rows, setRows] = useState([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
+  const [legacySchema, setLegacySchema] = useState(false);
   const [retry, setRetry] = useState(0);
   const [moo, setMoo] = useState('');
   const [vhv, setVhv] = useState('');
@@ -28,14 +30,19 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      setBusy(true); setError(''); setRows([]);
+      setBusy(true); setError(''); setRows([]); setLegacySchema(false);
       try {
         if (!user || !moos.length) return;
         const collected = [];
         for (let offset = 0; ; offset += 1000) {
-          const { data, error: queryError } = await supabase.from('population')
-            .select('person_id,moo,house,vhv,residency_type').in('moo', moos)
-            .order('person_id').range(offset, offset + 999);
+          const baseColumns = 'person_id,moo,house,vhv,residency_type';
+          let response = await supabase.from('population').select(baseColumns + ',status_model_version,person_discharge_id,legacy_residency_type').in('moo', moos).order('person_id').range(offset, offset + 999);
+          if (cancelled) return;
+          if (response.error && ['42703', 'PGRST204'].includes(response.error.code)) {
+            setLegacySchema(true);
+            response = await supabase.from('population').select(baseColumns).in('moo', moos).order('person_id').range(offset, offset + 999);
+          }
+          const { data, error: queryError } = response;
           if (cancelled) return;
           if (queryError) throw queryError;
           collected.push(...(data || []));
@@ -51,7 +58,7 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
   }, [user, moos, refreshKey, retry]);
 
   const selectedMoo = moos.includes(moo) ? moo : '';
-  const owners = useMemo(() => [...new Set(rows.filter(r => (!selectedMoo || String(r.moo).trim() === selectedMoo) && !['0', '4'].includes(String(r.residency_type).trim())).map(r => vhvName(r.vhv)))].sort((a, b) => a.localeCompare(b, 'th')), [rows, selectedMoo]);
+  const owners = useMemo(() => [...new Set(rows.filter(r => (!selectedMoo || String(r.moo).trim() === selectedMoo) && inSurveyScope(r)).map(r => vhvName(r.vhv)))].sort((a, b) => a.localeCompare(b, 'th')), [rows, selectedMoo]);
   const selectedVhv = owners.includes(vhv) ? vhv : '';
   const { houses, totals } = useMemo(() => summarizeSurvey(rows, selectedMoo, selectedVhv, status), [rows, selectedMoo, selectedVhv, status]);
   const pages = Math.max(1, Math.ceil(houses.length / PAGE_SIZE));
@@ -64,7 +71,8 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
         <h2 id="survey-work-title" className="h5 fw-bold mb-0">ติดตามงานสำรวจ</h2>
         <button type="button" className="btn btn-sm btn-outline-primary" disabled={busy} onClick={() => setRetry(v => v + 1)}>รีเฟรช</button>
       </div>
-      <p className="small text-muted">งานที่ยังไม่ครบ คือคนที่ยังไม่ได้ระบุ Type 1–3 โดยไม่นับ Type 0 และ 4 ไม่รวมความครบถ้วนของการคัดกรองสุขภาพ</p>
+      <p className="small text-muted">งานคงค้างนับผู้ที่ยังไม่จำหน่ายและยังไม่ระบุประเภทอยู่อาศัย Type 0–3 ไม่นับบุคคลนอกเขต (Type 4) ผู้เสียชีวิต หรือผู้จำหน่าย ไม่รวมความครบถ้วนของการคัดกรองสุขภาพ</p>
+      {legacySchema && <p className="alert alert-warning small">กำลังอ่านสถานะแบบเดิม ต้องรัน migration ใน Supabase ก่อนบันทึกสถานะตาม HOSxP</p>}
       {!busy && !error && isStaffView && <StaffSurveyOverview rows={rows} moo={selectedMoo} vhv={selectedVhv} onSelect={(m, owner, nextStatus, showHouses) => { setMoo(m); setVhv(owner); setStatus(nextStatus); setPage(1); setScrollTarget(showHouses ? 'staff-house-list-title' : 'staff-owners-title'); }} />}
       <div id="staff-house-list-title" className="staff-house-list-heading"><h3 className="h5 fw-bold mb-1">{isStaffView ? '3. บ้านที่ต้องติดตาม' : 'รายการบ้าน'}</h3><p className="small text-muted mb-3">{selectedMoo ? 'หมู่ ' + selectedMoo : 'ทุกหมู่ที่มีสิทธิ์'}{selectedVhv ? ' • ' + selectedVhv : ' • อสม. ทุกคน'} • เลือกสถานะเพื่อดูบ้านที่ยังไม่เริ่มหรือสำรวจบางส่วน</p></div>
       <div className="row g-2 mb-3">

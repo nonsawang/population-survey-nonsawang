@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { selectAll } from '@/lib/supabase';
 import { calculateAge, getBirthYear, MALE_TITLES } from '@/lib/utils';
 import TopBar from '@/components/TopBar';
+import { populationStatus } from '@/lib/population-status';
 
 // ─── Chart wrapper ───
 function ChartCanvas({ id, style }) {
@@ -41,7 +42,7 @@ export default function DashboardPage() {
       const d = data;
 
       // 1. Pie (Type)
-      mk('pieChart', { type:'doughnut', data:{ labels:['Type 1','Type 2','Type 3','จำหน่าย','ยังไม่สำรวจ'], datasets:[{data:[d.type1,d.type2,d.type3,d.type0,d.unsurveyed],backgroundColor:['#198754','#f59e0b','#dc3545','#6b7280','#e5e7eb'],borderColor:'#fff',borderWidth:2}]}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,font:{family:'Sarabun',size:11}}}}}});
+      mk('pieChart', { type:'doughnut', data:{ labels:['Type 1','Type 2','Type 3','Type 0: ในเขตไม่ตามทะเบียน','ยังไม่สำรวจ'], datasets:[{data:[d.type1,d.type2,d.type3,d.type0,d.unsurveyed],backgroundColor:['#198754','#f59e0b','#dc3545','#6b7280','#e5e7eb'],borderColor:'#fff',borderWidth:2}]}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,font:{family:'Sarabun',size:11}}}}}});
 
       // 2. Pyramid
       mk('pyramidChart', {type:'bar',data:{labels:d.pyramid.labels,datasets:[{label:'ชาย',data:d.pyramid.male.map(v=>-v),backgroundColor:'#60a5fa',borderRadius:4},{label:'หญิง',data:d.pyramid.female,backgroundColor:'#f472b6',borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,scales:{x:{stacked:true,ticks:{callback:v=>Math.abs(v)}},y:{stacked:true}},plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+': '+Math.abs(c.raw)+' คน'}},legend:{position:'bottom'}}}});
@@ -51,7 +52,7 @@ export default function DashboardPage() {
       mk('barChart', {type:'bar',data:{labels:mooKeys.map(k=>'หมู่ '+k),datasets:[{label:'ประชากร',data:mooKeys.map(k=>d.byMoo[k].total),backgroundColor:'#3949ab',borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
 
       // 4. Stacked Bar (Type per Moo)
-      mk('stackedBarChart', {type:'bar',data:{labels:mooKeys.map(k=>'หมู่ '+k),datasets:[{label:'T1',data:mooKeys.map(k=>d.byMoo[k].type1),backgroundColor:'#198754'},{label:'T2',data:mooKeys.map(k=>d.byMoo[k].type2),backgroundColor:'#f59e0b'},{label:'T3',data:mooKeys.map(k=>d.byMoo[k].type3),backgroundColor:'#dc3545'},{label:'ยังไม่สำรวจ',data:mooKeys.map(k=>d.byMoo[k].unsurveyed||0),backgroundColor:'#e5e7eb'}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{stacked:true},y:{stacked:true}},plugins:{legend:{position:'bottom',labels:{usePointStyle:true}}}}});
+      mk('stackedBarChart', {type:'bar',data:{labels:mooKeys.map(k=>'หมู่ '+k),datasets:[{label:'T0',data:mooKeys.map(k=>d.byMoo[k].type0),backgroundColor:'#64748b'},{label:'T1',data:mooKeys.map(k=>d.byMoo[k].type1),backgroundColor:'#198754'},{label:'T2',data:mooKeys.map(k=>d.byMoo[k].type2),backgroundColor:'#f59e0b'},{label:'T3',data:mooKeys.map(k=>d.byMoo[k].type3),backgroundColor:'#dc3545'},{label:'ยังไม่สำรวจ',data:mooKeys.map(k=>d.byMoo[k].unsurveyed||0),backgroundColor:'#e5e7eb'}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{stacked:true},y:{stacked:true}},plugins:{legend:{position:'bottom',labels:{usePointStyle:true}}}}});
 
       // 5. Smoke Doughnut
       const r = d.risk;
@@ -92,23 +93,24 @@ export default function DashboardPage() {
   // ─── computeStats (same as Code.gs getDashboardData) ───
   function computeStats(rows) {
     const AR = ['0-4','5-9','10-14','15-19','20-24','25-29','30-34','35-39','40-44','45-49','50-54','55-59','60-64','65-69','70-74','75-79','80+'];
-    const s = { total:0, unsurveyed:0, type0:0, type1:0, type2:0, type3:0, type4:0, byMoo:{}, houses: new Set(), chronicCount:0, population:{children:0,working:0,elderly:0}, ageGroups:{male:{},female:{}}, kpi:{hep:{total:0,screened:0},fobt:{total:0,screened:0},hpv:{total:0,screened:0},child:{total:0,normal:0}}, risk:{target15plus:0,smokeSurveyed:0,alcSurveyed:0,smoking:{neverSmoked:0,quit:0,current:0},alcohol:{neverDrank:0,quit:0,current:0},fagerstrom:{low:0,medium:0,high:0},assist:{low:0,medium:0,high:0},byMoo:[]}, vhvStats:{}, kpiByMoo:[] };
+    const s = { total:0, unsurveyed:0, discharged:0, deceased:0, outside:0, type0:0, type1:0, type2:0, type3:0, type4:0, byMoo:{}, houses: new Set(), chronicCount:0, population:{children:0,working:0,elderly:0}, ageGroups:{male:{},female:{}}, kpi:{hep:{total:0,screened:0},fobt:{total:0,screened:0},hpv:{total:0,screened:0},child:{total:0,normal:0}}, risk:{target15plus:0,smokeSurveyed:0,alcSurveyed:0,smoking:{neverSmoked:0,quit:0,current:0},alcohol:{neverDrank:0,quit:0,current:0},fagerstrom:{low:0,medium:0,high:0},assist:{low:0,medium:0,high:0},byMoo:[]}, vhvStats:{}, kpiByMoo:[] };
     AR.forEach(r => { s.ageGroups.male[r]=0; s.ageGroups.female[r]=0; });
     const rBM = {}, kBM = {};
 
     (rows||[]).forEach(r => {
-      const rawT = r.residency_type; const type = (rawT!=null && String(rawT).trim()!=='') ? String(rawT).trim() : '';
+      const state = populationStatus(r); const type = state.residencyType;
       const moo = String(r.moo||'').trim(); const house = String(r.house||'').trim(); const vhv = String(r.vhv||'').trim();
       const gender = MALE_TITLES.includes(String(r.title||'').trim()) ? 'male' : 'female';
       const age = calculateAge(r.birth_date);
-      if (type==='0') { s.type0++; return; } if (type==='4') { s.type4++; return; }
+      if (!state.active) { if (state.deceased) s.deceased++; else s.discharged++; return; }
+      if (type==='4') { s.outside++; return; }
       s.total++;
-      if (type==='1') s.type1++; else if (type==='2') s.type2++; else if (type==='3') s.type3++; else s.unsurveyed++;
+      if (type==='0') s.type0++; else if (type==='1') s.type1++; else if (type==='2') s.type2++; else if (type==='3') s.type3++; else s.unsurveyed++;
 
       if (moo && moo!=='-') {
-        if (!s.byMoo[moo]) s.byMoo[moo]={total:0,type1:0,type2:0,type3:0,unsurveyed:0};
+        if (!s.byMoo[moo]) s.byMoo[moo]={total:0,type0:0,type1:0,type2:0,type3:0,unsurveyed:0};
         s.byMoo[moo].total++;
-        if (type==='1') s.byMoo[moo].type1++; else if (type==='2') s.byMoo[moo].type2++; else if (type==='3') s.byMoo[moo].type3++; else s.byMoo[moo].unsurveyed++;
+        if (type==='0') s.byMoo[moo].type0++; else if (type==='1') s.byMoo[moo].type1++; else if (type==='2') s.byMoo[moo].type2++; else if (type==='3') s.byMoo[moo].type3++; else s.byMoo[moo].unsurveyed++;
         s.houses.add(moo+'-'+house);
       }
       if (age!=='-') { if (age<15) s.population.children++; else if (age>=60) s.population.elderly++; else s.population.working++; const idx=Math.min(Math.floor(age/5),16); s.ageGroups[gender][AR[idx]]++; }
@@ -175,7 +177,7 @@ export default function DashboardPage() {
 
           {/* Type Stats */}
           <div className="row g-2 g-md-3 row-cols-2 row-cols-md-3 row-cols-lg-6 mb-4">
-            {[{l:'ทั้งหมด',v:d?.total,i:'users',c:'total'},{l:'Type 1',v:d?.type1,i:'house-user',c:'type1'},{l:'Type 2',v:d?.type2,i:'person-walking',c:'type2'},{l:'Type 3',v:d?.type3,i:'user-plus',c:'type3'},{l:'จำหน่าย',v:d?.type0,i:'user-xmark',c:'type0'}].map(({l,v,i,c})=><div className={c==='total'?'col-12 col-md-4 col-lg-2':'col'} key={l}><div className={`stat-card ${c}`}><i className={`fa-solid fa-${i} stat-icon`}/><div className="stat-label">{l}</div><div className="stat-number">{v??<span className="num-spin"/>}</div></div></div>)}
+            {[{l:'ทั้งหมด',v:d?.total,i:'users',c:'total'},{l:'Type 1',v:d?.type1,i:'house-user',c:'type1'},{l:'Type 2',v:d?.type2,i:'person-walking',c:'type2'},{l:'Type 3',v:d?.type3,i:'user-plus',c:'type3'},{l:'Type 0 ในเขตไม่ตามทะเบียน',v:d?.type0,i:'house',c:'type0'},{l:'นอกเขต (Type 4)',v:d?.outside,i:'map',c:'type0'},{l:'จำหน่าย/รอตรวจเหตุ',v:d?.discharged,i:'user-xmark',c:'type0'},{l:'เสียชีวิต',v:d?.deceased,i:'user-minus',c:'type0'}].map(({l,v,i,c})=><div className={c==='total'?'col-12 col-md-4 col-lg-2':'col'} key={l}><div className={`stat-card ${c}`}><i className={`fa-solid fa-${i} stat-icon`}/><div className="stat-label">{l}</div><div className="stat-number">{v??<span className="num-spin"/>}</div></div></div>)}
             <div className="col"><div className="stat-card" style={{borderLeftColor:'#e5e7eb',background:'#f9fafb'}}><i className="fa-solid fa-question stat-icon" style={{color:'#9ca3af'}}/><div className="stat-label" style={{color:'#9ca3af'}}>ยังไม่สำรวจ</div><div className="stat-number" style={{color:'#9ca3af'}}>{d?.unsurveyed??<span className="num-spin"/>}</div></div></div>
           </div>
 

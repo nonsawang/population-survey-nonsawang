@@ -6,6 +6,7 @@ import { selectAll } from '@/lib/supabase';
 import { supabase } from '@/lib/supabase';
 import { calculateAge, getBirthYear, MALE_TITLES } from '@/lib/utils';
 import TopBar from '@/components/TopBar';
+import { populationStatus } from '@/lib/population-status';
 
 const KPI_INFO = {
   HEP:  { name:'คัดกรอง HBV/HCV', icon:'fa-virus', color:'#0891b2', desc:'เกิดก่อน พ.ศ.2535' },
@@ -38,7 +39,9 @@ export default function ScreeningPage() {
       const rows = await selectAll('population');
       const cands = [];
       (rows||[]).forEach(r => {
-        const t = String(r.residency_type||'').trim();
+        const state = populationStatus(r);
+        if (!state.active) return;
+        const t = state.residencyType;
         if (t !== '1' && t !== '3') return;
         const age = calculateAge(r.birth_date);
         const birthYear = getBirthYear(r.birth_date);

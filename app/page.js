@@ -7,6 +7,7 @@ import { calculateAge, sanitizeInput, validateCID, VALID_MOOS, CHRONIC_LIST } fr
 import TopBar from '@/components/TopBar';
 import SurveyWorkPanel from '@/components/SurveyWorkPanel';
 import { writeLog } from '@/lib/logger';
+import { populationStatus, statusUpdate, RESIDENCY_TYPES, DISCHARGE_TYPES } from '@/lib/population-status';
 
 // ✅ SweetAlert2 — ใช้ CDN จาก layout.js (window.Swal)
 const getSwal = () => typeof window !== 'undefined' ? window.Swal : null;
@@ -29,6 +30,9 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
   const [fagerAnswers, setFagerAnswers] = useState(person.fagerstromAnswers || {});
   const [assistAnswers, setAssistAnswers] = useState(person.assistAnswers || {});
   const [saving, setSaving] = useState(false);
+  const [typeValue, setTypeValue] = useState(person.residencyType);
+  const [dischargeValue, setDischargeValue] = useState(person.dischargeCode);
+  useEffect(() => { setTypeValue(person.residencyType); setDischargeValue(person.dischargeCode); }, [person.residencyType, person.dischargeCode]);
 
   // 🎯 State ของคัดกรองพยาธิใบไม้ตับ
   const [ovAnswers, setOvAnswers] = useState({ q1: '', q2: '', q3: '', q4: '', q5: '' });
@@ -50,10 +54,12 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
 
   const getChronicFinal = () => chronicValue === '__OTHER__' ? (chronicOther.trim() || '-') : chronicValue;
 
-  const doSave = async (type) => {
+  const doSave = async (type, discharge = person.dischargeCode, changes = {}) => {
+    if (!person.statusSchemaReady) { swal({ icon:'info', title:'ต้องปรับตาราง Supabase ก่อน', text:'รัน migration สถานะ HOSxP แล้วโหลดหน้านี้ใหม่' }); return; }
+    if (!DISCHARGE_TYPES.some(item => item.code === discharge)) { swal({ icon: 'warning', title: 'กรุณาระบุเหตุจำหน่ายก่อน', text: 'ข้อมูล Type 0 เดิมยังไม่มีเหตุจำหน่ายที่ตรงกับ HOSxP' }); return; }
     setSaving(true);
-    await onSave(person.personId, type, relValue, getChronicFinal());
-    setSaving(false);
+    try { await onSave(person.personId, type, changes.relation ?? relValue, changes.chronic ?? getChronicFinal(), discharge); }
+    finally { setSaving(false); }
   };
 
   // เช็คว่าเคยมีข้อมูลถูกกรอกไว้ไหม
@@ -141,13 +147,13 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
         <div className="row g-2 mb-3 p-2 rounded-3 mx-0" style={{ background: '#f8f9fa' }}>
           <div className="col-12 col-sm-6 px-1">
             <label className="text-muted" style={{ fontSize: '.68em', fontWeight: 600 }}>สถานะในบ้าน</label>
-            <select className="form-select form-select-sm border-0 fw-bold" style={{ fontSize: '.85rem', color: 'var(--primary)' }} value={relValue} onChange={e => { setRelValue(e.target.value); doSave(person.residencyType); }}>
+            <select className="form-select form-select-sm border-0 fw-bold" style={{ fontSize: '.85rem', color: 'var(--primary)' }} value={relValue} onChange={e => { setRelValue(e.target.value); doSave(person.residencyType, person.dischargeCode, { relation: e.target.value }); }}>
               {rels.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
           <div className="col-12 col-sm-6 px-1">
             <label className="text-muted" style={{ fontSize: '.68em', fontWeight: 600 }}>โรคประจำตัว</label>
-            <select className="form-select form-select-sm border-0 fw-bold text-danger" style={{ fontSize: '.85rem' }} value={chronicValue} onChange={e => { setChronicValue(e.target.value); setShowOther(e.target.value === '__OTHER__'); if (e.target.value !== '__OTHER__') doSave(person.residencyType); }}>
+            <select className="form-select form-select-sm border-0 fw-bold text-danger" style={{ fontSize: '.85rem' }} value={chronicValue} onChange={e => { setChronicValue(e.target.value); setShowOther(e.target.value === '__OTHER__'); if (e.target.value !== '__OTHER__') doSave(person.residencyType, person.dischargeCode, { chronic: e.target.value }); }}>
               {CHRONIC_LIST.map(c => <option key={c} value={c}>{c}</option>)}
               <option value="__OTHER__">อื่นๆ (ระบุ)</option>
             </select>
@@ -160,20 +166,24 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
           </div>
         </div>
 
-        {/* Type Buttons */}
-        <div className="row g-1 mb-1">
-          {[{ t: '1', label: 'Type 1', desc: 'มีชื่อ+อยู่จริง', cls: 'success' }, { t: '2', label: 'Type 2', desc: 'มีชื่อ+ไม่อยู่', cls: 'warning' }, { t: '3', label: 'Type 3', desc: 'ไม่มีชื่อ+มาอยู่', cls: 'danger' }].map(({ t, label, desc, cls }) => (
-            <div className="col-4" key={t}>
-              <button onClick={() => doSave(t)} className={`btn btn-sm btn-type w-100 h-100 py-2 ${person.residencyType == t ? `btn-${cls} active-type` : `btn-outline-${cls}`}`}>
-                <div className="fw-bold">{label}</div><div className="survey-type-description">{desc}</div>
-              </button>
-            </div>
-          ))}
-        </div>
-        <div className="d-flex gap-1 mt-1">
-          <button onClick={() => { const S = getSwal(); S && S.fire({ title: 'ยืนยัน?', text: `บันทึก ${person.fullname} เป็น "เสียชีวิต"`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#1f2937', confirmButtonText: 'ยืนยัน', cancelButtonText: 'ยกเลิก' }).then(r => { if (r.isConfirmed) doSave('4'); }); }} className={`btn btn-sm btn-type ${person.residencyType == 4 ? 'btn-dark active-type' : 'btn-outline-dark'} flex-fill`}><i className="fa-solid fa-skull" /> เสียชีวิต</button>
-          <button onClick={() => { const S = getSwal(); S && S.fire({ title: 'ยืนยันจำหน่าย?', text: `จำหน่าย ${person.fullname} ออกจากพื้นที่`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#6b7280', confirmButtonText: 'ยืนยัน', cancelButtonText: 'ยกเลิก' }).then(r => { if (r.isConfirmed) doSave('0'); }); }} className={`btn btn-sm btn-type ${person.residencyType == 0 ? 'btn-secondary active-type' : 'btn-outline-secondary'} flex-fill`}><i className="fa-solid fa-ban" /> จำหน่าย</button>
-          <button onClick={() => onMove(person)} className="btn btn-sm btn-outline-dark flex-fill dashed-border"><i className="fa-solid fa-truck-moving" /> ย้าย</button>
+        <div className="border rounded-3 p-3 my-3 bg-white">
+          <h3 className="h6 fw-bold">สถานะตาม HOSxP</h3>
+          {!person.statusSchemaReady && <p className="small text-danger" role="status">ต้องรัน migration สถานะ HOSxP ใน Supabase ก่อนบันทึก</p>}
+          {person.needsStatusReview && <p className="small text-warning-emphasis">{person.legacyDischarge ? 'Type 0 เดิมใช้ทั้งจำหน่ายและนอกเขต กรุณาตรวจประเภทอยู่อาศัยและสถานะจำหน่ายตามข้อเท็จจริง' : 'กรุณาตรวจประเภทอยู่อาศัยก่อนส่งข้อมูลเข้า HOSxP'}</p>}
+          <div className="row g-2">
+            <div className="col-12 col-md-7"><label className="form-label" htmlFor={'residency-' + person.personId}>ประเภทอยู่อาศัย</label><select id={'residency-' + person.personId} className="form-select" value={typeValue} onChange={e => setTypeValue(e.target.value)}><option value="">ยังไม่ระบุ</option>{RESIDENCY_TYPES.map(item => <option key={item.code} value={item.code}>Type {item.code} — {item.label}</option>)}</select></div>
+            <div className="col-12 col-md-5"><label className="form-label" htmlFor={'discharge-' + person.personId}>สถานะจำหน่าย</label><select id={'discharge-' + person.personId} className="form-select" value={dischargeValue} onChange={e => setDischargeValue(e.target.value)}><option value="" disabled>รอตรวจเหตุจำหน่ายเดิม</option>{DISCHARGE_TYPES.map(item => <option key={item.code} value={item.code}>{item.code} — {item.label}</option>)}</select></div>
+          </div>
+          <button type="button" className="btn btn-primary w-100 mt-3" disabled={saving || !dischargeValue || !person.statusSchemaReady} onClick={async () => {
+            if (dischargeValue !== person.dischargeCode) {
+              const label = DISCHARGE_TYPES.find(item => item.code === dischargeValue)?.label;
+              const S = getSwal();
+              const confirmed = S ? (await S.fire({ title: 'ยืนยันเปลี่ยนสถานะจำหน่าย', text: person.fullname + ' → ' + label, icon: 'warning', showCancelButton: true, confirmButtonText: 'ยืนยัน', cancelButtonText: 'ยกเลิก' })).isConfirmed : window.confirm(person.fullname + ' → ' + label);
+              if (!confirmed) return;
+            }
+            await doSave(typeValue, dischargeValue);
+          }}>บันทึกประเภทอยู่อาศัยและสถานะจำหน่าย</button>
+          <button type="button" onClick={() => onMove(person)} className="btn btn-outline-secondary w-100 mt-2">ย้ายบ้านภายในพื้นที่</button>
         </div>
 
         {/* ─── Risk Section (บุหรี่/สุรา) ─── */}
@@ -369,7 +379,11 @@ export default function SurveyPage() {
         fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''), 
         age: calculateAge(r.birth_date), 
         relation: r.relation||'ไม่ระบุ', 
-        residencyType: r.residency_type||'3', 
+        residencyType: populationStatus(r).residencyType,
+        dischargeCode: populationStatus(r).dischargeCode,
+        needsStatusReview: populationStatus(r).needsReview,
+        legacyDischarge: populationStatus(r).legacyDischarge,
+        statusSchemaReady: Object.prototype.hasOwnProperty.call(r, 'status_model_version'),
         chronic: r.chronic||'-', 
         vhv: r.vhv||'ไม่ระบุ', 
         smokingStatus: r.smoking_status||'', 
@@ -410,7 +424,10 @@ const searchDataSilent = async () => {
         fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''), 
         age: calculateAge(r.birth_date), 
         relation: r.relation||'ไม่ระบุ', 
-        residencyType: r.residency_type||'3', 
+        residencyType: populationStatus(r).residencyType,
+        dischargeCode: populationStatus(r).dischargeCode,
+        needsStatusReview: populationStatus(r).needsReview,
+        legacyDischarge: populationStatus(r).legacyDischarge,
         chronic: r.chronic||'-', 
         vhv: r.vhv||'ไม่ระบุ', 
         smokingStatus: r.smoking_status||'', 
@@ -425,11 +442,11 @@ const searchDataSilent = async () => {
     setResults(mapped);
   };
 
-const handleSave = async (personId, newType, relation, chronic) => {
+const handleSave = async (personId, newType, relation, chronic, dischargeCode) => {
     const { error } = await supabase
       .from('population')
       .update({ 
-        residency_type: String(newType), 
+        ...statusUpdate(newType, dischargeCode),
         relation: sanitizeInput(relation), 
         chronic: chronic || '-', 
         updated_at: new Date().toISOString() 
@@ -437,10 +454,10 @@ const handleSave = async (personId, newType, relation, chronic) => {
       .eq('person_id', personId);
       
     if (error) {
-      swal({icon:'error',title:'บันทึกไม่สำเร็จ',text:error.message});
+      swal({icon:'error',title:'บันทึกไม่สำเร็จ',text:['42703','PGRST204'].includes(error.code) ? 'ต้องปรับตาราง Supabase ด้วย migration สถานะ HOSxP ก่อนใช้งาน' : error.message});
     } else {
       // 🎯 [เพิ่มใหม่] บันทึก Activity Log: UPDATE_STATUS
-      const detailStr = `เปลี่ยน Type->${newType} | ${relation}`;
+      const detailStr = `ประเภทอยู่อาศัย->${newType || 'ไม่ระบุ'} | สถานะจำหน่าย->${dischargeCode} | ${relation}`;
       await writeLog(user?.userId, user?.username, 'UPDATE_STATUS', detailStr, personId);
     }
     
@@ -596,13 +613,17 @@ const submitVhvChange = async () => {
     const existingId = f.existingPersonId || null;
     const recordId = existingId || ('P-' + Date.now());
     const isUpdate = !!existingId;
+    if (existingId) {
+      const { data: current, error: lookupError } = await supabase.from('population').select('*').eq('person_id', existingId).single();
+      if (lookupError || !current || !populationStatus(current).active) { swal({ icon:'warning', title:'กรุณาตรวจสถานะบุคคลเดิมก่อนย้ายเข้า', text:'ต้องตรวจสอบสถานะจำหน่ายของบุคคลเดิมในหน้าบ้านเดิมก่อน' }); return; }
+    }
 
     showLoading(isUpdate ? 'กำลังย้ายมาบ้านนี้...' : 'กำลังบันทึก...');
     const { error } = await supabase.from('population').upsert({
       person_id: recordId, cid: cleanCid, title: sanitizeInput(f.title) || 'นาย',
       fname: sanitizeInput(f.fname), lname: sanitizeInput(f.lname || ''),
       birth_date: birthISO, house: house.trim(), moo, relation: sanitizeInput(f.relation) || 'ผู้อาศัย',
-      residency_type: f.type || '3', chronic: chronicVal || '-', vhv: sanitizeInput(f.vhv),
+      ...statusUpdate(f.type || '3', '9'), chronic: chronicVal || '-', vhv: sanitizeInput(f.vhv),
       updated_at: new Date().toISOString(), status: 'Active'
     });
     
@@ -731,9 +752,9 @@ const submitVhvChange = async () => {
                   <div>
                     <h6 className="fw-bold text-success mb-1"><i className="fa-solid fa-user-check me-1"/> ปรับปรุงสถานะ (Type)</h6>
                     <div className="d-flex flex-wrap gap-1 mt-1">
-                      <span className="badge bg-success">Type 1 มีชื่อ+อยู่จริง</span>
+                      <span className="badge bg-secondary">Type 0 ในเขตไม่ตามทะเบียน</span><span className="badge bg-success">Type 1 มีชื่อ+อยู่จริง</span>
                       <span className="badge bg-warning text-dark">Type 2 มีชื่อ+ไม่อยู่</span>
-                      <span className="badge bg-danger">Type 3 ไม่มีชื่อ+มาอยู่</span>
+                      <span className="badge bg-danger">Type 3 ไม่มีชื่อ+มาอยู่</span><span className="badge bg-secondary">Type 4 บุคคลนอกเขต</span>
                     </div>
                   </div>
                 </div>
@@ -904,7 +925,7 @@ const submitVhvChange = async () => {
                   </div>
                   <div className="col-6"><label className="small fw-bold" style={{color:'var(--primary)'}}>ประเภทประชากร</label>
                     <select className="form-select fw-bold" value={addForm.type} onChange={e=>setAddForm({...addForm,type:e.target.value})} style={{borderColor:'var(--primary-light)'}}>
-                      <option value="3">Type 3 (ไม่มีชื่อ+มาอยู่)</option><option value="1">Type 1 (มีชื่อ+อยู่จริง)</option><option value="2">Type 2 (มีชื่อ+ไม่อยู่)</option><option value="0">Type 0 (นอกเขต)</option>
+                      {RESIDENCY_TYPES.map(item => <option key={item.code} value={item.code}>Type {item.code} — {item.label}</option>)}
                     </select>
                   </div>
                 </div>
