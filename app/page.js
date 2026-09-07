@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { calculateAge, sanitizeInput, validateCID, VALID_MOOS, CHRONIC_LIST } from '@/lib/utils';
 import TopBar from '@/components/TopBar';
+import SurveyWorkPanel from '@/components/SurveyWorkPanel';
 import { writeLog } from '@/lib/logger';
 
 // ✅ SweetAlert2 — ใช้ CDN จาก layout.js (window.Swal)
@@ -298,6 +299,10 @@ export default function SurveyPage() {
   const [house, setHouse] = useState('');
   const [results, setResults] = useState(null);
   const [searching, setSearching] = useState(false);
+  const [workRefresh, setWorkRefresh] = useState(0);
+  useEffect(() => {
+    if (results !== null) document.getElementById('survey-house-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [results]);
   const [showGuide, setShowGuide] = useState(true);
   const [vhvData, setVhvData] = useState({});
   const [moveTarget, setMoveTarget] = useState(null);
@@ -334,12 +339,13 @@ export default function SurveyPage() {
     }
   }, [user]);
 
- const searchData = async () => {
-    if (!moo || !house.trim()) { swal({icon:'warning',title:'กรุณาระบุข้อมูลให้ครบ'}); return; }
-    if (allowedMoos && !allowedMoos.includes(moo)) { swal({icon:'error',title:'ไม่มีสิทธิ์เข้าถึงหมู่ ' + moo}); return; }
+ const searchData = async (targetMoo = moo, targetHouse = house) => {
+    if (!targetMoo || !targetHouse.trim()) { swal({icon:'warning',title:'กรุณาระบุข้อมูลให้ครบ'}); return; }
+    if (allowedMoos && !allowedMoos.includes(targetMoo)) { swal({icon:'error',title:'ไม่มีสิทธิ์เข้าถึงหมู่ ' + targetMoo}); return; }
+    setMoo(targetMoo); setHouse(targetHouse.trim()); setResults(null);
     setSearching(true); showLoading('กำลังค้นหา...');
     
-    const { data, error } = await supabase.from('population').select('*').eq('house', house.trim()).eq('moo', moo).order('fname');
+    const { data, error } = await supabase.from('population').select('*').eq('house', targetHouse.trim()).eq('moo', targetMoo).order('fname');
     
     closeLoading(); setSearching(false);
     if (error) { swal({icon:'error',title:'ค้นหาไม่สำเร็จ',text:error.message}); return; }
@@ -381,6 +387,7 @@ export default function SurveyPage() {
   };
   // ✅ Refresh เงียบๆ — ไม่แสดง Swal loading (ใช้หลังบันทึก Type)
 const searchDataSilent = async () => {
+    setWorkRefresh(value => value + 1);
     if (!moo || !house.trim()) return;
     const { data } = await supabase.from('population').select('*').eq('house', house.trim()).eq('moo', moo).order('fname');
     
@@ -674,6 +681,8 @@ const submitVhvChange = async () => {
           </a>
         </div>
           
+        <SurveyWorkPanel user={user} refreshKey={workRefresh} opening={searching} onOpenHouse={(m, h) => searchData(m, h)} />
+
         {/* Search */}
         <div className="card border-0 shadow-sm mb-4 fade-in" style={{borderRadius:16}}>
           <div className="card-body p-4">
@@ -691,7 +700,7 @@ const submitVhvChange = async () => {
                 <input type="text" className="form-control" placeholder="ระบุเลขที่บ้าน" value={house} onChange={e => setHouse(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchData()} />
               </div>
               <div className="col-12 mt-3">
-                <button onClick={searchData} className="btn w-100 rounded-pill text-white fw-bold" style={{background:'var(--primary)',padding:10}} disabled={searching}>
+                <button onClick={() => searchData()} className="btn w-100 rounded-pill text-white fw-bold" style={{background:'var(--primary)',padding:10}} disabled={searching}>
                   {searching ? <><span className="spinner-border spinner-border-sm me-1"/>ค้นหา...</> : <><i className="fa-solid fa-magnifying-glass me-1"/> ค้นหาข้อมูล</>}
                 </button>
               </div>
@@ -761,7 +770,7 @@ const submitVhvChange = async () => {
 
         {/* Results */}
         {results !== null && (
-          <div>
+          <div id="survey-house-results">
             {results.length === 0 ? (
               <div className="card border-0 bg-light mt-3 text-center py-5 fade-in" style={{borderRadius:16}}>
                 <i className="fa-solid fa-house-chimney-crack fa-4x text-secondary mb-3"/>
