@@ -128,7 +128,7 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
       {saving && <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 5 }}><span className="spinner-border spinner-border-sm text-primary" /></div>}
       <div className="card-body p-3">
         {/* Header */}
-        <div className="d-flex justify-content-between align-items-center mb-2">
+        <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
           <h6 className="fw-bold mb-0" style={{ color: 'var(--primary)' }}>
             {person.fullname}
             {person.smokingStatus && person.smokingStatus !== '-' && person.smokingStatus !== '' && <span className="badge ms-1" style={{ fontSize: '.65rem', background: '#6f42c1', color: 'white' }}><i className="fa-solid fa-smoking me-1" />{person.smokingStatus === 'สูบ' ? 'สูบ' : 'เลิกแล้ว'}</span>}
@@ -139,13 +139,13 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
 
         {/* Relation + Chronic */}
         <div className="row g-2 mb-3 p-2 rounded-3 mx-0" style={{ background: '#f8f9fa' }}>
-          <div className="col-6 px-1">
+          <div className="col-12 col-sm-6 px-1">
             <label className="text-muted" style={{ fontSize: '.68em', fontWeight: 600 }}>สถานะในบ้าน</label>
             <select className="form-select form-select-sm border-0 fw-bold" style={{ fontSize: '.85rem', color: 'var(--primary)' }} value={relValue} onChange={e => { setRelValue(e.target.value); doSave(person.residencyType); }}>
               {rels.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
-          <div className="col-6 px-1">
+          <div className="col-12 col-sm-6 px-1">
             <label className="text-muted" style={{ fontSize: '.68em', fontWeight: 600 }}>โรคประจำตัว</label>
             <select className="form-select form-select-sm border-0 fw-bold text-danger" style={{ fontSize: '.85rem' }} value={chronicValue} onChange={e => { setChronicValue(e.target.value); setShowOther(e.target.value === '__OTHER__'); if (e.target.value !== '__OTHER__') doSave(person.residencyType); }}>
               {CHRONIC_LIST.map(c => <option key={c} value={c}>{c}</option>)}
@@ -165,7 +165,7 @@ function PersonCard({ person, onSave, onMove, onRefresh, user }) {
           {[{ t: '1', label: 'Type 1', desc: 'มีชื่อ+อยู่จริง', cls: 'success' }, { t: '2', label: 'Type 2', desc: 'มีชื่อ+ไม่อยู่', cls: 'warning' }, { t: '3', label: 'Type 3', desc: 'ไม่มีชื่อ+มาอยู่', cls: 'danger' }].map(({ t, label, desc, cls }) => (
             <div className="col-4" key={t}>
               <button onClick={() => doSave(t)} className={`btn btn-sm btn-type w-100 h-100 py-2 ${person.residencyType == t ? `btn-${cls} active-type` : `btn-outline-${cls}`}`}>
-                <div className="fw-bold">{label}</div><div style={{ fontSize: '.62rem' }}>{desc}</div>
+                <div className="fw-bold">{label}</div><div className="survey-type-description">{desc}</div>
               </button>
             </div>
           ))}
@@ -303,7 +303,7 @@ export default function SurveyPage() {
   useEffect(() => {
     if (results !== null) document.getElementById('survey-house-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [results]);
-  const [showGuide, setShowGuide] = useState(true);
+  const [showGuide, setShowGuide] = useState(false);
   const [vhvData, setVhvData] = useState({});
   const [moveTarget, setMoveTarget] = useState(null);
   const [moveMoo, setMoveMoo] = useState('');
@@ -649,21 +649,21 @@ const submitVhvChange = async () => {
   return (
     <>
       <TopBar showAdmin />
-      <div className="container py-3" style={{maxWidth:600}}>
-        <h5 className="text-center mb-3 fw-bold" style={{color:'var(--primary)'}}><i className="fa-solid fa-clipboard-user"/> ระบบสำรวจประชากร</h5>
+      <div className="container survey-page py-4">
+        <header className="survey-heading"><div><p className="survey-eyebrow">รพ.สต.บ้านโนนสว่าง</p><h1>ระบบสำรวจประชากร</h1><p>ติดตามงานคงค้าง ค้นหาบ้าน และบันทึกการสำรวจ</p></div><a className="btn btn-primary" href="#survey-house-search"><i className="fa-solid fa-magnifying-glass me-2" aria-hidden="true"/>ค้นหาบ้าน</a></header>
 
-<div className="fab-container">
+<nav className="survey-navigation" aria-label="เมนูงานสำรวจ">
           {/* 🟢 เช็กสิทธิ์: ถ้าไม่ใช่ อสม. ถึงจะมองเห็นปุ่ม Screening */}
           {user?.role !== 'vhv' && (
-            <a href="/screening" className="fab-btn bg-success">
-              <i className="fa-solid fa-clipboard-check fa-lg"/>
+            <a href="/screening" className="survey-nav-link">
+              <i className="fa-solid fa-clipboard-check" aria-hidden="true"/> คัดกรองสุขภาพ
             </a>
           )}
           
           {/* 🟢 เช็กสิทธิ์: ถ้าไม่ใช่ อสม. ถึงจะมองเห็นปุ่ม Dashboard */}
           {user?.role !== 'vhv' && (
-            <a href="/dashboard" className="fab-btn" style={{background:'var(--primary)'}}>
-              <i className="fa-solid fa-chart-line fa-lg"/>
+            <a href="/dashboard" className="survey-nav-link">
+              <i className="fa-solid fa-chart-line" aria-hidden="true"/> แดชบอร์ด
             </a>
           )}
 
@@ -673,31 +673,32 @@ const submitVhvChange = async () => {
             href={`https://script.google.com/macros/s/AKfycbxodmongrNvVdVwSGld4uwC6hiu7F6RYyCpr7HSEe9ZJDDCZjxS9feQSEqKuD1QRhFu/exec?page=dashboard&token=b69b0981-78df-41e2-998e-f21aee9b730d&user=${user?.username || 'admin'}`} 
             target="_blank" 
             rel="noopener noreferrer"
-            className="fab-btn" 
-            style={{background:'#f59e0b'}} 
+            className="survey-nav-link" 
+             
             title="แดชบอร์ด GAS"
           >
-            <i className="fa-solid fa-chart-pie fa-lg"/>
+            <i className="fa-solid fa-chart-pie" aria-hidden="true"/> รายงาน GAS ↗
           </a>
-        </div>
+        </nav>
           
         <SurveyWorkPanel user={user} refreshKey={workRefresh} opening={searching} onOpenHouse={(m, h) => searchData(m, h)} />
 
         {/* Search */}
-        <div className="card border-0 shadow-sm mb-4 fade-in" style={{borderRadius:16}}>
+        <div id="survey-house-search" className="card survey-search border-0 shadow-sm mb-4 fade-in" style={{borderRadius:16}}>
           <div className="card-body p-4">
+            <h2 className="h5 fw-bold mb-1">ค้นหาบ้านเพื่อสำรวจ</h2><p className="text-muted small mb-3">เลือกหมู่และกรอกเลขที่บ้าน เพื่อดูรายชื่อผู้อาศัย</p>
             <div className="row g-2">
               <div className="col-5">
-                <label className="small text-muted fw-bold">หมู่ที่</label>
-                <select className="form-select text-center" value={moo} onChange={e => setMoo(e.target.value)}>
+                <label htmlFor="survey-moo" className="form-label fw-bold">หมู่ที่</label>
+                <select id="survey-moo" className="form-select text-center" value={moo} onChange={e => setMoo(e.target.value)}>
                   <option value="" disabled>เลือก</option>
                   {/* ✅ แสดงเฉพาะหมู่ที่มีสิทธิ์ */}
                   {visibleMoos.map(m => <option key={m} value={m}>หมู่ {m}</option>)}
                 </select>
               </div>
               <div className="col-7">
-                <label className="small text-muted fw-bold">เลขที่บ้าน</label>
-                <input type="text" className="form-control" placeholder="ระบุเลขที่บ้าน" value={house} onChange={e => setHouse(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchData()} />
+                <label htmlFor="survey-house" className="form-label fw-bold">เลขที่บ้าน</label>
+                <input id="survey-house" type="text" className="form-control" placeholder="เช่น 24/1" value={house} onChange={e => setHouse(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchData()} />
               </div>
               <div className="col-12 mt-3">
                 <button onClick={() => searchData()} className="btn w-100 rounded-pill text-white fw-bold" style={{background:'var(--primary)',padding:10}} disabled={searching}>
@@ -763,7 +764,7 @@ const submitVhvChange = async () => {
           </div>
         )}
         <div className="text-center mt-3 mb-3">
-          <button onClick={() => setShowGuide(!showGuide)} className={`btn btn-sm ${showGuide ? 'btn-outline-primary' : 'btn-primary'} rounded-pill px-4`}>
+          <button aria-expanded={showGuide} onClick={() => setShowGuide(!showGuide)} className={`btn btn-sm ${showGuide ? 'btn-outline-primary' : 'btn-primary'} rounded-pill px-4`}>
             <i className={`fa-solid fa-eye${showGuide ? '-slash' : ''} me-1`}/> {showGuide ? 'ซ่อนคู่มือ' : 'แสดงคู่มือ'}
           </button>
         </div>

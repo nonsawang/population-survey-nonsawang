@@ -27,10 +27,10 @@ export default function TopBar({ showAdmin = false }) {
 
   return (
     <div className="top-bar">
-      <div style={{cursor:'pointer'}} onClick={() => router.push('/')}>
+      <a className="top-bar-brand" href="/">
         <i className="fa-solid fa-hospital me-2" style={{opacity:.7}} /><strong>รพ.สต.บ้านโนนสว่าง</strong>
-      </div>
-      <div style={{display:'flex',alignItems:'center',gap:15}}>
+      </a>
+      <div className="top-bar-actions">
         {user && (
           // 🟢 ปรับให้ใช้ flex เพื่อให้รูปภาพและข้อความอยู่กึ่งกลางบรรทัดเดียวกัน
           <span style={{opacity:.9, fontSize:'.85rem', display:'flex', alignItems:'center', gap:'6px'}}>
@@ -56,22 +56,18 @@ export default function TopBar({ showAdmin = false }) {
 
         {/* 🟢 ปุ่มลิงก์ไปหน้าแผนที่ (แสดงเมื่อล็อกอินแล้ว) */}
         {user && (
-          <span 
-            style={{cursor:'pointer', color:'white', fontSize:'.85rem', fontWeight:'bold', display:'flex', alignItems:'center', gap:'4px', background:'rgba(255,255,255,0.15)', padding:'4px 10px', borderRadius:'20px'}} 
-            onClick={() => router.push('/map')}
-            title="ดูแผนที่พิกัดบ้าน"
-          >
+          <a className="top-bar-link" href="/map" title="ดูแผนที่พิกัดบ้าน">
             <i className="fa-solid fa-map-location-dot" /> แผนที่
-          </span>
+          </a>
         )}
 
         {showAdmin && user?.role === 'admin' && (
-          <span style={{cursor:'pointer',color:'rgba(255,255,255,.7)',fontSize:'.8rem'}} onClick={() => router.push('/admin')}>
-            <i className="fa-solid fa-users-gear" /> Admin
-          </span>
+          <a className="top-bar-link" href="/admin">
+            <i className="fa-solid fa-users-gear" /> ผู้ดูแล
+          </a>
         )}
         <button onClick={handleLogout} className="btn-topbar-logout">
-          <i className="fa-solid fa-right-from-bracket" /> ออก
+          <i className="fa-solid fa-right-from-bracket" /> ออกจากระบบ
         </button>
       </div>
     </div>
