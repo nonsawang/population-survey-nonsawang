@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { supabase } from '@/lib/supabase';
+import VillageBoundaries from './VillageBoundaries';
 
 // 🟢 ฟังก์ชันสร้างไอคอนหมุดตามสี
 const createIcon = (color) => new L.Icon({
@@ -86,12 +87,13 @@ export default function MapComponent() {
 
   return (
     <>
-      <div className="container-fluid p-0" style={{ height: 'calc(100vh - 60px)', width: '100%' }}>
+      <div className="container-fluid p-0" style={{ height: 'calc(100vh - 60px)', width: '100%', position: 'relative' }}>
         <MapContainer center={[16.102000, 103.678235]} zoom={15} style={{ height: '100%', width: '100%', zIndex: 0 }}>
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           />
+          <VillageBoundaries />
           
           {houses.map((h, idx) => (
             <Marker key={idx} position={[h.latitude, h.longitude]} icon={createIcon(getHouseMarkerColor(h.members))}>
