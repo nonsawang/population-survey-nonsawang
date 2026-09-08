@@ -12,5 +12,6 @@
 .actions,.villages { display:flex;flex-wrap:wrap;gap:8px;margin:10px 0; }
 .draftNote { background:#fff3cd;padding:10px;border-radius:8px;color:#664d03; }
 .error { color:#b42318;background:#fff1f0;padding:8px; }
+.pointLabel { background:transparent;border:0;box-shadow:none;color:#0f172a;font-size:12px;font-weight:700;padding:0;pointer-events:none; }
 .tools :is(button,input,select):focus-visible { outline:3px solid #d99b00;outline-offset:2px; }
 @media(max-width:767px) { .tools { top:8px;right:8px;max-width:calc(100% - 60px); } .panel { width:290px;max-height:45dvh;padding:12px; } }

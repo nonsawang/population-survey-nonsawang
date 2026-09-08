@@ -1,9 +1,10 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { CircleMarker, Polygon, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
+import { CircleMarker, Pane, Polygon, Polyline, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { useAuth } from '@/lib/auth';
 import { VALID_MOOS } from '@/lib/utils';
+import { VILLAGE_CENTERS, villageCenter } from '@/lib/village-centers';
 import { BOUNDARY_COLORS, emptyBoundaries, parseBoundaries, makeBoundary, leafletPositions } from '@/lib/village-boundaries';
 import styles from './boundaries.module.css';
 
@@ -20,12 +21,22 @@ export default function VillageBoundaries() {
   const [drafts,setDrafts]=useState(emptyBoundaries);
   const [loadedKey,setLoadedKey]=useState(null);
   const [open,setOpen]=useState(false),[visible,setVisible]=useState(true);
+  const [showCenters,setShowCenters]=useState(true),[showOtherVillages,setShowOtherVillages]=useState(false);
+  const [referenceMoo,setReferenceMoo]=useState(VALID_MOOS[0]);
   const [moo,setMoo]=useState(VALID_MOOS[0]),[name,setName]=useState(''),[source,setSource]=useState('');
   const [drawing,setDrawing]=useState(false),[points,setPoints]=useState([]);
   const [error,setError]=useState(''),[notice,setNotice]=useState(''),[baseError,setBaseError]=useState('');
   const panel=useRef(null),fileInput=useRef(null);
   const currentKey=useRef(storageKey);currentKey.current=storageKey;
   const local=canEdit && storageKey===loadedKey?drafts:emptyBoundaries();
+  const referencePoints=VILLAGE_CENTERS.filter(v=>showOtherVillages || VALID_MOOS.includes(v.moo));
+  useEffect(()=>{
+    map.fitBounds(VILLAGE_CENTERS.filter(v=>VALID_MOOS.includes(v.moo)).map(v=>[v.lat,v.lng]),{padding:[40,40],maxZoom:14,animate:false});
+  },[map]);
+  function focusCenter(selectedMoo) {
+    const point=villageCenter(selectedMoo);if(!point)return;
+    setShowCenters(true);map.setView([point.lat,point.lng],16,{animate:false});
+  }
   useEffect(()=>{
     let cancelled=false;
     fetch('/village-boundaries.geojson',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error();return r.json()})
@@ -55,7 +66,7 @@ export default function VillageBoundaries() {
   const features=[...byMoo.values()];
   function save() {
     try {
-      const feature=makeBoundary(moo,name||`หมู่ ${moo}`,source,points,VALID_MOOS);
+      const feature=makeBoundary(moo,name||villageCenter(moo)?.name||`หมู่ ${moo}`,source,points,VALID_MOOS);
       if(persist({type:'FeatureCollection',features:[...local.features.filter(f=>f.properties.moo!==moo),feature]})) {
         setDrawing(false);setPoints([]);setNotice(`บันทึกร่างหมู่ ${moo} บนเครื่องนี้แล้ว กรุณาส่งออกเก็บไว้ด้วย`);
       }
@@ -92,6 +103,10 @@ export default function VillageBoundaries() {
   }
   return <>
     <Drawing active={drawing && canEdit && storageKey===loadedKey} onPoint={point=>setPoints(list=>list.length<999?[...list,{lat:point.lat,lng:point.lng}]:list)} />
+    <Pane name="village-reference-points" style={{zIndex:450}}>{showCenters && referencePoints.map(v=><CircleMarker key={`reference-${v.moo}`} center={[v.lat,v.lng]} radius={12} interactive={!drawing} pathOptions={{color:VALID_MOOS.includes(v.moo)?'#0369a1':'#64748b',fillColor:'#fff',fillOpacity:.95,weight:2}}>
+      <Tooltip pane="tooltipPane" permanent direction="center" className={styles.pointLabel}>{v.moo}</Tooltip>
+      {!drawing && <Popup pane="popupPane"><strong>หมู่ {v.moo} {v.name}</strong><br/>ตำบล{v.tambon}<br/>{VALID_MOOS.includes(v.moo)?'หมู่ในพื้นที่รับผิดชอบของระบบ':'หมู่อื่นในตำบล'}<br/>{v.lat}, {v.lng}<br/>จุดอ้างอิงหมู่บ้าน ไม่ใช่เส้นอาณาเขต<br/><small>{v.source}</small></Popup>}
+    </CircleMarker>)}</Pane>
     {visible && features.map(({feature,local:isLocal})=><Polygon key={`${feature.properties.moo}-${isLocal}`} positions={leafletPositions(feature.geometry)} pathOptions={{color:BOUNDARY_COLORS[VALID_MOOS.indexOf(feature.properties.moo)%BOUNDARY_COLORS.length],weight:3,fillOpacity:.12,dashArray:isLocal?'7 5':undefined}} interactive={!drawing}>
       <Tooltip sticky>หมู่ {feature.properties.moo} • {feature.properties.name}<br/>{isLocal?'ร่างบนเครื่องนี้':'แนวเขตส่วนกลาง'}<br/>ที่มา: {feature.properties.source}</Tooltip>
     </Polygon>)}
@@ -102,12 +117,19 @@ export default function VillageBoundaries() {
         <h2>พื้นที่รับผิดชอบแต่ละหมู่</h2>
         <p>{published.features.length?'แนวเขตส่วนกลางแสดงตามไฟล์ที่ผู้ดูแลนำเข้า':'ยังไม่มีแนวเขตส่วนกลาง — ไม่ได้ประมาณแนวเขตจากตำแหน่งบ้าน'}</p>
         {baseError && <p role="alert" className={styles.error}>{baseError}</p>}
+        <label><input type="checkbox" checked={showCenters} onChange={e=>setShowCenters(e.target.checked)}/> แสดงจุดอ้างอิงหมู่บ้าน</label>
+        <label><input type="checkbox" checked={showOtherVillages} onChange={e=>{setShowOtherVillages(e.target.checked);if(!e.target.checked && !VALID_MOOS.includes(referenceMoo))setReferenceMoo(VALID_MOOS[0]);}}/> แสดงหมู่อื่นในตำบลด้วย (ครบ 23 หมู่)</label>
+        <p>วงกลมมีเลขหมู่ = จุดอ้างอิงจากพิกัดที่ให้มา สีฟ้าเป็น {VALID_MOOS.length} หมู่ในพื้นที่รับผิดชอบ สีเทาเป็นหมู่อื่นในตำบล พิกัดเหล่านี้ยังไม่ใช่อาณาเขต</p>
+        <label>ค้นจุดอ้างอิง<select value={referenceMoo} disabled={drawing} onChange={e=>setReferenceMoo(e.target.value)}>{referencePoints.map(v=><option key={v.moo} value={v.moo}>หมู่ {v.moo} {v.name}</option>)}</select></label>
+        <div className={styles.actions}><button disabled={drawing} onClick={()=>focusCenter(referenceMoo)}>ไปยังจุดอ้างอิง</button><button disabled={drawing} onClick={()=>{setShowCenters(true);map.fitBounds(referencePoints.map(v=>[v.lat,v.lng]),{padding:[40,40],maxZoom:14});}}>ดูจุดอ้างอิงทั้งหมด</button></div>
+        <hr/>
         <label><input type="checkbox" checked={visible} onChange={e=>setVisible(e.target.checked)}/> แสดงชั้นอาณาเขต</label>
         {features.length>0 && <div className={styles.villages}>{features.map(({feature,local:isLocal})=><button key={feature.properties.moo} onClick={()=>focus(feature)}><span style={{color:BOUNDARY_COLORS[VALID_MOOS.indexOf(feature.properties.moo)%BOUNDARY_COLORS.length]}}>●</span> หมู่ {feature.properties.moo}{isLocal?' (ร่าง)':''}</button>)}</div>}
         {canEdit && <>
           <hr/><p className={styles.draftNote}>ร่างเก็บเฉพาะบัญชีนี้ในเบราว์เซอร์เครื่องนี้ ยังไม่เผยแพร่ให้ผู้ใช้อื่น และอาจหายเมื่อล้างข้อมูลเบราว์เซอร์ ควรส่งออกไฟล์เก็บไว้</p>
-          <label>หมู่บ้าน<select value={moo} disabled={drawing} onChange={e=>{setMoo(e.target.value);setName('')}}>{VALID_MOOS.map(m=><option key={m} value={m}>หมู่ {m}</option>)}</select></label>
-          <label>ชื่อพื้นที่<input value={name} maxLength={120} placeholder={`หมู่ ${moo}`} onChange={e=>setName(e.target.value)}/></label>
+          <label>หมู่บ้าน<select value={moo} disabled={drawing} onChange={e=>{setMoo(e.target.value);setName('')}}>{VALID_MOOS.map(m=><option key={m} value={m}>หมู่ {m} {villageCenter(m)?.name}</option>)}</select></label>
+          <button disabled={drawing} onClick={()=>focusCenter(moo)}>ไปยังหมู่ {moo} เพื่อเตรียมวาด</button>
+          <label>ชื่อพื้นที่<input value={name} maxLength={120} placeholder={villageCenter(moo)?.name||`หมู่ ${moo}`} onChange={e=>setName(e.target.value)}/></label>
           <label>ที่มา / ผู้จัดทำร่าง<input value={source} maxLength={300} placeholder="เช่น ร่างโดยเจ้าหน้าที่ รอตรวจแนวเขต" onChange={e=>setSource(e.target.value)}/></label>
           {byMoo.has(moo) && <p>มีแนวเขตหมู่ {moo} อยู่แล้ว การบันทึกจะใช้ร่างใหม่แทนบนเครื่องนี้</p>}
           <div className={styles.actions}><button disabled={loadedKey!==storageKey} onClick={start}>{drawing?'เริ่มวาดใหม่':'เริ่มวาดแนวเขต'}</button>{drawing && <><button disabled={!points.length} onClick={()=>setPoints(p=>p.slice(0,-1))}>ย้อนจุดล่าสุด</button><button disabled={points.length<3 || !source.trim()} onClick={save}>บันทึกร่าง ({points.length} จุด)</button><button onClick={cancel}>ยกเลิกวาด</button></>}</div>
