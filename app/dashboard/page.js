@@ -125,10 +125,10 @@ export default function DashboardPage() {
       if (type==='1'||type==='3') {
         const by = getBirthYear(r.birth_date);
         if (!kBM[moo]) kBM[moo]={hep:{t:0,s:0},fobt:{t:0,s:0},hpv:{t:0,s:0},child:{t:0,s:0}};
-        if (by && by<1992) { s.kpi.hep.total++; const v=r.hep_screen||r.hep_result||''; if(v&&v!=='-') { s.kpi.hep.screened++; kBM[moo].hep.s++; } kBM[moo].hep.t++; }
-        if (age!=='-'&&age>=50&&age<=70) { s.kpi.fobt.total++; const v=r.fobt_screen||r.fobt_result||''; if(v&&v!=='-') { s.kpi.fobt.screened++; kBM[moo].fobt.s++; } kBM[moo].fobt.t++; }
-        if (gender==='female'&&age!=='-'&&age>=30&&age<=60) { s.kpi.hpv.total++; const v=r.hpv_screen||r.hpv_result||''; if(v&&v!=='-') { s.kpi.hpv.screened++; kBM[moo].hpv.s++; } kBM[moo].hpv.t++; }
-        if (age!=='-'&&age>=0&&age<=5) { s.kpi.child.total++; const v=r.child_dev||r.child_dev_result||''; if(v&&v!=='-'&&v!=='รอผล') { s.kpi.child.normal++; kBM[moo].child.s++; } kBM[moo].child.t++; }
+        if (by && by<1992) { s.kpi.hep.total++; const v=r.hep_screen||''; if(v&&v!=='-') { s.kpi.hep.screened++; kBM[moo].hep.s++; } kBM[moo].hep.t++; }
+        if (age!=='-'&&age>=50&&age<=70) { s.kpi.fobt.total++; const v=r.fobt_screen||''; if(v&&v!=='-') { s.kpi.fobt.screened++; kBM[moo].fobt.s++; } kBM[moo].fobt.t++; }
+        if (gender==='female'&&age!=='-'&&age>=30&&age<=60) { s.kpi.hpv.total++; const v=r.hpv_screen||''; if(v&&v!=='-') { s.kpi.hpv.screened++; kBM[moo].hpv.s++; } kBM[moo].hpv.t++; }
+        if (age!=='-'&&age>=0&&age<=5) { s.kpi.child.total++; const v=r.child_dev||''; if(v&&v!=='-'&&v!=='รอผล') { s.kpi.child.normal++; kBM[moo].child.s++; } kBM[moo].child.t++; }
 
         if (age!=='-'&&age>=15) {
           s.risk.target15plus++;

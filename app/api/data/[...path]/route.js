@@ -20,7 +20,22 @@ async function handle(request, { params }) {
     if (request.method === 'PATCH' && parts[0] === 'population') {
       headers.prefer = `${(headers.prefer || '').split(',').filter(v => !v.trim().startsWith('return=')).join(',')},return=representation`;
     }
-    const body = ['GET', 'HEAD'].includes(request.method) ? undefined : JSON.stringify(await readBody(request, 262144));
+    let body;
+    if (!['GET', 'HEAD'].includes(request.method)) {
+      const payload = await readBody(request, 262144);
+      // Accept requests from an older cached client while keeping the
+      // database contract on the canonical screening column names.
+      if (request.method === 'PATCH' && parts[0] === 'population' && payload && typeof payload === 'object' && !Array.isArray(payload)) {
+        const aliases = { hep_result: 'hep_screen', fobt_result: 'fobt_screen', hpv_result: 'hpv_screen', child_dev_result: 'child_dev' };
+        Object.entries(aliases).forEach(([legacy, canonical]) => {
+          if (Object.prototype.hasOwnProperty.call(payload, legacy)) {
+            if (!Object.prototype.hasOwnProperty.call(payload, canonical)) payload[canonical] = payload[legacy];
+            delete payload[legacy];
+          }
+        });
+      }
+      body = JSON.stringify(payload);
+    }
     const upstream = await fetch(`${url}/rest/v1/${parts.join('/')}${new URL(request.url).search}`, { method: request.method, headers, body, cache: 'no-store', signal: AbortSignal.timeout(30000) });
     if (request.method === 'PATCH' && parts[0] === 'population' && upstream.ok) {
       const changed = await upstream.json();

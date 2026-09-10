@@ -72,10 +72,10 @@ export default function ScreeningPage() {
         const birthYear = getBirthYear(r.birth_date);
         const gender = MALE_TITLES.includes(String(r.title||'').trim()) ? 'male' : 'female';
         let isCandidate = false, status = '-', sDate = '-';
-        if (type === 'HEP' && birthYear && birthYear < 1992) { isCandidate = true; status = r.hep_screen || r.hep_result || '-'; sDate = r.hep_date || '-'; }
-        if (type === 'FOBT' && age !== '-' && age >= 50 && age <= 70) { isCandidate = true; status = r.fobt_screen || r.fobt_result || '-'; sDate = r.fobt_date || '-'; }
-        if (type === 'HPV' && gender === 'female' && age !== '-' && age >= 30 && age <= 60) { isCandidate = true; status = r.hpv_screen || r.hpv_result || '-'; sDate = r.hpv_date || '-'; }
-        if (type === 'CHILD' && age !== '-' && age >= 0 && age <= 5) { isCandidate = true; status = r.child_dev || r.child_dev_result || '-'; sDate = r.child_date || '-'; }
+        if (type === 'HEP' && birthYear && birthYear < 1992) { isCandidate = true; status = r.hep_screen || '-'; sDate = r.hep_date || '-'; }
+        if (type === 'FOBT' && age !== '-' && age >= 50 && age <= 70) { isCandidate = true; status = r.fobt_screen || '-'; sDate = r.fobt_date || '-'; }
+        if (type === 'HPV' && gender === 'female' && age !== '-' && age >= 30 && age <= 60) { isCandidate = true; status = r.hpv_screen || '-'; sDate = r.hpv_date || '-'; }
+        if (type === 'CHILD' && age !== '-' && age >= 0 && age <= 5) { isCandidate = true; status = r.child_dev || '-'; sDate = r.child_date || '-'; }
         if (isCandidate) {
           const hasResult = status !== '-' && status !== '' && status !== 'รอผล';
           cands.push({ personId: r.person_id, cid: r.cid||'-', name: (r.title||'')+(r.fname||'')+' '+(r.lname||''), age, house: r.house, moo: r.moo, status, screenDate: sDate, hasResult });
