@@ -32,20 +32,26 @@ export default function ScreeningPage() {
   const [screenDate, setScreenDate] = useState(new Date().toISOString().split('T')[0]);
   const [stats, setStats] = useState(null);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [loadedKPI, setLoadedKPI] = useState('');
   const [saving, setSaving] = useState(false);
   const search = useMemo(() => searchScreeningPeople(candidates, appliedTerm, searchMode), [candidates, appliedTerm, searchMode]);
   const searching = searchTerm !== appliedTerm;
   const filtered = search.rows.slice((page-1)*20,page*20);
   const doSearch = () => { setAppliedTerm(searchTerm); setPage(1); };
   useEffect(() => { const timer=setTimeout(()=>setAppliedTerm(searchTerm),250);return ()=>clearTimeout(timer); },[searchTerm]);
+  useEffect(() => {
+    const query = searchTerm.trim();
+    if (currentKPI && query.length >= 2 && loadedKPI !== currentKPI && !loadingCandidates) selectKPI(currentKPI, query);
+  }, [searchTerm, currentKPI, loadedKPI, loadingCandidates]);
   useEffect(() => () => { requestId.current += 1; }, []);
 
   useEffect(() => { if (!loading && !user) router.push('/login'); }, [user, loading, router]);
 
-  const selectKPI = async (type) => {
+  const selectKPI = async (type, initialQuery = '') => {
     const request = ++requestId.current;
     setCurrentKPI(type);
-    setSelected(null); setSearchTerm(''); setAppliedTerm(''); setPage(1); setCandidates([]); setStats(null); setLoadError('');
+    setSelected(null); setSearchTerm(initialQuery); setAppliedTerm(initialQuery); setPage(1); setCandidates([]); setStats(null); setLoadError(''); setLoadedKPI(initialQuery.trim().length >= 2 ? type : '');
+    if (initialQuery.trim().length < 2) { setLoadingCandidates(false); return; }
     setLoadingCandidates(true);
     try {
       const screeningColumns = [
