@@ -48,7 +48,13 @@ export default function ScreeningPage() {
     setSelected(null); setSearchTerm(''); setAppliedTerm(''); setPage(1); setCandidates([]); setStats(null); setLoadError('');
     setLoadingCandidates(true);
     try {
-      const rows = await selectAll('population');
+      const screeningColumns = [
+        'person_id','cid','title','fname','lname','birth_date','house','moo',
+        'residency_type','person_discharge_id','status_model_version',
+        'legacy_residency_type','hep_screen','fobt_screen','hpv_screen','child_dev',
+        'hep_date','fobt_date','hpv_date','child_date','updated_at'
+      ].join(',');
+      const rows = await selectAll('population', screeningColumns);
       if (request !== requestId.current) return;
       const cands = [];
       (rows||[]).forEach(r => {
@@ -72,7 +78,12 @@ export default function ScreeningPage() {
       cands.sort((a,b) => { if (a.hasResult !== b.hasResult) return a.hasResult ? 1 : -1; return String(a.moo).localeCompare(String(b.moo),undefined,{numeric:true}); });
       setCandidates(cands);
       setStats({ total: cands.length, pending: cands.filter(c => !c.hasResult).length, done: cands.filter(c => c.hasResult).length });
-    } catch(e) { if(request === requestId.current)setLoadError('โหลดรายชื่อไม่สำเร็จ กรุณาลองใหม่'); }
+    } catch(e) {
+      if(request === requestId.current) {
+        console.error('Screening list load failed:', e);
+        setLoadError('โหลดรายชื่อไม่สำเร็จ กรุณาลองใหม่ หากยังพบปัญหาให้รีเฟรชหน้า');
+      }
+    }
     finally { if(request === requestId.current)setLoadingCandidates(false); }
   };
 
