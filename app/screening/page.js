@@ -79,12 +79,13 @@ export default function ScreeningPage() {
   const handleSave = async () => {
     if (!result) { alert('กรุณาเลือกผลการคัดกรอง'); return; }
     setSaving(true);
-    const colMap = { HEP: { result:'hep_screen', date:'hep_date', alt:'hep_result' }, FOBT: { result:'fobt_screen', date:'fobt_date', alt:'fobt_result' }, HPV: { result:'hpv_screen', date:'hpv_date', alt:'hpv_result' }, CHILD: { result:'child_dev', date:'child_date', alt:'child_dev_result' } };
+    // Use only canonical columns that exist in the population table.
+    // Sending a legacy *_result column makes PostgREST reject the entire update.
+    const colMap = { HEP: { result:'hep_screen', date:'hep_date' }, FOBT: { result:'fobt_screen', date:'fobt_date' }, HPV: { result:'hpv_screen', date:'hpv_date' }, CHILD: { result:'child_dev', date:'child_date' } };
     const cols = colMap[currentKPI];
     const updateData = { updated_at: new Date().toISOString() };
     updateData[cols.result] = result;
     updateData[cols.date] = screenDate;
-    updateData[cols.alt] = result;
     const { error } = await supabase.from('population').update(updateData).eq('person_id', selected.personId);
     setSaving(false);
     if (error) { alert('บันทึกไม่สำเร็จ: ' + error.message); }
