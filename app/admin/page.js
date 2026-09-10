@@ -6,8 +6,9 @@ import { supabase } from '@/lib/supabase';
 import TopBar from '@/components/TopBar';
 
 export default function AdminPage() {
-  const { user, loading } = useAuth();
+  const { user, loading, refreshUser } = useAuth();
   const router = useRouter();
+  const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState('users');
   const [users, setUsers] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -44,40 +45,35 @@ export default function AdminPage() {
   const openEdit = (u) => { setEditUser(u); setForm({ displayName:u.display_name||'', username:u.username||'', password:'', role:u.role||'vhv', moo:u.moo||'', isActive:u.is_active!==false }); setShowModal(true); };
 
   const submitUser = async () => {
-    if (!form.displayName) { alert('กรุณากรอกชื่อ'); return; }
-    if (!editUser && (!form.username || !form.password)) { alert('กรุณากรอก Username และรหัสผ่าน'); return; }
-    if (form.password && form.password.length < 6) { alert('รหัสผ่านต้อง ≥ 6 ตัว'); return; }
-
-    const encoder = new TextEncoder();
-    let hashHex = null;
-    if (form.password) {
-      const hashBuf = await crypto.subtle.digest('SHA-256', encoder.encode(form.password));
-      hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
-    }
-
-    if (editUser) {
-      const updateData = { display_name: form.displayName, role: form.role, moo: form.moo || null, is_active: form.isActive };
-      if (hashHex) updateData.password_hash = hashHex;
-      await supabase.from('app_users').update(updateData).eq('id', editUser.id);
-    } else {
-      await supabase.from('app_users').insert({ username: form.username.toLowerCase(), password_hash: hashHex, display_name: form.displayName, role: form.role, moo: form.moo || null, is_active: true, created_at: new Date().toISOString() });
-    }
-    setShowModal(false); loadUsers();
+    if (saving) return;
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.rpc('app_admin_save_user', {
+        p_id: editUser?.id || null, p_username: form.username, p_display_name: form.displayName,
+        p_role: form.role, p_moo: form.moo, p_active: form.isActive, p_password: form.password || null,
+      });
+      if (error || data?.error) throw new Error(error?.message || data.error);
+      setShowModal(false);
+      if (editUser?.id === user.userId) await refreshUser();
+      else await loadUsers();
+    } catch (error) { alert('บันทึกไม่สำเร็จ: ' + error.message); }
+    finally { setSaving(false); }
   };
-
   const doChangePassword = async () => {
-    if (!oldPwd || !newPwd || !confirmPwd) { alert('กรุณากรอกข้อมูลให้ครบ'); return; }
-    if (newPwd !== confirmPwd) { alert('รหัสผ่านใหม่ไม่ตรงกัน'); return; }
-    if (newPwd.length < 6) { alert('รหัสผ่านต้อง ≥ 6 ตัว'); return; }
-    // Simplified: just update (in production, verify old password first)
-    const encoder = new TextEncoder();
-    const hashBuf = await crypto.subtle.digest('SHA-256', encoder.encode(newPwd));
-    const hashHex = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
-    await supabase.from('app_users').update({ password_hash: hashHex }).eq('id', user.userId);
-    alert('เปลี่ยนรหัสผ่านเรียบร้อย');
+    if (saving) return;
+    if (!oldPwd || newPwd.length < 8 || newPwd !== confirmPwd) { alert('ตรวจสอบรหัสผ่านเดิมและรหัสผ่านใหม่อย่างน้อย 8 ตัวให้ตรงกัน'); return; }
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.rpc('app_change_password', { p_old: oldPwd, p_new: newPwd });
+      if (error || data?.error) throw new Error(error?.message || data.error);
+      setOldPwd(''); setNewPwd(''); setConfirmPwd('');
+      alert('เปลี่ยนรหัสผ่านแล้ว กรุณาเข้าสู่ระบบใหม่');
+      await refreshUser();
+    } catch (error) { alert('เปลี่ยนรหัสผ่านไม่สำเร็จ: ' + error.message); }
+    finally { setSaving(false); }
   };
 
-  if (loading || !user) return <div className="text-center py-5"><span className="spinner-border text-primary"/></div>;
+  if (loading || !user || user.role !== 'admin') return <div className="text-center py-5"><span className="spinner-border text-primary"/></div>;
 
   return (
     <>
@@ -127,7 +123,7 @@ export default function AdminPage() {
                         <td className="fw-bold">{u.display_name||'-'}</td>
                         <td><code className="text-primary">{u.username}</code></td>
                         <td><span className={`role-pill role-${u.role}`}>{ROLE_LABELS[u.role]||u.role}</span></td>
-                        <td>{u.moo ? <span className="badge bg-light text-dark border">{u.moo}</span> : <span className="text-muted small">ทุกหมู่</span>}</td>
+                        <td>{u.moo ? <span className="badge bg-light text-dark border">{u.moo}</span> : <span className="text-muted small">{u.role==='vhv'?'ยังไม่ได้กำหนดหมู่':'ทุกหมู่'}</span>}</td>
                         <td><span className={`badge ${u.is_active?'bg-success':'bg-secondary'}`}>{u.is_active?'ใช้งาน':'ปิด'}</span></td>
                         <td><small className="text-muted">{u.last_login ? new Date(u.last_login).toLocaleString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'ยังไม่เคย'}</small></td>
                         <td><button className="btn btn-sm btn-outline-primary rounded-pill" onClick={() => openEdit(u)}><i className="fa-solid fa-pen"/></button></td>
@@ -152,7 +148,7 @@ export default function AdminPage() {
                       <td className="text-muted">{log.created_at ? new Date(log.created_at).toLocaleString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-'}</td>
                       <td><strong>{log.username||'-'}</strong></td>
                       <td><span className={`action-badge action-${log.action||''}`}>{log.action||'-'}</span></td>
-                      <td className="text-muted">{log.detail||'-'}</td>
+                      <td className="text-muted">{log.details||'-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -167,9 +163,9 @@ export default function AdminPage() {
             <div className="card-body p-4">
               <h6 className="fw-bold mb-4"><i className="fa-solid fa-key text-warning me-2"/>เปลี่ยนรหัสผ่าน</h6>
               <div className="mb-3"><label className="small text-muted fw-bold">รหัสผ่านเดิม</label><input type="password" className="form-control" value={oldPwd} onChange={e=>setOldPwd(e.target.value)}/></div>
-              <div className="mb-3"><label className="small text-muted fw-bold">รหัสผ่านใหม่ (≥ 6 ตัว)</label><input type="password" className="form-control" value={newPwd} onChange={e=>setNewPwd(e.target.value)}/></div>
+              <div className="mb-3"><label className="small text-muted fw-bold">รหัสผ่านใหม่ (≥ 8 ตัว)</label><input type="password" className="form-control" value={newPwd} onChange={e=>setNewPwd(e.target.value)}/></div>
               <div className="mb-4"><label className="small text-muted fw-bold">ยืนยันรหัสผ่านใหม่</label><input type="password" className="form-control" value={confirmPwd} onChange={e=>setConfirmPwd(e.target.value)}/></div>
-              <button className="btn btn-warning w-100 fw-bold rounded-pill" onClick={doChangePassword}><i className="fa-solid fa-save me-2"/>บันทึก</button>
+              <button className="btn btn-warning w-100 fw-bold rounded-pill" disabled={saving} onClick={doChangePassword}><i className="fa-solid fa-save me-2"/>บันทึก</button>
             </div>
           </div>
         )}
@@ -191,7 +187,7 @@ export default function AdminPage() {
                 </div>
                 {editUser && <div className="form-check"><input className="form-check-input" type="checkbox" checked={form.isActive} onChange={e=>setForm({...form,isActive:e.target.checked})}/><label className="form-check-label small">เปิดใช้งาน</label></div>}
               </div>
-              <div className="modal-footer bg-light"><button className="btn btn-outline-secondary rounded-pill" onClick={()=>setShowModal(false)}>ยกเลิก</button><button className="btn btn-primary fw-bold rounded-pill px-4" onClick={submitUser}><i className="fa-solid fa-save me-1"/>บันทึก</button></div>
+              <div className="modal-footer bg-light"><button className="btn btn-outline-secondary rounded-pill" onClick={()=>setShowModal(false)}>ยกเลิก</button><button className="btn btn-primary fw-bold rounded-pill px-4" disabled={saving} onClick={submitUser}><i className="fa-solid fa-save me-1"/>บันทึก</button></div>
             </div>
           </div>
         </div>

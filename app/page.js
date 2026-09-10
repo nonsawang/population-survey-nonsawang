@@ -331,7 +331,7 @@ export default function SurveyPage() {
   const [savingGps, setSavingGps] = useState(false);
 
   // ✅ จำกัดหมู่สำหรับ vhv
-  const allowedMoos = (user?.role === 'vhv' && user?.moo) ? user.moo.split(',').map(m => m.trim()) : null;
+  const allowedMoos = user?.role === 'vhv' ? String(user.moo || '').split(',').map(m => m.trim()).filter(Boolean) : null;
   const visibleMoos = allowedMoos ? VALID_MOOS.filter(m => allowedMoos.includes(m)) : VALID_MOOS;
 
   useEffect(() => { if (!loading && !user) router.push('/login'); }, [user, loading, router]);
@@ -691,7 +691,7 @@ const submitVhvChange = async () => {
 {/* 3. ปุ่มแดชบอร์ดใหม่ (GAS) */}
           <a 
             // 🟢 แนบ username ของคนที่ล็อกอินอยู่ ส่งไปให้ GAS ด้วย
-            href={`https://script.google.com/macros/s/AKfycbxodmongrNvVdVwSGld4uwC6hiu7F6RYyCpr7HSEe9ZJDDCZjxS9feQSEqKuD1QRhFu/exec?page=dashboard&token=b69b0981-78df-41e2-998e-f21aee9b730d&user=${user?.username || 'admin'}`} 
+            href="/dashboard"
             target="_blank" 
             rel="noopener noreferrer"
             className="survey-nav-link" 

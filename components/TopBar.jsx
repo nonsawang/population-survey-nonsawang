@@ -18,11 +18,11 @@ export default function TopBar({ showAdmin = false }) {
         cancelButtonColor: '#6c757d',
         confirmButtonText: 'ออกจากระบบ',
         cancelButtonText: 'ยกเลิก'
-      }).then(r => {
-        if (r.isConfirmed) { logout(); router.push('/login'); }
+      }).then(async r => {
+        if (r.isConfirmed && await logout()) router.push('/login');
       });
     } else {
-      if (confirm('ออกจากระบบ?')) { logout(); router.push('/login'); }
+      if (confirm('ออกจากระบบ?')) logout().then(ok => { if (ok) router.push('/login'); });
     }
   };
 
