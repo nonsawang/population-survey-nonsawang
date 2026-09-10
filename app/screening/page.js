@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { selectAll } from '@/lib/supabase';
@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { calculateAge, getBirthYear, MALE_TITLES } from '@/lib/utils';
 import TopBar from '@/components/TopBar';
 import { populationStatus } from '@/lib/population-status';
+import { searchScreeningPeople, maskedScreeningCid } from '@/lib/screening-search';
 
 const KPI_INFO = {
   HEP:  { name:'คัดกรอง HBV/HCV', icon:'fa-virus', color:'#0891b2', desc:'เกิดก่อน พ.ศ.2535' },
@@ -21,22 +22,34 @@ export default function ScreeningPage() {
   const [currentKPI, setCurrentKPI] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [candidates, setCandidates] = useState([]);
-  const [filtered, setFiltered] = useState([]);
+  const [searchMode, setSearchMode] = useState('auto');
+  const [appliedTerm, setAppliedTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [loadError, setLoadError] = useState('');
+  const requestId = useRef(0);
   const [selected, setSelected] = useState(null);
   const [result, setResult] = useState('');
   const [screenDate, setScreenDate] = useState(new Date().toISOString().split('T')[0]);
   const [stats, setStats] = useState(null);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [saving, setSaving] = useState(false);
+  const search = useMemo(() => searchScreeningPeople(candidates, appliedTerm, searchMode), [candidates, appliedTerm, searchMode]);
+  const searching = searchTerm !== appliedTerm;
+  const filtered = search.rows.slice((page-1)*20,page*20);
+  const doSearch = () => { setAppliedTerm(searchTerm); setPage(1); };
+  useEffect(() => { const timer=setTimeout(()=>setAppliedTerm(searchTerm),250);return ()=>clearTimeout(timer); },[searchTerm]);
+  useEffect(() => () => { requestId.current += 1; }, []);
 
   useEffect(() => { if (!loading && !user) router.push('/login'); }, [user, loading, router]);
 
   const selectKPI = async (type) => {
+    const request = ++requestId.current;
     setCurrentKPI(type);
-    setSelected(null); setSearchTerm(''); setFiltered([]);
+    setSelected(null); setSearchTerm(''); setAppliedTerm(''); setPage(1); setCandidates([]); setStats(null); setLoadError('');
     setLoadingCandidates(true);
     try {
       const rows = await selectAll('population');
+      if (request !== requestId.current) return;
       const cands = [];
       (rows||[]).forEach(r => {
         const state = populationStatus(r);
@@ -59,20 +72,9 @@ export default function ScreeningPage() {
       cands.sort((a,b) => { if (a.hasResult !== b.hasResult) return a.hasResult ? 1 : -1; return String(a.moo).localeCompare(String(b.moo),undefined,{numeric:true}); });
       setCandidates(cands);
       setStats({ total: cands.length, pending: cands.filter(c => !c.hasResult).length, done: cands.filter(c => c.hasResult).length });
-    } catch(e) { console.error(e); }
-    setLoadingCandidates(false);
+    } catch(e) { if(request === requestId.current)setLoadError('โหลดรายชื่อไม่สำเร็จ กรุณาลองใหม่'); }
+    finally { if(request === requestId.current)setLoadingCandidates(false); }
   };
-
-  const doSearch = () => {
-    if (!searchTerm.trim()) { setFiltered([]); return; }
-    const q = searchTerm.toLowerCase().replace(/\s+/g,'');
-    setFiltered(candidates.filter(p => {
-      const name = (p.name||'').toLowerCase().replace(/\s+/g,'');
-      return name.includes(q) || (p.house||'').includes(q) || (p.cid||'').replace(/\D/g,'').includes(q.replace(/\D/g,''));
-    }));
-  };
-
-  useEffect(() => { if (searchTerm.length >= 2) { const t = setTimeout(doSearch, 300); return () => clearTimeout(t); } else setFiltered([]); }, [searchTerm]);
 
   const handleSave = async () => {
     if (!result) { alert('กรุณาเลือกผลการคัดกรอง'); return; }
@@ -86,7 +88,7 @@ export default function ScreeningPage() {
     const { error } = await supabase.from('population').update(updateData).eq('person_id', selected.personId);
     setSaving(false);
     if (error) { alert('บันทึกไม่สำเร็จ: ' + error.message); }
-    else { alert('บันทึกสำเร็จ'); setSelected(null); setSearchTerm(''); setFiltered([]); selectKPI(currentKPI); }
+    else { alert('บันทึกสำเร็จ'); setSelected(null); setSearchTerm(''); setAppliedTerm(''); selectKPI(currentKPI); }
   };
 
   if (loading || !user) return <div className="text-center py-5"><span className="spinner-border text-primary"/></div>;
@@ -94,7 +96,7 @@ export default function ScreeningPage() {
   return (
     <>
       <TopBar />
-      <div className="container py-3" style={{maxWidth:900}}>
+      <div className="container survey-page py-3" style={{maxWidth:900}}>
         <h5 className="text-center mb-3 fw-bold" style={{color:'var(--primary)'}}><i className="fa-solid fa-clipboard-check"/> บันทึกผลการคัดกรอง</h5>
 
         <div className="d-flex gap-2 mb-3">
@@ -108,7 +110,7 @@ export default function ScreeningPage() {
           <div className="row g-2">
             {Object.entries(KPI_INFO).map(([key, info]) => (
               <div className="col-6 col-md-3" key={key}>
-                <button onClick={() => selectKPI(key)} className={`btn btn-sm w-100 kpi-btn ${currentKPI === key ? `btn-${key==='HEP'?'info':key==='FOBT'?'warning':key==='HPV'?'danger':'success'} active` : `btn-outline-${key==='HEP'?'info':key==='FOBT'?'warning':key==='HPV'?'danger':'success'}`}`}>
+                <button disabled={saving} onClick={() => selectKPI(key)} className={`btn btn-sm w-100 kpi-btn ${currentKPI === key ? `btn-${key==='HEP'?'info':key==='FOBT'?'warning':key==='HPV'?'danger':'success'} active` : `btn-outline-${key==='HEP'?'info':key==='FOBT'?'warning':key==='HPV'?'danger':'success'}`}`}>
                   <i className={`fa-solid ${info.icon} fa-lg mb-1 d-block`}/><small className="fw-bold">{info.name.split(' ').pop()}</small>
                 </button>
               </div>
@@ -125,23 +127,30 @@ export default function ScreeningPage() {
             <div className="card-body p-3 p-md-4">
               {!selected ? (
                 <>
-                  <div className="input-group input-group-lg mb-3">
-                    <input type="text" className="form-control" placeholder="พิมพ์ชื่อ, เลขบัตร, บ้านเลขที่..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} onKeyDown={e => e.key === 'Enter' && doSearch()} />
-                    <button className="btn btn-primary" onClick={doSearch}><i className="fa-solid fa-search"/></button>
-                  </div>
-                  {loadingCandidates && <div className="text-center py-3"><span className="spinner-border text-primary"/></div>}
-                  {filtered.length > 0 && (
+                  <form onSubmit={e=>{e.preventDefault();doSearch();}} className="mb-3">
+                    <div className="row g-2">
+                      <div className="col-12 col-md-4"><label htmlFor="screening-search-mode" className="form-label">ค้นหาด้วย</label><select id="screening-search-mode" className="form-select" value={searchMode} onChange={e=>{setSearchMode(e.target.value);setPage(1);}}><option value="auto">ชื่อ / เลขบัตร / บ้านเลขที่</option><option value="name">ชื่อ–นามสกุล</option><option value="cid">เลขบัตรประชาชน</option><option value="house">บ้านเลขที่</option></select></div>
+                      <div className="col-12 col-md-8"><label htmlFor="screening-search" className="form-label">คำค้น</label><input id="screening-search" type="text" inputMode={searchMode==='cid'?'numeric':'text'} autoComplete="off" className="form-control" placeholder={searchMode==='cid'?'เลขบัตร 4–13 หลัก':'ชื่อ นามสกุล เลขบัตร หรือบ้านเลขที่'} value={searchTerm} onChange={e=>{setSearchTerm(e.target.value);setPage(1);}} aria-describedby="screening-search-help" /></div>
+                    </div>
+                    <div className="d-flex gap-2 mt-2"><button className="btn btn-primary" type="submit" disabled={loadingCandidates || !!loadError}>ค้นหา</button><button className="btn btn-outline-secondary" type="button" disabled={!searchTerm} onClick={()=>{setSearchTerm('');setAppliedTerm('');setPage(1);}}>ล้างคำค้น</button></div>
+                    <p id="screening-search-help" className="small text-muted mt-2 mb-0">ชื่อค้นบางส่วนได้ รองรับเลขไทยและเลขบัตรที่มีขีดหรือช่องว่าง เลขบัตรครบ 13 หลักจะค้นตรงทั้งเลข • ค้นเฉพาะกลุ่มเป้าหมาย {KPI_INFO[currentKPI].name} ตามเกณฑ์เดิม</p>
+                  </form>
+                  {loadingCandidates && <div className="text-center py-3" role="status"><span className="spinner-border text-primary"/> กำลังโหลดรายชื่อ...</div>}
+                  {loadError && <div className="alert alert-danger" role="alert">{loadError} <button className="btn btn-outline-danger ms-2" onClick={()=>selectKPI(currentKPI)}>ลองใหม่</button></div>}
+                  {!loadingCandidates && !loadError && <p role="status" aria-live="polite" className="small text-muted">{searching?'กำลังค้นหา...':!search.ready?search.message:search.rows.length?`พบ ${search.rows.length.toLocaleString('th-TH')} คน • หน้า ${page} / ${Math.ceil(search.rows.length/20)}`:'ไม่พบรายชื่อในกลุ่มคัดกรองนี้ กรุณาตรวจคำค้นหรือเลือกประเภทคัดกรองให้ตรงกับผู้รับบริการ'}</p>}
+                  {!loadingCandidates && !loadError && !searching && filtered.length > 0 && (
                     <div className="row g-2">
                       {filtered.map((p,i) => {
                         const sc = p.hasResult ? (['ปกติ','ผ่าน','สมวัย'].includes(p.status) ? 'success' : 'danger') : 'warning';
                         return (
-                          <div className="col-md-6" key={i}>
-                            <div className={`card border-${sc} search-result-card`} onClick={() => { setSelected(p); setResult(p.hasResult ? p.status : ''); }}>
+                          <div className="col-md-6" key={p.personId}>
+                            <button type="button" className={`card border-${sc} search-result-card w-100 text-start p-0`} aria-label={`เลือก ${p.name} บ้าน ${p.house} หมู่ ${p.moo} เลขบัตรลงท้าย ${String(p.cid).slice(-4)}`} onClick={() => { setSelected(p); setResult(p.hasResult ? p.status : ''); }}>
                               <div className="card-body p-3">
                                 <div className="d-flex justify-content-between">
                                   <div>
                                     <div className="fw-bold mb-1">{p.name}</div>
                                     <small className="text-muted">อายุ {p.age} | บ้าน {p.house} ม.{p.moo}</small>
+                                    <div className="small text-muted mt-1">เลขบัตร {maskedScreeningCid(p.cid)}</div>
                                   </div>
                                   <div className="text-center ms-2">
                                     <i className={`fa-solid fa-${sc==='warning'?'clock':'check-circle'} fa-2x text-${sc}`}/>
@@ -149,12 +158,13 @@ export default function ScreeningPage() {
                                   </div>
                                 </div>
                               </div>
-                            </div>
+                            </button>
                           </div>
                         );
                       })}
                     </div>
                   )}
+                  {!loadingCandidates && !loadError && !searching && search.rows.length>20 && <nav aria-label="หน้าผลค้นหา" className="d-flex justify-content-between mt-3"><button className="btn btn-outline-primary" disabled={page===1} onClick={()=>setPage(p=>p-1)}>ก่อนหน้า</button><button className="btn btn-outline-primary" disabled={page*20>=search.rows.length} onClick={()=>setPage(p=>p+1)}>ถัดไป</button></nav>}
                 </>
               ) : (
                 <div className="card border-primary" style={{borderRadius:12}}>
@@ -165,6 +175,7 @@ export default function ScreeningPage() {
                       <div className="col-md-4"><label className="text-muted small">อายุ</label><div className="fw-bold">{selected.age} ปี</div></div>
                       <div className="col-md-4"><label className="text-muted small">ที่อยู่</label><div className="fw-bold">บ้าน {selected.house} ม.{selected.moo}</div></div>
                     </div>
+                    <p className="small mb-3">เลขบัตรประชาชน <strong>{selected.cid}</strong> • ตรวจสอบชื่อและเลขบัตรก่อนบันทึกผล</p>
                     <div className="row g-3">
                       <div className="col-md-6">
                         <label className="form-label fw-bold"><i className="fa-solid fa-clipboard-check"/> ผลการคัดกรอง *</label>
@@ -179,7 +190,7 @@ export default function ScreeningPage() {
                       </div>
                     </div>
                     <div className="d-flex gap-2 mt-4 justify-content-end">
-                      <button className="btn btn-secondary rounded-pill" onClick={() => setSelected(null)}><i className="fa-solid fa-arrow-left me-1"/> กลับ</button>
+                      <button className="btn btn-secondary rounded-pill" disabled={saving} onClick={() => setSelected(null)}><i className="fa-solid fa-arrow-left me-1"/> กลับ</button>
                       <button className="btn btn-success btn-lg rounded-pill px-4" onClick={handleSave} disabled={saving}>
                         {saving ? <><span className="spinner-border spinner-border-sm me-1"/>บันทึก...</> : <><i className="fa-solid fa-save me-1"/> บันทึกผล</>}
                       </button>
