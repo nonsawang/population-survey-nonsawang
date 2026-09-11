@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { calculateAge } from '@/lib/utils';
 import { createScreeningSaver, screeningToday } from '@/lib/screening-save';
+import { ScreeningHistory, ScreeningOverview } from '@/components/ScreeningWorkflow';
 import TopBar from '@/components/TopBar';
 
 import { searchScreeningPeople, maskedScreeningCid } from '@/lib/screening-search';
@@ -115,6 +116,7 @@ export default function ScreeningPage() {
           </div>
         </div>
 
+        {currentKPI && <ScreeningOverview key={currentKPI} kpi={currentKPI} refresh={retry}/>}
         {/* Search & Results */}
         {currentKPI && (
           <div className="card shadow-sm border-0 fade-in" style={{borderRadius:14}}>
@@ -196,6 +198,7 @@ export default function ScreeningPage() {
                 </div>
               )}
 
+              {selected && <ScreeningHistory key={selected.personId+currentKPI} personId={selected.personId} kpi={currentKPI} refresh={retry}/>}
               {/* Stats */}
               {stats && (
                 <div className="row text-center g-2 mt-4">

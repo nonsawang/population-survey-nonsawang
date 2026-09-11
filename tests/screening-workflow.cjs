@@ -1,0 +1,31 @@
+const {PGlite}=require('@electric-sql/pglite');
+const assert=require('node:assert/strict'),fs=require('fs'),path=require('path');
+(async()=>{
+const db=new PGlite();
+await db.exec(`CREATE ROLE anon;CREATE ROLE authenticated;
+CREATE FUNCTION app_current_user() RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.actor',true),'')::jsonb $$;
+CREATE TABLE population(person_id text PRIMARY KEY,title text,fname text,lname text,moo text,house text,vhv text,birth_date date,residency_type text,person_discharge_id int,status_model_version int,hep_screen text,hep_date date,fobt_screen text,fobt_date date,hpv_screen text,hpv_date date,child_dev text,child_date date);
+ALTER TABLE population ENABLE ROW LEVEL SECURITY;
+CREATE POLICY scope ON population USING ((SELECT app_current_user()->>'role')='staff' OR ((SELECT app_current_user()->>'role')='vhv' AND moo='1'));
+GRANT SELECT,UPDATE ON population TO anon,authenticated;
+INSERT INTO population(person_id,moo,vhv,birth_date,residency_type,person_discharge_id,status_model_version,fobt_screen,fobt_date)
+VALUES('p1','1','อสม.หนึ่ง',current_date-interval '60 years','1',9,1,'ปกติ','2025-01-01'),('p2','2',null,current_date-interval '60 years','1',9,1,null,null);`);
+await db.exec(fs.readFileSync(path.join(__dirname,'../migrations/20260911_screening_workflow.sql'),'utf8'));
+const q=async(sql,args=[])=>(await db.query(sql,args)).rows;
+const rpc=async(name,args=[])=>(await q(`SELECT ${name}(${args.map((_,i)=>'$'+(i+1)).join(',')}) r`,args))[0].r;
+const actor=async(role)=>{await q("SELECT set_config('test.actor',$1,false)",[JSON.stringify({role,userId:'actor',displayName:'ผู้ทดสอบ'})]);};
+await db.exec('SET ROLE anon');assert.equal((await rpc('screening_history_list',['p1','FOBT',1])).length,0);
+await actor('vhv');assert.equal((await rpc('screening_history_list',['p1','FOBT',1]))[0].source,'baseline');
+assert.equal((await rpc('screening_history_list',['p2','FOBT',1])).length,0);
+await q("UPDATE population SET fobt_screen='ผิดปกติ',fobt_date='2025-02-01' WHERE person_id='p1'");
+let h=await rpc('screening_history_list',['p1','FOBT',1]);assert.equal(h.length,2);const event=h.find(v=>v.source==='app');assert.equal(event.previous_result,'ปกติ');assert.equal(event.recorded_by,'actor');
+await q("UPDATE population SET fobt_screen='ผิดปกติ',fobt_date='2025-02-01' WHERE person_id='p1'");assert.equal((await rpc('screening_history_list',['p1','FOBT',1])).length,2);
+assert.equal((await rpc('screening_overview',['FOBT'])).total,1);
+await assert.rejects(()=>rpc('screening_review_approve',[event.id]),/STAFF_REQUIRED/);
+await assert.rejects(()=>q('DELETE FROM screening_history'),/permission denied/);
+await actor('staff');const overview=await rpc('screening_overview',['FOBT']);assert.equal(overview.total,2);assert.equal(overview.groups.find(g=>g.moo==='2').pending,1);
+await rpc('screening_review_approve',[event.id]);await rpc('screening_review_approve',[event.id]);assert.equal((await q('SELECT * FROM screening_review')).length,1);
+assert.equal((await rpc('screening_review_list',[1]))[0].state,'awaiting_mapping');
+await db.exec('BEGIN');await q("UPDATE population SET hep_screen='ปกติ',hep_date='2025-01-01' WHERE person_id='p1'");await db.exec('ROLLBACK');assert.equal((await rpc('screening_history_list',['p1','HEP',1])).length,0);
+console.log('PASS: atomic history, original baseline, immutable history, actor attribution, no duplicate unchanged writes, RLS village scope, overview totals, staff-only idempotent approval, rollback');await db.close();
+})().catch(e=>{console.error(e.message);process.exit(1)});
