@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { calculateAge } from '@/lib/utils';
+import { createScreeningSaver, screeningToday } from '@/lib/screening-save';
 import TopBar from '@/components/TopBar';
 
 import { searchScreeningPeople, maskedScreeningCid } from '@/lib/screening-search';
@@ -28,11 +29,14 @@ export default function ScreeningPage() {
   const requestId = useRef(0);
   const [selected, setSelected] = useState(null);
   const [result, setResult] = useState('');
-  const [screenDate, setScreenDate] = useState(new Date().toISOString().split('T')[0]);
+  const [screenDate, setScreenDate] = useState(screeningToday);
   const [stats, setStats] = useState(null);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [retry, setRetry] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [saveMessage,setSaveMessage]=useState('');
+  const saveRef=useRef(null); const saveLock=useRef(false);
+  if(!saveRef.current) saveRef.current=createScreeningSaver(supabase);
   const search = useMemo(() => searchScreeningPeople([], appliedTerm, searchMode), [appliedTerm, searchMode]);
   const searching = searchTerm !== appliedTerm;
   const filtered = candidates;
@@ -73,21 +77,17 @@ export default function ScreeningPage() {
   },[user,currentKPI,appliedTerm,searchMode,page,retry,searching,search.ready]);
 
   const handleSave = async () => {
-    if (!result) { alert('กรุณาเลือกผลการคัดกรอง'); return; }
-    setSaving(true);
-    // Use only canonical columns that exist in the population table.
-    // Sending a legacy *_result column makes PostgREST reject the entire update.
-    const colMap = { HEP: { result:'hep_screen', date:'hep_date' }, FOBT: { result:'fobt_screen', date:'fobt_date' }, HPV: { result:'hpv_screen', date:'hpv_date' }, CHILD: { result:'child_dev', date:'child_date' } };
-    const cols = colMap[currentKPI];
-    const updateData = { updated_at: new Date().toISOString() };
-    updateData[cols.result] = result;
-    updateData[cols.date] = screenDate;
-    const { error } = await supabase.from('population').update(updateData).eq('person_id', selected.personId);
-    setSaving(false);
-    if (error) { alert('บันทึกไม่สำเร็จ: ' + error.message); }
-    else { alert('บันทึกสำเร็จ'); setSelected(null); setSearchTerm(''); setAppliedTerm(''); selectKPI(currentKPI); }
+    if(saveLock.current) return; saveLock.current=true;
+    setSaving(true); setSaveMessage('');
+    try {
+      const row=await saveRef.current({personId:selected?.personId,type:currentKPI,result,date:screenDate});
+      if(!row) return;
+      setSelected(p=>({...p,status:result,screenDate,hasResult:true}));
+      setRetry(n=>n+1);
+      setSaveMessage('บันทึกสำเร็จ และตรวจสอบผลกับวันที่จากฐานข้อมูลแล้ว');
+    } catch(e) { setSaveMessage(e.message || 'บันทึกไม่สำเร็จ ข้อมูลที่กรอกยังอยู่ กรุณาลองใหม่'); }
+    finally { saveLock.current=false; setSaving(false); }
   };
-
   if (loading || !user) return <div className="text-center py-5"><span className="spinner-border text-primary"/></div>;
 
   return (
@@ -141,7 +141,7 @@ export default function ScreeningPage() {
                         const sc = p.hasResult ? (['ปกติ','ผ่าน','สมวัย'].includes(p.status) ? 'success' : 'danger') : 'warning';
                         return (
                           <div className="col-md-6" key={p.personId}>
-                            <button type="button" className={`card border-${sc} search-result-card w-100 text-start p-0`} aria-label={`เลือก ${p.name} บ้าน ${p.house} หมู่ ${p.moo} เลขบัตรลงท้าย ${String(p.cid).slice(-4)}`} onClick={() => { setSelected(p); setResult(p.hasResult ? p.status : ''); }}>
+                            <button type="button" className={`card border-${sc} search-result-card w-100 text-start p-0`} aria-label={`เลือก ${p.name} บ้าน ${p.house} หมู่ ${p.moo} เลขบัตรลงท้าย ${String(p.cid).slice(-4)}`} onClick={() => { setSelected(p); setResult(p.hasResult ? p.status : ''); setScreenDate(p.screenDate && p.screenDate!=='-' ? p.screenDate : screeningToday()); setSaveMessage(''); }}>
                               <div className="card-body p-3">
                                 <div className="d-flex justify-content-between">
                                   <div>
@@ -176,17 +176,17 @@ export default function ScreeningPage() {
                     <div className="row g-3">
                       <div className="col-md-6">
                         <label className="form-label fw-bold"><i className="fa-solid fa-clipboard-check"/> ผลการคัดกรอง *</label>
-                        <select className="form-select form-select-lg" value={result} onChange={e => setResult(e.target.value)}>
+                        <select className="form-select form-select-lg" disabled={saving} value={result} onChange={e => setResult(e.target.value)}>
                           <option value="">-- เลือกผล --</option>
                           {currentKPI === 'CHILD' ? <><option value="สมวัย">✅ สมวัย</option><option value="ไม่สมวัย">⚠️ ไม่สมวัย</option></> : <><option value="ปกติ">✅ ปกติ</option><option value="ผิดปกติ">⚠️ ผิดปกติ</option></>}
                         </select>
                       </div>
                       <div className="col-md-6">
                         <label className="form-label fw-bold"><i className="fa-solid fa-calendar"/> วันที่คัดกรอง</label>
-                        <input type="date" className="form-control form-control-lg" value={screenDate} onChange={e => setScreenDate(e.target.value)} />
+                        <input type="date" max={screeningToday()} disabled={saving} className="form-control form-control-lg" value={screenDate} onChange={e => setScreenDate(e.target.value)} />
                       </div>
                     </div>
-                    <div className="d-flex gap-2 mt-4 justify-content-end">
+                    {saveMessage && <div className="alert alert-info mt-3" role="status">{saveMessage}</div>}<div className="d-flex gap-2 mt-4 justify-content-end">
                       <button className="btn btn-secondary rounded-pill" disabled={saving} onClick={() => setSelected(null)}><i className="fa-solid fa-arrow-left me-1"/> กลับ</button>
                       <button className="btn btn-success btn-lg rounded-pill px-4" onClick={handleSave} disabled={saving}>
                         {saving ? <><span className="spinner-border spinner-border-sm me-1"/>บันทึก...</> : <><i className="fa-solid fa-save me-1"/> บันทึกผล</>}
