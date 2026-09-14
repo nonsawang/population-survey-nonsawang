@@ -11,7 +11,7 @@ CREATE TABLE vhv_data(id serial PRIMARY KEY,name text,moo text);
 CREATE TABLE activity_logs(id bigserial PRIMARY KEY,user_id uuid,username text,action text,details text,target_id text,created_at timestamptz DEFAULT now());
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon,authenticated;
 CREATE POLICY old_open ON population FOR ALL USING(true) WITH CHECK(true);`);
-for(const file of ['20260907_hosxp_review.sql','20260910_auth_prepare.sql','20260910_auth_activate.sql'])await db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations',file),'utf8'));
+for(const file of ['20260907_hosxp_review.sql','20260910_auth_prepare.sql','20260910_auth_activate.sql','20260914_fix_review_reauthentication.sql'])await db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations',file),'utf8'));
 const q=async(sql,args=[])=> (await db.query(sql,args)).rows;
 const call=async(name,args=[])=> (await q(`SELECT ${name}(${args.map((_,i)=>'$'+(i+1)).join(',')}) result`,args))[0].result;
 const as=async(role,token='')=>{await db.exec('RESET ROLE');await q(`SELECT set_config('request.headers',$1,false)`,[JSON.stringify({'x-app-session':token})]);await db.exec('SET ROLE '+role)};

@@ -24,3 +24,9 @@ Remaining implementation: immutable queued payload after staff review; unique pa
 The existing serial function changes transaction isolation internally; do not invoke it inside a writer transaction without verifying its transaction behavior and concurrency with HOSxP. The presence of InnoDB tables does not by itself validate the complete visit registration workflow.
 
 Validation: `node tests/hosxp-fit-preflight.cjs`, plus a successful read-only live preflight. No visit has been created and no deployment or schema migration is needed for this preparation script.
+
+## Preparation UI added 2026-09-14
+
+Applied `20260914_fit_preparation.sql` to the configured Supabase project successfully. Do not rerun this table-creation migration. Staff/admin can preview an approved current FIT event, confirm the proposed Negative/Positive translation, and persist an immutable preparation. Repeated calls reuse the same preparation; a different event for the same person/date is rejected. VHV cannot read or prepare these records. Status is exclusively `awaiting_lan_validation`; these records are NOT write authorization and no worker should import them automatically.
+
+UI lives in `components/FitPreparation.js`, attached to approved FIT rows in ScreeningReview. Publish frontend/API changes together after the migration. Local SQL tests and Next production build passed. Git commit was blocked by `.git/index.lock` permission denied; user must Commit & Sync using VS Code before the menu appears in production. HOSxP patient matching, entitlement/visit time selection, transactional visit writer, acknowledgement and test-database validation remain unimplemented.

@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import {supabase} from '@/lib/supabase';
+import FitPreparation from '@/components/FitPreparation';
 const names={HEP:'HBV/HCV',FOBT:'FIT',HPV:'HPV',CHILD:'พัฒนาการเด็ก'};
 const time=v=>v?new Date(v).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'}):'-';
 function useQuery(name,args,refresh){
@@ -27,7 +28,7 @@ export function ScreeningOverview({kpi,refresh}){
 }
 export function ScreeningReview(){
  const [page,setPage]=useState(1),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');const q=useQuery('screening_review_list',{p_page:page},0);
- async function approve(h){if(busy)return;setBusy(true);setNotice('');try{const {error}=await supabase.rpc('screening_review_approve',{p_history:h.id});if(error)throw error;setNotice('อนุมัติผลแล้ว รอยืนยันการจับคู่ข้อมูลปลายทางก่อนส่ง HOSxP');q.reload();}catch{setNotice('อนุมัติไม่สำเร็จ กรุณาตรวจรายการและลองใหม่');}finally{setBusy(false);}}
- return <section className="card p-3 mb-4"><h5>ตรวจอนุมัติผลคัดกรอง</h5><p>อนุมัติผลแต่ละครั้งก่อนเตรียมส่ง HOSxP ขณะนี้ยังรอยืนยันตารางและรหัสผลปลายทาง</p><State {...q}/>{notice&&<p role="status">{notice}</p>}{q.data?.length===0&&<p>ยังไม่มีรายการคัดกรองใหม่</p>}
- {q.data?.map(h=><article className="border rounded p-3 mb-2" key={h.id}><strong>{h.person_name}</strong> • บ้าน {h.house} หมู่ {h.moo}<p>{names[h.kpi]} • ผล {h.result} • วันที่ {h.screen_date||'ไม่ระบุ'}</p><p className="small">บันทึกโดย {h.recorded_name} • {time(h.recorded_at)}<br/>ผลในระบบก่อนแก้: {h.previous_result||'-'} • {h.previous_date||'-'}</p>{h.state?<p>อนุมัติโดย {h.approved_name} • {time(h.approved_at)} • รอจับคู่ปลายทาง</p>:<button className="btn btn-primary" disabled={busy||!h.screen_date} onClick={()=>approve(h)}>อนุมัติผลรายการนี้</button>}</article>)}<Pages page={page} setPage={setPage} rows={q.data}/></section>;
+ async function approve(h){if(busy)return;setBusy(true);setNotice('');try{const {error}=await supabase.rpc('screening_review_approve',{p_history:h.id});if(error)throw error;setNotice('อนุมัติผลแล้ว รายการ FIT สามารถเปิดตัวอย่างเพื่อเตรียมนำเข้าได้');q.reload();}catch{setNotice('อนุมัติไม่สำเร็จ กรุณาตรวจรายการและลองใหม่');}finally{setBusy(false);}}
+ return <section className="card p-3 mb-4"><h5>ตรวจอนุมัติผลคัดกรอง</h5><p>FIT ตรวจรหัสแล็บและค่าบริการแล้ว เปิดตัวอย่างและเตรียมรายการได้หลังอนุมัติ ส่วน HBV/HCV, HPV และพัฒนาการเด็กยังต้องตรวจ mapping ให้ครบ การเตรียมรายการยังไม่สร้าง visit</p><State {...q}/>{notice&&<p role="status">{notice}</p>}{q.data?.length===0&&<p>ยังไม่มีรายการคัดกรองใหม่</p>}
+ {q.data?.map(h=><article className="border rounded p-3 mb-2" key={h.id}><strong>{h.person_name}</strong> • บ้าน {h.house} หมู่ {h.moo}<p>{names[h.kpi]} • ผล {h.result} • วันที่ {h.screen_date||'ไม่ระบุ'}</p><p className="small">บันทึกโดย {h.recorded_name} • {time(h.recorded_at)}<br/>ผลในระบบก่อนแก้: {h.previous_result||'-'} • {h.previous_date||'-'}</p>{h.state?<p>อนุมัติโดย {h.approved_name} • {time(h.approved_at)} • อนุมัติผลแล้ว</p>:<button className="btn btn-primary" disabled={busy||!h.screen_date} onClick={()=>approve(h)}>อนุมัติผลรายการนี้</button>}{h.kpi==='FOBT'&&h.state&&<FitPreparation historyId={h.id}/>}</article>)}<Pages page={page} setPage={setPage} rows={q.data}/></section>;
 }
