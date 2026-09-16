@@ -1,0 +1,30 @@
+const assert=require('node:assert/strict');
+const {validCid,validateSource,targetCheck,snapshotStatus}=require('../scripts/validate-hosxp-fit-queue.cjs');
+const {mapping}=require('../scripts/hosxp-fit-preflight.cjs');
+(async()=>{
+ const base='123456789012';let sum=0;for(let i=0;i<12;i++)sum+=Number(base[i])*(13-i);const cid=base+((11-sum%11)%10);
+ assert(validCid(cid));assert(!validCid('123'));assert(!validCid(base+((Number(cid[12])+1)%10)));
+ const h={id:'event',person_id:'web-1',kpi:'FOBT',result:'ปกติ',screen_date:'2026-02-03'};
+ const person={person_id:'web-1',fname:'ทดสอบ',lname:'ระบบ',birth_date:'1966-02-06',cid,fobt_screen:h.result,fobt_date:h.screen_date};
+ const job={history_id:h.id,person_id:'web-1',screen_date:h.screen_date,state:'awaiting_lan_validation',payload:{history_id:h.id,person_id:'web-1',screen_date:h.screen_date,source_result:h.result,lab_result:'Negative',mapping_version:'fit-20260914',lab_code:mapping.lab,fee_code:mapping.fee,department_code:mapping.department,specialty_code:mapping.specialty,doctor_code:mapping.doctor,diagnosis:mapping.diagnosis,visit_policy:'new_visit_per_screening_type'}};
+ assert.equal(validateSource(job,h,person,true,'2026-09-16'),null);
+ assert.equal(validateSource(job,h,person,false,'2026-09-16'),'SOURCE_MISSING');
+ assert.equal(validateSource(job,h,{...person,fobt_screen:'ผิดปกติ'},true,'2026-09-16'),'SOURCE_CHANGED');
+ assert.equal(validateSource({...job,payload:{...job.payload,fee_code:'3001246'}},h,person,true,'2026-09-16'),'MAPPING_CHANGED');
+ assert.equal(validateSource({...job,payload:{...job.payload,lab_result:'Positive'}},h,person,true,'2026-09-16'),'PAYLOAD_CHANGED');
+ const target={person_id:1,patient_hn:'0001',death:'N',person_discharge_id:9,fname:person.fname,lname:person.lname,birthdate:person.birth_date},patient={hn:'0001',death:'N',fname:person.fname,lname:person.lname,birthday:person.birth_date};
+ async function check(rows){let i=0;const fake={execute:async(sql,args)=>{assert(sql.startsWith('SELECT '));assert(Array.isArray(args));return [rows[i++]];}};return targetCheck(fake,person,h.screen_date,{cid,hosxp_person_id:1});}
+ assert.equal(await check([[target],[patient],[],[]]),'VALIDATED_NOT_IMPORTED');
+ assert.equal(await check([[target,target]]),'DUPLICATE_PERSON_CID');
+ assert.equal(await check([[target],[patient,patient]]),'DUPLICATE_PATIENT_CID');
+ assert.equal(await check([[{...target,patient_hn:'other'}],[patient]]),'HN_LINK_CONFLICT');
+ assert.equal(await check([[{...target,person_id:2}],[patient]]),'TARGET_CHANGED_SINCE_SYNC');
+ assert.equal(await check([[{...target,death:'Y'}],[patient]]),'DECEASED_REQUIRES_REVIEW');
+ assert.equal(await check([[target],[patient],[{}]]),'EXISTING_FIT_REQUIRES_REVIEW');
+ assert.equal(await check([[target],[patient],[],[{}]]),'EXISTING_FIT_FEE_REQUIRES_REVIEW');
+ assert.equal(await check([[{...target,fname:'other'}],[patient]]),'IDENTITY_REQUIRES_REVIEW');
+ assert.equal(snapshotStatus({captured_at:'2026-09-16T00:00:00Z',completed_at:'2026-09-16T00:01:00Z'},[{}],Date.parse('2026-09-16T01:00:00Z')),null);
+ assert.equal(snapshotStatus({captured_at:'2026-09-14T00:00:00Z',completed_at:'2026-09-14T00:01:00Z'},[{}],Date.parse('2026-09-16T01:00:00Z')),'SNAPSHOT_STALE');
+ assert.equal(snapshotStatus({captured_at:'2026-09-16T00:00:00Z',completed_at:'2026-09-16T00:01:00Z'},[{},{}],Date.parse('2026-09-16T01:00:00Z')),'SNAPSHOT_DUPLICATE_CID');
+ console.log('PASS: CID checksum, approval, stale source, mapping integrity, unique patient match, HN link, deceased guard and duplicate lab/fee detection');
+})().catch(e=>{console.error(e.message);process.exitCode=1;});

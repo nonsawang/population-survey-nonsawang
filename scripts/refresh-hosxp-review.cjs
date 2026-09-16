@@ -4,6 +4,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const mysql = require('mysql2/promise');
 const { createClient } = require('@supabase/supabase-js');
+const {requireServiceKey}=require('./lan-service-key.cjs');
 
 function readConfig(file) {
   const config = { ...process.env };
@@ -17,6 +18,7 @@ function readConfig(file) {
   return config;
 }
 async function refresh(config) {
+  requireServiceKey(config.SUPABASE_SERVICE_ROLE_KEY);
   for (const name of ['HOSXP_DB_HOST','HOSXP_DB_USER','HOSXP_DB_NAME','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY']) {
     if (!config[name]) throw new Error(`Missing ${name} in .env.sync`);
   }
