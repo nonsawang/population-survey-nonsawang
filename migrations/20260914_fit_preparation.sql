@@ -33,7 +33,7 @@ BEGIN
  RETURN jsonb_build_object('history_id',h.id,'person_id',h.person_id,'screen_date',h.screen_date,
  'source_result',h.result,'lab_result',CASE h.result WHEN 'ปกติ' THEN 'Negative' ELSE 'Positive' END,
  'mapping_version','fit-20260914','lab_code',10214,'fee_code','3905544','department_code','048','specialty_code','15',
- 'doctor_code','0029','diagnosis','Z121','visit_policy','new_visit_per_screening_type',
+ 'doctor_code','0029','diagnosis','Z121','pttype','PP','visit_time_policy','import_time','visit_policy','new_visit_per_screening_type',
  'state',coalesce(draft.state,'not_prepared'),'prepared_at',draft.prepared_at,'import_enabled',false);
 END $$;
 

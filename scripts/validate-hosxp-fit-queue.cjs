@@ -18,7 +18,7 @@ function validateSource(job,history,person,approved,today){
  if(history.result!==person.fobt_screen||history.screen_date!==person.fobt_date)return 'SOURCE_CHANGED';
  const result=history.result==='ปกติ'?'Negative':'Positive';
  if(!p||p.history_id!==history.id||p.person_id!==job.person_id||p.screen_date!==history.screen_date||job.screen_date!==history.screen_date||p.source_result!==history.result||p.lab_result!==result)return 'PAYLOAD_CHANGED';
- if(p.mapping_version!=='fit-20260914'||p.lab_code!==mapping.lab||p.fee_code!==mapping.fee||p.department_code!==mapping.department||p.specialty_code!==mapping.specialty||p.doctor_code!==mapping.doctor||p.diagnosis!==mapping.diagnosis||p.visit_policy!=='new_visit_per_screening_type')return 'MAPPING_CHANGED';
+ if(p.mapping_version!=='fit-20260914'||p.lab_code!==mapping.lab||p.fee_code!==mapping.fee||p.department_code!==mapping.department||p.specialty_code!==mapping.specialty||p.doctor_code!==mapping.doctor||p.diagnosis!==mapping.diagnosis||p.pttype!=='PP'||p.visit_time_policy!=='import_time'||p.visit_policy!=='new_visit_per_screening_type')return 'MAPPING_CHANGED';
  if(!validCid(person.cid))return 'INVALID_CID';
  return null;
 }

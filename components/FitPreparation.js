@@ -19,7 +19,7 @@ export default function FitPreparation({historyId}){
   {error&&<p className="text-danger mt-2" role="alert">{error}</p>}
   {preview&&<div className="bg-light rounded p-3">
    <h6>ตัวอย่างรายการ FIT</h6><p>วันที่ {preview.screen_date} • {preview.source_result} → <strong>{preview.lab_result}</strong></p>
-   <p className="small">visit ใหม่สำหรับ FIT • ฝ่ายส่งเสริมสุขภาพ • แผนกอื่น ๆ • ผู้ตรวจ กฤตพล<br/>แล็บ {preview.lab_code} • ค่าบริการ {preview.fee_code} • วินิจฉัย {preview.diagnosis}</p>
+   <p className="small">visit ใหม่สำหรับ FIT • สิทธิ PP–ส่งเสริมป้องกัน • เวลาใช้เวลาที่นำเข้า<br/>ฝ่ายส่งเสริมสุขภาพ • แผนกอื่น ๆ • ผู้ตรวจ กฤตพล<br/>แล็บ {preview.lab_code} • ค่าบริการ {preview.fee_code} • วินิจฉัย {preview.diagnosis}</p>
    {preview.state==='awaiting_lan_validation'?<p role="status" className="fw-bold">เตรียมรายการแล้ว — รอตัวเชื่อม LAN ตรวจสอบ ยังไม่ได้สร้าง visit และยังไม่มีเลข VN</p>:<>
     <label className="d-flex gap-2 align-items-start"><input type="checkbox" checked={confirmed} disabled={busy} onChange={e=>setConfirmed(e.target.checked)}/>ยืนยันว่าผลแล็บ {preview.lab_result} ตรงกับผล FIT ครั้งนี้</label>
     <p className="small mt-2">ขั้นตอนนี้บันทึกรายการเตรียมเท่านั้น ยังไม่ส่งเข้า HOSxP</p>
