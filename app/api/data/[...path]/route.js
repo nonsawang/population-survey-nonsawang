@@ -1,7 +1,7 @@
 import { sameOrigin, getSessionToken, currentUser, databaseConfig, readBody, authResponse, authError } from '@/lib/server-auth';
 export const dynamic = 'force-dynamic';
 const tables = new Set(['population', 'vhv_data', 'app_users', 'activity_logs']);
-const rpc = new Set(['hosxp_fit_preview','hosxp_fit_prepare','screening_history_list','screening_overview','screening_review_list','screening_review_approve','screening_search', 'hosxp_review_list', 'hosxp_review_open_session', 'hosxp_review_approve', 'app_admin_save_user', 'app_change_password']);
+const rpc = new Set(['hosxp_fit_import_status','hosxp_fit_preview','hosxp_fit_prepare','screening_history_list','screening_overview','screening_review_list','screening_review_approve','screening_search', 'hosxp_review_list', 'hosxp_review_open_session', 'hosxp_review_approve', 'app_admin_save_user', 'app_change_password']);
 async function handle(request, { params }) {
   const parts = params.path || [];
   const isRpc = parts.length === 2 && parts[0] === 'rpc' && rpc.has(parts[1]);

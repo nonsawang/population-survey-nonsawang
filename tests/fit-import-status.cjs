@@ -1,0 +1,21 @@
+const {PGlite}=require('@electric-sql/pglite');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+(async()=>{
+ const db=new PGlite();
+ await db.exec(`CREATE ROLE anon;CREATE ROLE authenticated;CREATE ROLE service_role BYPASSRLS;
+ CREATE FUNCTION app_current_user() RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('test.actor',true),'')::jsonb $$;
+ CREATE TABLE hosxp_fit_preparations(id uuid PRIMARY KEY,history_id uuid);
+ INSERT INTO hosxp_fit_preparations VALUES('11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222');`);
+ await db.exec(fs.readFileSync(path.join(__dirname,'../migrations/20260917_fit_import_results.sql'),'utf8'));
+ const status=()=>db.query("SELECT hosxp_fit_import_status('22222222-2222-4222-8222-222222222222') r");
+ await db.exec('SET ROLE anon');await assert.rejects(status,/STAFF_REQUIRED/);
+ await db.query("SELECT set_config('test.actor',$1,false)",[JSON.stringify({role:'vhv'})]);await assert.rejects(status,/STAFF_REQUIRED/);
+ await db.query("SELECT set_config('test.actor',$1,false)",[JSON.stringify({role:'staff'})]);assert.equal((await status()).rows[0].r.import_status,'pending');
+ await assert.rejects(()=>db.query('SELECT * FROM hosxp_fit_import_results'),/permission denied/);
+ await db.exec('RESET ROLE;SET ROLE service_role');
+ await db.query(`INSERT INTO hosxp_fit_import_results VALUES('11111111-1111-4111-8111-111111111111','690910112233',1,now(),now(),'fit-visit-20260917',$1,'imported','not_ready','{}')`,['a'.repeat(64)]);
+ await assert.rejects(()=>db.query("UPDATE hosxp_fit_import_results SET claim_status='ready'"),/check constraint/);
+ await db.exec('RESET ROLE;SET ROLE anon');assert.equal((await status()).rows[0].r.vn,'690910112233');assert.equal((await status()).rows[0].r.claim_status,'not_ready');
+ await assert.rejects(()=>db.query("UPDATE hosxp_fit_import_results SET claim_status='ready'"),/permission denied/);
+ await db.close();console.log('PASS: staff-only status RPC, service-only outcomes, readiness evidence constraint');
+})().catch(e=>{console.error(e);process.exitCode=1;});
