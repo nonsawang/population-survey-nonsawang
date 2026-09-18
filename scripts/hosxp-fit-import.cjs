@@ -27,6 +27,8 @@ async function sourceJob(source,id){
 }
 const required={ovst:['hos_guid','vn','hn','vstdate','vsttime'],vn_stat:['vn','hn','pdx','inc_nondrug'],opdscreen:['hos_guid','vn','cc'],ovst_seq:['vn','seq_id'],ovstdiag:['ovst_diag_id','vn'],lab_head:['lab_order_number','vn','order_note'],lab_order:['lab_order_number','lab_items_code','lab_order_result'],opitemrece:['hos_guid','vn','finance_number'],visit_pttype:['vn','pttype','pttype_number','auth_code'],serial:['name','serial_no'],survey_fit_import_ledger:['preparation_id','payload_hash','vn','hn','screen_date','lab_order_number','lab_result','imported_at','policy_version']};
 async function schemaCheck(db){
+ required.pp_special=['pp_special_id','vn','hn','pp_special_type_id','pp_special_code','doctor','pp_special_service_place_type_id','dest_hospcode','entry_datetime','hos_guid'];
+ required.pp_special_type=['pp_special_type_id','pp_special_code','is_active'];
  const [tables]=await db.query('SELECT table_name,engine FROM information_schema.tables WHERE table_schema=DATABASE()');
  const [columns]=await db.query('SELECT table_name,column_name FROM information_schema.columns WHERE table_schema=DATABASE()');
  const problems=[];
@@ -53,6 +55,9 @@ async function main(config,args=process.argv){
  const source=createClient(config.SUPABASE_URL,config.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
  const db=await mysql.createConnection({host:config.HOSXP_DB_HOST,port:Number(config.HOSXP_DB_PORT||3306),user:config.HOSXP_DB_USER,password:config.HOSXP_DB_PASSWORD,database:config.HOSXP_DB_NAME,dateStrings:true,connectTimeout:8000});
  try{
+  // The server init_connect overrides the handshake with TIS-620.
+  // mysql2 sends UTF-8: align this session before binding Thai text.
+  await db.query('SET NAMES utf8mb4');
   const issues=await schemaCheck(db);
   await rows(source.from('hosxp_fit_import_results').select('preparation_id').eq('preparation_id',id).limit(1));
   if(issues.length)return {mode:'blocked',issues,write_enabled:false};

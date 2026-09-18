@@ -21,6 +21,18 @@ async function serial(db,name){
  if(n<1||n>2147483647)fail('SERIAL_OUT_OF_RANGE');
  await db.execute('UPDATE serial SET serial_no=? WHERE name=?',[n,name]);return n;
 }
+async function addFitPP(db,{vn,hn,date,time,result}){
+ const code=result==='Negative'?'1B0060':result==='Positive'?'1B0061':null;
+ if(!code)fail('INVALID_PP_RESULT');
+ const [types]=await db.execute("SELECT pp_special_type_id FROM pp_special_type WHERE pp_special_code=? AND is_active='Y'",[code]);
+ if(types.length!==1)fail('PP_MAPPING_CHANGED');
+ const [existing]=await db.execute("SELECT p.pp_special_id FROM pp_special p JOIN pp_special_type t ON t.pp_special_type_id=p.pp_special_type_id WHERE p.vn=? AND t.pp_special_code IN ('1B0060','1B0061') FOR UPDATE",[vn]);
+ if(existing.length)fail('EXISTING_PP_REQUIRES_REVIEW');
+ const id=await serial(db,'pp_special_id');
+ await insert(db,'pp_special',{pp_special_id:id,vn,hn,pp_special_type_id:types[0].pp_special_type_id,pp_special_code:code,doctor:mapping.doctor,pp_special_service_place_type_id:1,dest_hospcode:'05080',entry_datetime:date+' '+time,hos_guid:guid()});
+ const [saved]=await db.execute('SELECT pp_special_code,doctor,dest_hospcode,pp_special_service_place_type_id,entry_datetime FROM pp_special WHERE pp_special_id=? AND vn=?',[id,vn]);
+ if(saved.length!==1||saved[0].pp_special_code!==code||saved[0].doctor!==mapping.doctor||saved[0].dest_hospcode!=='05080'||Number(saved[0].pp_special_service_place_type_id)!==1||saved[0].entry_datetime!==date+' '+time)fail('PP_READBACK_MISMATCH');
+}
 async function readBack(db,ledger){
  const [rows]=await db.execute(`SELECT o.hn,o.vstdate,o.pttype,o.doctor,o.spclty,o.main_dep,
  h.lab_order_number,h.order_date,l.lab_items_code,l.lab_order_result,
@@ -62,6 +74,8 @@ async function writeVisit(db,{job,person,snapshot,revalidate,now=()=>new Date()}
   if(status!=='VALIDATED_NOT_IMPORTED')fail(status);
   const [[patient]]=await db.execute('SELECT hn,sex,birthday,cid FROM patient WHERE cid=?',[person.cid]);
   const [[lab]]=await db.execute('SELECT lab_items_name,lab_items_group,active_status,icode,possible_value FROM lab_items WHERE lab_items_code=?',[mapping.lab]);
+  const [[group]]=await db.execute('SELECT lab_items_group_name FROM lab_items_group WHERE lab_items_group_code=?',[lab?.lab_items_group]);
+  if(!group?.lab_items_group_name)fail('LAB_FORM_MISSING');
   const [[fee]]=await db.execute('SELECT name,price,income,istatus,paidst,unitcost FROM nondrugitems WHERE icode=?',[mapping.fee]);
   const [[right]]=await db.execute('SELECT paidst,pcode,isuse FROM pttype WHERE pttype=?',['PP']);
   if(lab?.active_status!=='Y'||lab.icode!==mapping.fee||!String(lab.possible_value).split(/\r?\n/).includes(job.payload.lab_result)||fee?.istatus!=='Y'||Number(fee.price)!==60||fee.paidst!=='02'||right?.isuse!=='Y'||right.paidst!=='02')fail('CATALOG_CHANGED');
@@ -71,17 +85,19 @@ async function writeVisit(db,{job,person,snapshot,revalidate,now=()=>new Date()}
   const [[age]]=await db.execute('SELECT TIMESTAMPDIFF(YEAR,?,?) y,TIMESTAMPDIFF(MONTH,?,?) % 12 m,DATEDIFF(?,DATE_ADD(?,INTERVAL TIMESTAMPDIFF(MONTH,?,?) MONTH)) d',[patient.birthday,date,patient.birthday,date,date,patient.birthday,patient.birthday,date]);
   if(age.y<0)fail('INVALID_BIRTH_DATE');
   const common={vn,hn,vstdate:date,vsttime:at.time};
-  await insert(db,'ovst',{...common,hos_guid:guid(),doctor:mapping.doctor,pttype:'PP',spclty:mapping.specialty,main_dep:mapping.department,cur_dep:mapping.department,ovstist:'01',ovstost:'99',visit_type:'I'});
-  await insert(db,'ovst_seq',{vn,seq_id:seqNumber,hos_guid:guid(),pcu_person_id:Number(snapshot.hosxp_person_id),register_depcode:mapping.department});
+  // Match the local One Stop Service visit classification; NULL is not 'N'.
+  await insert(db,'ovst',{...common,hos_guid:guid(),doctor:mapping.doctor,pttype:'PP',spclty:mapping.specialty,main_dep:mapping.department,cur_dep:mapping.department,ovstist:'01',ovstost:'99',visit_type:'I',pt_subtype:1});
+  await insert(db,'ovst_seq',{vn,seq_id:seqNumber,hos_guid:guid(),pcu_person_id:Number(snapshot.hosxp_person_id),register_depcode:mapping.department,promote_visit:'N'});
   await insert(db,'opdscreen',{...common,hos_guid:guid(),cc:'คัดกรองมะเร็งลำไส้ใหญ่และลำไส้ตรง (FIT)',screen_dep:mapping.department});
   await insert(db,'ovstdiag',{...common,ovst_diag_id:diagNumber,hos_guid:guid(),icd10:mapping.diagnosis,diagtype:'1',doctor:mapping.doctor});
   await insert(db,'vn_stat',{vn,hn,vstdate:date,hos_guid:guid(),pdx:mapping.diagnosis,dx_doctor:mapping.doctor,pttype:'PP',pcode:right.pcode,spclty:mapping.specialty,sex:patient.sex,age_y:age.y,age_m:age.m,age_d:age.d,cid:patient.cid,income:Number(fee.price),item_money:Number(fee.price),uc_money:Number(fee.price),inc_nondrug:Number(fee.price),paid_money:0,remain_money:0});
   await insert(db,'visit_pttype',{vn,pttype:'PP',pttype_number:1,hos_guid:guid()});
-  await insert(db,'lab_head',{vn,hn,lab_order_number:labNumber,hos_guid:guid(),lab_order_number_guid:guid(),doctor_code:mapping.doctor,lab_items_group_code:lab.lab_items_group,order_date:date,order_time:at.time,report_date:date,order_department:mapping.department,spclty:mapping.specialty,order_note:'Survey FIT '+job.id,item_count:1,confirm_report:'N'});
+  await insert(db,'lab_head',{vn,hn,lab_order_number:labNumber,hos_guid:guid(),lab_order_number_guid:guid(),doctor_code:mapping.doctor,lab_items_group_code:lab.lab_items_group,department:'OPD',form_name:group.lab_items_group_name,order_date:date,order_time:at.time,report_date:date,order_department:mapping.department,spclty:mapping.specialty,order_note:'Survey FIT '+job.id,item_count:1,confirm_report:'N'});
   // Preserve the reviewed result, without fabricating lab certification or specimen receipt.
-  await insert(db,'lab_order',{lab_order_number:labNumber,lab_items_code:mapping.lab,lab_order_result:job.payload.lab_result,lab_items_name_ref:lab.lab_items_name,lab_order_remark:'Survey history '+job.history_id,hos_guid:guid(),confirm:'N'});
+  await insert(db,'lab_order',{lab_order_number:labNumber,lab_items_code:mapping.lab,lab_order_result:job.payload.lab_result,lab_items_name_ref:lab.lab_items_name,lab_order_remark:'Survey history '+job.history_id,hos_guid:guid(),order_type:'A',confirm:'N'});
   await insert(db,'opitemrece',{...common,hos_guid:guid(),icode:mapping.fee,qty:1,unitprice:Number(fee.price),sum_price:Number(fee.price),cost:Number(fee.unitcost||0),doctor:mapping.doctor,pttype:'PP',paidst:right.paidst,income:fee.income,item_type:'P',sub_type:'3',dep_code:mapping.department,rxdate:date,rxtime:at.time});
   const ledger={preparation_id:job.id,payload_hash:hash,vn,hn,screen_date:date,lab_order_number:labNumber,lab_result:job.payload.lab_result,imported_at:at.date+' '+at.time,policy_version:POLICY};
+  await addFitPP(db,{vn,hn,date,time:at.time,result:job.payload.lab_result});
   await insert(db,'survey_fit_import_ledger',ledger);
   await readBack(db,ledger);await revalidate();
   await db.commit();committed=true;return {...ledger,replayed:false};
@@ -90,4 +106,4 @@ async function writeVisit(db,{job,person,snapshot,revalidate,now=()=>new Date()}
   await db.execute('SELECT RELEASE_LOCK(?)',[lock]);
  }
 }
-module.exports={POLICY,stamp,payloadHash,vnFor,serial,readBack,claimChecks,writeVisit};
+module.exports={POLICY,stamp,payloadHash,vnFor,serial,readBack,claimChecks,writeVisit,addFitPP};

@@ -1,5 +1,7 @@
 # FIT visit writer (17 September 2026)
 
+Update 18 September: newly created FIT visits also insert PP Special in the same transaction. Negative maps to active code 1B0060; Positive maps to active code 1B0061. Local settings follow the reviewed example: facility 05080, service place 1 (in facility), doctor 0029, screening date and import clock. The connector resolves the active type ID from the catalog instead of assuming it, locks the pp_special_id serial and verifies the saved record. Missing/ambiguous mapping, an existing FIT PP record or a failed PP insert/readback rolls back the new visit. Replaying a committed preparation returns its existing VN without adding PP again. Existing visits are not backfilled by this update. Use this workflow only for in-facility screening; outside-facility events need their own confirmed setting.
+
 Creates one **explicitly selected** reviewed FIT preparation. It does not scan/import the whole queue. Keep `HOSXP_IMPORT_ENABLED` disabled until the site's first visit has been checked in the HOSxP application. This implementation has automated transaction/failure tests; those are not a substitute for that application-level verification.
 
 ## Installation
