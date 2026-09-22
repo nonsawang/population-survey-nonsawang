@@ -28,7 +28,7 @@ async function run(config,optionsFile){
  const opt=settings(JSON.parse(fs.readFileSync(optionsFile,'utf8').replace(/^\uFEFF/,'')));
  requireServiceKey(config.SUPABASE_SERVICE_ROLE_KEY);
  if(new URL(config.SUPABASE_URL).protocol!=='https:')throw Error('HTTPS_SOURCE_REQUIRED');
- const db=await mysql.createConnection({host:config.HOSXP_DB_HOST,port:Number(config.HOSXP_DB_PORT||3306),user:config.HOSXP_DB_USER,password:config.HOSXP_DB_PASSWORD,database:config.HOSXP_DB_NAME,connectTimeout:8000});
+ const db=await mysql.createConnection({host:config.HOSXP_DB_HOST,port:Number(config.HOSXP_DB_PORT||3306),user:config.HOSXP_DB_USER,password:config.HOSXP_DB_PASSWORD,database:config.HOSXP_DB_NAME,dateStrings:true,connectTimeout:8000});
  try{
   const [[lock]]=await db.execute("SELECT GET_LOCK('survey-fit-auto',0) acquired");
   if(Number(lock.acquired)!==1)return {skipped:'CYCLE_ALREADY_RUNNING'};
@@ -50,11 +50,16 @@ async function run(config,optionsFile){
    outcomes.forEach(r=>done.add(r.preparation_id));jobs.push(...batch.filter(j=>due(j,done,state,Date.now())));
    if(jobs.length>=opt.limit||batch.length<100)break;after=batch.at(-1).id;
   }
-  return await processJobs({jobs,done,state,limit:opt.limit,now:Date.now(),save,importJob:async id=>{
+  const report=await processJobs({jobs,done,state,limit:opt.limit,now:Date.now(),save,importJob:async id=>{
    // A lost worker lock aborts before another patient's import.
    await db.query('SELECT 1');
    return main({...config,HOSXP_IMPORT_ENABLED:'true'},['--job='+id,'--write','--confirm-fit-write']);
   }});
+  // Previously imported visits may acquire Authen/finance references later in HOSxP.
+  // Refresh evidence without modifying clinical or financial records.
+  try{Object.assign(report,await require('./hosxp-fit-finance-status.cjs').reconcile({source,db}));}
+  catch{report.finance_status_error=true;}
+  return report;
  }finally{await db.end();}
 }
 if(require.main===module){

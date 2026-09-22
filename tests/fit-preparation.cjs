@@ -29,12 +29,14 @@ assert.equal((await rpc('screening_review_list',[1]))[0].state,'awaiting_mapping
 await db.exec('BEGIN');await q("UPDATE population SET hep_screen='ปกติ',hep_date='2025-01-01' WHERE person_id='p1'");await db.exec('ROLLBACK');assert.equal((await rpc('screening_history_list',['p1','HEP',1])).length,0);
 await db.exec('RESET ROLE');
 await db.exec(fs.readFileSync(path.join(__dirname,'../migrations/20260914_fit_preparation.sql'),'utf8'));
+await db.exec(fs.readFileSync(path.join(__dirname,'../migrations/20260922_fit_billing_preview.sql'),'utf8'));
 await db.exec('SET ROLE anon');await actor('vhv');
 await assert.rejects(()=>rpc('hosxp_fit_preview',[event.id]),/STAFF_REQUIRED/);
 await assert.rejects(()=>rpc('hosxp_fit_prepare',[event.id,'Positive']),/STAFF_REQUIRED/);
 assert.equal((await q('SELECT * FROM hosxp_fit_preparations')).length,0);
 await actor('staff');
 const preview=await rpc('hosxp_fit_preview',[event.id]);assert.equal(preview.lab_result,'Positive');assert.equal(preview.import_enabled,false);
+assert.equal(preview.income_code,'07');assert.equal(preview.bill_code,'31209');assert.equal(preview.fee_price,60);assert.equal(preview.pp_special_code,'1B0061');
 await assert.rejects(()=>rpc('hosxp_fit_prepare',[event.id,'Negative']),/FIT_RESULT_CONFIRMATION_REQUIRED/);
 const one=await rpc('hosxp_fit_prepare',[event.id,'Positive']);const two=await rpc('hosxp_fit_prepare',[event.id,'Positive']);assert.equal(one.id,two.id);
 assert.equal((await q('SELECT * FROM hosxp_fit_preparations')).length,1);

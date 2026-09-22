@@ -30,7 +30,7 @@ function fake({failTable,mismatch=false,collision=false,duplicatePP=false,missin
   if(sql.startsWith('SELECT hn,sex'))return [[{hn:'TEST001',sex:'1',birthday:person.birth_date,cid:person.cid}]];
   if(sql.startsWith('SELECT lab_items_name'))return [[{lab_items_name:'fit test',lab_items_group:3,active_status:'Y',icode:'3905544',possible_value:'Negative\r\nPositive'}]];
   if(sql.startsWith('SELECT lab_items_group_name'))return [[{lab_items_group_name:'BIOCHEMISTRY'}]];
-  if(sql.startsWith('SELECT name,price'))return [[{price:60,income:'18',istatus:'Y',paidst:'02',unitcost:0}]];
+  if(sql.startsWith('SELECT name,price'))return [[{price:60,income:'07',billcode:'31209',nhso_adp_type_id:15,nhso_adp_code:'31209',istatus:'Y',paidst:'02',unitcost:0}]];
   if(sql.startsWith('SELECT paidst,pcode'))return [[{paidst:'02',pcode:'UC',isuse:'Y'}]];
   if(sql.startsWith('SELECT count(*) n FROM ovst'))return [[{n:collision?1:0}]];
   if(sql.startsWith('SELECT serial_no'))return [[{serial_no:100}]];

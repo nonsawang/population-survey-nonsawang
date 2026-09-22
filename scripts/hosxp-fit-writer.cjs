@@ -76,7 +76,8 @@ async function writeVisit(db,{job,person,snapshot,revalidate,now=()=>new Date()}
   const [[lab]]=await db.execute('SELECT lab_items_name,lab_items_group,active_status,icode,possible_value FROM lab_items WHERE lab_items_code=?',[mapping.lab]);
   const [[group]]=await db.execute('SELECT lab_items_group_name FROM lab_items_group WHERE lab_items_group_code=?',[lab?.lab_items_group]);
   if(!group?.lab_items_group_name)fail('LAB_FORM_MISSING');
-  const [[fee]]=await db.execute('SELECT name,price,income,istatus,paidst,unitcost FROM nondrugitems WHERE icode=?',[mapping.fee]);
+  const [[fee]]=await db.execute('SELECT name,price,income,istatus,paidst,unitcost,billcode,nhso_adp_type_id,nhso_adp_code FROM nondrugitems WHERE icode=?',[mapping.fee]);
+  if(fee?.income!=='07'||String(fee.billcode)!=='31209'||Number(fee.nhso_adp_type_id)!==15||String(fee.nhso_adp_code)!=='31209')fail('FIT_BILLING_MAPPING_CHANGED');
   const [[right]]=await db.execute('SELECT paidst,pcode,isuse FROM pttype WHERE pttype=?',['PP']);
   if(lab?.active_status!=='Y'||lab.icode!==mapping.fee||!String(lab.possible_value).split(/\r?\n/).includes(job.payload.lab_result)||fee?.istatus!=='Y'||Number(fee.price)!==60||fee.paidst!=='02'||right?.isuse!=='Y'||right.paidst!=='02')fail('CATALOG_CHANGED');
   const at=stamp(now()),vn=vnFor(job.screen_date,at.time),hn=patient.hn,date=job.screen_date;
