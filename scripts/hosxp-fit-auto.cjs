@@ -59,6 +59,10 @@ async function run(config,optionsFile){
   // Refresh evidence without modifying clinical or financial records.
   try{Object.assign(report,await require('./hosxp-fit-finance-status.cjs').reconcile({source,db}));}
   catch{report.finance_status_error=true;}
+  try{Object.assign(report,await require('./hosxp-authen-report.cjs').reconcile({source,db}));}
+  catch{report.authen_report_error=true;}
+  try{Object.assign(report,await require('./hosxp-authen-write.cjs').reconcile({source,db}));}
+  catch{report.authen_write_error=true;}
   return report;
  }finally{await db.end();}
 }

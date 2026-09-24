@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { RESIDENCY_TYPES, DISCHARGE_TYPES } from '@/lib/population-status';
 import { ScreeningReview } from '@/components/ScreeningWorkflow';
 import TopBar from '@/components/TopBar';
+import AuthenReportImport from '@/components/AuthenReportImport';
 
 const STATES = {
   ready: 'พร้อมตรวจอนุมัติ', approved: 'อนุมัติแล้ว / รอส่ง', no_change: 'ข้อมูลตรงกัน',
@@ -95,7 +96,7 @@ export default function HosxpReviewPage() {
 
   if (loading) return <p className="text-center p-5" role="status">กำลังตรวจสิทธิ์...</p>;
   if (!user) return null;
-  return <><TopBar showAdmin /><main className="container survey-page py-4">{allowed && <ScreeningReview/>}
+  return <><TopBar showAdmin /><main className="container survey-page py-4">{allowed && <><AuthenReportImport key={identity}/><ScreeningReview/></>}
     <header className="survey-heading"><div><p className="survey-eyebrow">สำหรับเจ้าหน้าที่</p><h1>ตรวจสอบก่อนส่ง HOSxP</h1><p>จับคู่บุคคล ตรวจค่าเดิม–ใหม่ และอนุมัติรายการรอส่ง</p></div><a href="/" className="btn btn-outline-secondary">กลับหน้าสำรวจ</a></header>
     {!allowed ? <div className="alert alert-warning">หน้านี้สำหรับเจ้าหน้าที่และผู้ดูแลระบบ</div> : <>
       {error && <div className="alert alert-danger" role="alert">{error}</div>}

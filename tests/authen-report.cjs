@@ -1,0 +1,26 @@
+const assert=require('node:assert/strict');
+const {normalize,matchRows,date}=require('../lib/authen-report.cjs');
+const {checkZip}=require('../lib/authen-report-xlsx.cjs');
+const headers=['รหัสหน่วย','เลขบัตร','ชื่อ-สกุล','CLAIM CODE','รหัสบริการ','บริการ','HN CODE','วันที่เข้ารับบริการ','วันที่บันทึก Authen Code','สถานะใช้งาน','หมายเหตุการยกเลิก'];
+const row=['05080','1101700207030','ทดสอบ ระบบ','EP123','PG0060001','OPD/IPD/PP','','21/09/2569 10:20:30','21/09/2569 10:20:30','','-'];
+// Synthetic valid checksum, never a production patient fixture.
+row[1]='1000000000009';
+const rows=normalize([headers,row]);
+assert.equal(rows[0].serviceDate,'2026-09-21');assert.equal(rows[0].statusUnconfirmed,true);assert.deepEqual(rows[0].issues,[]);
+const visit={cid:row[1],vn:'690921000001',hn:'0000001',name:'ทดสอบ ระบบ',service_date:'2026-09-21',fit:true,authCodes:[]};
+assert.equal(matchRows(rows,[visit])[0].status,'matched');
+assert.equal(matchRows(rows,[])[0].status,'unmatched');
+assert.equal(matchRows(rows,[visit,{...visit,vn:'690921000002'}])[0].status,'ambiguous');
+assert.equal(matchRows(rows,[{...visit,service_date:'2026-09-22'}])[0].status,'unmatched');
+assert.equal(matchRows(rows,[{...visit,cid:'1000000000017'}])[0].status,'unmatched');
+assert.equal(matchRows(rows,[{...visit,name:'คนอื่น'}])[0].status,'blocked');
+assert.equal(matchRows(rows,[{...visit,authCodes:['DIFFERENT']}])[0].status,'blocked');
+assert.equal(matchRows(rows,[{...visit,authCodes:['EP123']}])[0].status,'already_present');
+assert.equal(matchRows(rows,[{...visit,codeElsewhere:['EP123']}])[0].status,'blocked');
+const cancelled=[...row];cancelled[10]='ยกเลิก';assert(normalize([headers,cancelled])[0].issues.includes('cancelled'));
+assert(normalize([headers,row,row]).every(r=>r.issues.includes('duplicate_code')));
+const second={...rows[0],row:3,code:'EP456'};assert(matchRows([...rows,second],[visit]).every(r=>r.status==='ambiguous'));
+assert.equal(date('31/02/2569'),null);assert.equal(date('2026-09-21'),null);
+assert.throws(()=>normalize([['wrong'],row]),/HEADERS/);
+assert.throws(()=>checkZip(Buffer.alloc(20)),/LIMIT/);
+console.log('PASS: report headers, Buddhist dates, blank status, CID/date/name/HN checks, ambiguity, existing code, cancellation and no automatic OPD rejection');
