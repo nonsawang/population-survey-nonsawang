@@ -6,8 +6,8 @@ async function inspect(db,rows){
   const seen=new Set();
   for(const row of rows){
    if(row.issues.length)continue;const key=row.cid+'|'+row.serviceDate;if(seen.has(key))continue;seen.add(key);
-   const [found]=await db.execute(`SELECT o.vn,o.hn,o.vstdate AS service_date,p.cid,CONCAT(TRIM(p.fname),' ',TRIM(p.lname)) AS name
-    FROM ovst o JOIN patient p ON p.hn=o.hn WHERE p.cid=? AND o.vstdate=? LIMIT 20`,[row.cid,row.serviceDate]);
+   const [found]=await db.execute(`SELECT o.vn,o.hn,o.vstdate AS service_date,p.cid,f.preparation_id AS fitPreparationId,f.screen_date AS fitScreenDate,f.lab_result AS fitResult,f.lab_order_number AS labOrderNumber,CONCAT(TRIM(p.fname),' ',TRIM(p.lname)) AS name
+    FROM ovst o JOIN patient p ON p.hn=o.hn JOIN survey_fit_import_ledger f ON f.vn=o.vn AND f.hn=o.hn JOIN lab_head lh ON lh.vn=o.vn AND lh.lab_order_number=f.lab_order_number JOIN lab_order lo ON lo.lab_order_number=f.lab_order_number AND lo.lab_items_code=? AND lo.lab_order_result=f.lab_result WHERE p.cid=? AND o.vstdate=? LIMIT 20`,[require('./hosxp-fit-preflight.cjs').mapping.lab,row.cid,row.serviceDate]);
    for(const v of found){
     const [codes]=await db.execute("SELECT DISTINCT auth_code FROM visit_pttype WHERE vn=? AND TRIM(COALESCE(auth_code,''))<>''",[v.vn]);
     const reportCodes=rows.filter(r=>r.cid===row.cid&&r.serviceDate===row.serviceDate).map(r=>r.code);

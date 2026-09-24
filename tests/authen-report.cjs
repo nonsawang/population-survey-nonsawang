@@ -7,13 +7,13 @@ const row=['05080','1101700207030','ทดสอบ ระบบ','EP123','PG006
 row[1]='1000000000009';
 const rows=normalize([headers,row]);
 assert.equal(rows[0].serviceDate,'2026-09-21');assert.equal(rows[0].statusUnconfirmed,true);assert.deepEqual(rows[0].issues,[]);
-const visit={cid:row[1],vn:'690921000001',hn:'0000001',name:'ทดสอบ ระบบ',service_date:'2026-09-21',fit:true,authCodes:[]};
+const visit={fitPreparationId:'prep',fitResult:'Negative',fitScreenDate:'2026-09-21',labOrderNumber:1,cid:row[1],vn:'690921000001',hn:'0000001',name:'ทดสอบ ระบบ',service_date:'2026-09-21',fit:true,authCodes:[]};
 assert.equal(matchRows(rows,[visit])[0].status,'matched');
 assert.equal(matchRows(rows,[])[0].status,'unmatched');
 assert.equal(matchRows(rows,[visit,{...visit,vn:'690921000002'}])[0].status,'ambiguous');
 assert.equal(matchRows(rows,[{...visit,service_date:'2026-09-22'}])[0].status,'unmatched');
 assert.equal(matchRows(rows,[{...visit,cid:'1000000000017'}])[0].status,'unmatched');
-assert.equal(matchRows(rows,[{...visit,name:'คนอื่น'}])[0].status,'blocked');
+assert.equal(matchRows(rows,[{...visit,name:'คนอื่น'}])[0].status,'matched');
 assert.equal(matchRows(rows,[{...visit,authCodes:['DIFFERENT']}])[0].status,'blocked');
 assert.equal(matchRows(rows,[{...visit,authCodes:['EP123']}])[0].status,'already_present');
 assert.equal(matchRows(rows,[{...visit,codeElsewhere:['EP123']}])[0].status,'blocked');
@@ -24,3 +24,8 @@ assert.equal(date('31/02/2569'),null);assert.equal(date('2026-09-21'),null);
 assert.throws(()=>normalize([['wrong'],row]),/HEADERS/);
 assert.throws(()=>checkZip(Buffer.alloc(20)),/LIMIT/);
 console.log('PASS: report headers, Buddhist dates, blank status, CID/date/name/HN checks, ambiguity, existing code, cancellation and no automatic OPD rejection');
+
+assert.equal(matchRows(rows,[{...visit,fitPreparationId:null}])[0].status,'unmatched');
+assert.equal(matchRows(rows,[{...visit,fitResult:null}])[0].status,'unmatched');
+assert(matchRows(rows,[{...visit,name:'Changed'}])[0].warnings.includes('name_conflict'));
+assert.equal(matchRows(rows,[visit,{...visit,vn:'other',fitPreparationId:null}])[0].vn,visit.vn);

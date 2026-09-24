@@ -4,7 +4,7 @@ const hash=s=>createHash('sha256').update(s).digest('hex');
 const fail=code=>{throw Error(code);};
 function validate(job,batch){
  const row=batch.rows.find(r=>r.row===job.row_number),snapshot=batch.results.find(r=>r.row===job.row_number);
- if(!row||!snapshot||!batch.approved_rows.includes(job.row_number)||snapshot.fingerprint!==job.fingerprint||snapshot.vn!==job.vn||!['matched','already_present'].includes(snapshot.status))fail('AUTHEN_APPROVAL_CHANGED');
+ if(!row||!snapshot||!snapshot.fitPreparationId||!batch.approved_rows.includes(job.row_number)||snapshot.fingerprint!==job.fingerprint||snapshot.vn!==job.vn||!['matched','already_present'].includes(snapshot.status))fail('AUTHEN_APPROVAL_CHANGED');
  if(row.issues.length||!cidValid(row.cid)||row.hcode!=='05080'||!row.serviceDate||!row.code)fail('AUTHEN_SOURCE_INVALID');
  return {row,snapshot};
 }
@@ -23,8 +23,8 @@ async function write(db,job,batch){
   if(receipt.length&&(receipt[0].vn!==job.vn||receipt[0].fingerprint!==job.fingerprint||receipt[0].code_hash!==hash(row.code)))fail('AUTHEN_RECEIPT_CONFLICT');
   if(!receipt.length&&Date.now()-Date.parse(job.approved_at)>86400000)fail('AUTHEN_APPROVAL_EXPIRED');
   const [people]=await db.execute('SELECT hn FROM patient WHERE cid=? FOR UPDATE',[row.cid]);if(people.length!==1)fail('AUTHEN_PATIENT_AMBIGUOUS');
-  const [visits]=await db.execute("SELECT o.vn,o.hn,o.vstdate AS service_date,p.cid,CONCAT(TRIM(p.fname),' ',TRIM(p.lname)) AS name FROM ovst o JOIN patient p ON p.hn=o.hn WHERE p.cid=? AND o.vstdate=? FOR UPDATE",[row.cid,row.serviceDate]);
-  if(visits.length!==1||visits[0].vn!==job.vn||visits[0].hn!==snapshot.hn)fail('AUTHEN_VISIT_CHANGED');
+  const [visits]=await db.execute("SELECT o.vn,o.hn,o.vstdate AS service_date,p.cid,f.preparation_id AS fitPreparationId,f.screen_date AS fitScreenDate,f.lab_result AS fitResult,f.lab_order_number AS labOrderNumber,CONCAT(TRIM(p.fname),' ',TRIM(p.lname)) AS name FROM ovst o JOIN patient p ON p.hn=o.hn JOIN survey_fit_import_ledger f ON f.vn=o.vn AND f.hn=o.hn JOIN lab_head lh ON lh.vn=o.vn AND lh.lab_order_number=f.lab_order_number JOIN lab_order lo ON lo.lab_order_number=f.lab_order_number AND lo.lab_items_code=? AND lo.lab_order_result=f.lab_result WHERE p.cid=? AND o.vstdate=? FOR UPDATE",[require('./hosxp-fit-preflight.cjs').mapping.lab,row.cid,row.serviceDate]);
+  if(visits.length!==1||visits[0].vn!==job.vn||visits[0].hn!==snapshot.hn||visits[0].fitPreparationId!==snapshot.fitPreparationId||visits[0].fitResult!==snapshot.fitResult||visits[0].fitScreenDate!==snapshot.fitScreenDate||visits[0].labOrderNumber!==snapshot.labOrderNumber)fail('AUTHEN_VISIT_CHANGED');
   const [rights]=await db.execute('SELECT auth_code FROM visit_pttype WHERE vn=? FOR UPDATE',[job.vn]);
   if(rights.length!==1)fail('AUTHEN_INSURANCE_AMBIGUOUS');
   const old=String(rights[0].auth_code||'').trim();
