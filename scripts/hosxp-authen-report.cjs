@@ -22,7 +22,7 @@ async function reconcile({source,db}){
  const {data,error}=await source.from('authen_report_batches').select('id,rows').eq('state','pending').order('uploaded_at').limit(1);
  if(error)throw Error('AUTHEN_REPORT_SOURCE_FAILED');if(!data.length)return {authen_reports_matched:0};
  const b=data[0];let results;
- try{results=await inspect(db,b.rows);}catch{
+ try{results=await require('./authen-fit-source.cjs').inspect(source,b.rows);}catch{
   const {error:markError}=await source.from('authen_report_batches').update({state:'failed',error_code:'LAN_READ_FAILED'}).eq('id',b.id).eq('state','pending');
   if(markError)throw Error('AUTHEN_REPORT_ACK_FAILED');return {authen_reports_matched:0,authen_report_error:true};
  }

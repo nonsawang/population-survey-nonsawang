@@ -61,7 +61,7 @@ async function run(config,optionsFile){
   catch{report.finance_status_error=true;}
   try{Object.assign(report,await require('./hosxp-authen-report.cjs').reconcile({source,db}));}
   catch{report.authen_report_error=true;}
-  try{Object.assign(report,await require('./hosxp-authen-write.cjs').reconcile({source,db}));}
+  try{Object.assign(report,await require('./hosxp-authen-write.cjs').reconcile({source,db,config}));}
   catch{report.authen_write_error=true;}
   return report;
  }finally{await db.end();}

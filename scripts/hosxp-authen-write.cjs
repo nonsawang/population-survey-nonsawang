@@ -44,13 +44,29 @@ async function write(db,job,batch){
   await db.commit();committed=true;return {state:outcome};
  }finally{if(!committed)await db.rollback();await db.execute("SELECT RELEASE_LOCK('survey-authen-write')");}
 }
-async function reconcile({source,db}){
+async function reconcile({source,db,config}){
  const {data,error}=await source.from('authen_report_writes').select('*').eq('state','pending').order('approved_at').limit(1);
  if(error)throw Error('AUTHEN_WRITE_QUEUE_FAILED');if(!data.length)return {authen_written:0};const job=data[0];
  const {data:batch,error:readError}=await source.from('authen_report_batches').select('rows,results,approved_rows').eq('id',job.batch_id).single();
  if(readError)throw Error('AUTHEN_WRITE_SOURCE_FAILED');
  let outcome;
- try{outcome=await write(db,job,batch);}catch(e){
+ try{
+  const approved=validate(job,batch);let targetJob=job,targetBatch=batch;
+  if(approved.snapshot.matchVersion==='fit-source-v1'){
+   if(Date.now()-Date.parse(job.approved_at)>86400000)fail('AUTHEN_APPROVAL_EXPIRED');
+   const fresh=(await require('./authen-fit-source.cjs').inspect(source,batch.rows)).find(r=>r.row===job.row_number);
+   if(fresh?.status!=='matched'||fresh.fingerprint!==job.fingerprint)fail('AUTHEN_APPROVAL_CHANGED');
+   if(!config)throw Error('AUTHEN_CONFIG_REQUIRED');
+   const imported=await require('./hosxp-fit-import.cjs').main({...config,HOSXP_IMPORT_ENABLED:'true'},['--job='+fresh.fitPreparationId,'--write','--confirm-fit-write']);
+   if(imported.import_status!=='imported')throw Error('AUTHEN_FIT_IMPORT_PENDING');
+   const after=(await require('./authen-fit-source.cjs').inspect(source,batch.rows)).find(r=>r.row===job.row_number);
+   if(after?.fingerprint!==job.fingerprint||after.status!=='matched')fail('AUTHEN_APPROVAL_CHANGED');
+   const live=(await require('./hosxp-authen-report.cjs').inspect(db,[approved.row]))[0];
+   if(!['matched','already_present'].includes(live.status)||live.vn!==imported.vn||live.fitPreparationId!==fresh.fitPreparationId||live.fitResult!==fresh.fitResult)fail('AUTHEN_VISIT_CHANGED');
+   targetJob={...job,vn:live.vn};targetBatch={...batch,results:batch.results.map(r=>r.row===job.row_number?{...live,fingerprint:job.fingerprint}:r)};
+  }
+  outcome=await write(db,targetJob,targetBatch);outcome.vn=targetJob.vn;
+ }catch(e){
   // Uncertain database/network failures stay pending for receipt-based recovery.
   if(!/^AUTHEN_(APPROVAL_CHANGED|SOURCE_INVALID|TRANSACTION_REQUIRED|FIELD_LENGTH|RECEIPT_CONFLICT|APPROVAL_EXPIRED|PATIENT_AMBIGUOUS|VISIT_CHANGED|INSURANCE_AMBIGUOUS|LIVE_CONFLICT|RECEIPT_READBACK_FAILED|EXISTING_CHANGED|UPDATE_CONFLICT|READBACK_FAILED)$/.test(e.message))throw Error('AUTHEN_WRITE_RETRY');
   outcome={state:'blocked',error_code:e.message};

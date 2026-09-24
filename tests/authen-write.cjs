@@ -29,5 +29,18 @@ function database({old='',many=false,name=row.name,engine='InnoDB',readbackFail=
  await assert.rejects(()=>write(t.db,job,{...batch,approved_rows:[]}),/APPROVAL_CHANGED/);
  await assert.rejects(()=>write(t.db,job,{...batch,results:[{...snapshot,fitPreparationId:null}]}),/APPROVAL_CHANGED/);
  await assert.rejects(()=>write(t.db,job,{...batch,results:[{...snapshot,fitResult:'Positive'}]}),/VISIT_CHANGED/);
+ const sourceModule=require('../scripts/authen-fit-source.cjs'),liveModule=require('../scripts/hosxp-authen-report.cjs'),importModule=require('../scripts/hosxp-fit-import.cjs');
+ const originals=[sourceModule.inspect,liveModule.inspect,importModule.main];
+ try{
+  const sourceSnapshot={...snapshot,vn:null,matchVersion:'fit-source-v1'};
+  const sourceBatch={...batch,results:[sourceSnapshot]};const sourceJob={...job,vn:null};
+  sourceModule.inspect=async()=>[sourceSnapshot];liveModule.inspect=async()=>[snapshot];let imports=0,ack;
+  importModule.main=async()=>{imports++;return {import_status:'imported',vn:visit.vn};};
+  const source={from(table){return {select(){return this;},eq(){return this;},order(){return this;},limit:async()=>({data:[sourceJob]}),single:async()=>({data:sourceBatch}),update(value){ack=value;return this;},then(resolve){resolve({error:null});}};}};
+  t=database();const reconcile=require('../scripts/hosxp-authen-write.cjs').reconcile;
+  await reconcile({source,db:t.db,config:{}});assert.equal(ack.state,'written');assert.equal(ack.vn,visit.vn);assert.equal(t.state.updates,1);
+  await reconcile({source,db:t.db,config:{}});assert.equal(t.state.updates,1);assert.equal(imports,2);
+  sourceModule.inspect=async()=>[{...sourceSnapshot,fingerprint:'changed'}];await reconcile({source,db:t.db,config:{}});assert.equal(ack.state,'blocked');assert.equal(imports,2);
+ }finally{[sourceModule.inspect,liveModule.inspect,importModule.main]=originals;}
  console.log('PASS: transactional fill-only write, existing-code no-op, replay recovery, conflict/identity/insurance/engine/stale-approval guards and rollback');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict');const {match}=require('../scripts/authen-fit-source.cjs');
+const r={row:2,cid:'1000000000009',serviceDate:'2026-09-21',serviceCode:'PG0060001',name:'Test Person',code:'EP1',issues:[]};
+const p={person_id:1,cid:r.cid,fname:'Test',lname:'Person'};const h={id:'history',person_id:1,kpi:'FOBT',result:'ปกติ',screen_date:r.serviceDate};
+const j={id:'prep',history_id:h.id,person_id:1,state:'awaiting_lan_validation',screen_date:r.serviceDate,payload:{lab_result:'Negative',source_result:'ปกติ'}};const a={history_id:h.id};
+const run=(ps=[p],hs=[h],js=[j],as=[a])=>match(r,ps,hs,js,as);
+assert.equal(run().status,'matched');assert.equal(run().vn,null);assert.equal(run().historyId,h.id);assert.equal(run().fitPreparationId,j.id);
+assert.equal(run([p,p]).status,'blocked');assert.equal(run([],[]).status,'blocked');assert.equal(run([p],[]).status,'unmatched');assert.equal(run([p],[h,h]).status,'ambiguous');assert.equal(run([p],[h],[]).status,'blocked');assert.equal(run([p],[h],[j],[]).status,'blocked');
+assert.equal(run([p],[{...h,screen_date:'2026-09-22'}]).status,'unmatched');assert.equal(run([p],[h],[{...j,payload:{...j.payload,lab_result:'Positive'}}]).status,'blocked');
+assert.notEqual(run().fingerprint,match({...r,code:'EP2'},[p],[h],[j],[a]).fingerprint);assert(match({...r,name:'Different'},[p],[h],[j],[a]).warnings.includes('name_conflict'));
+console.log('PASS: source FIT matching before VN, exact date, unique person/history/preparation, approval and payload checks');
