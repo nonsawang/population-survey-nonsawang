@@ -36,18 +36,27 @@ async function run(config,optionsFile){
   async function read(q){const {data,error}=await q;if(error)throw Error('AUTO_SOURCE_READ_FAILED');return data;}
   const batches=await read(source.from('hosxp_review_batches').select('captured_at').not('completed_at','is',null).order('captured_at',{ascending:false}).limit(1));
   if(!batches[0]||Date.now()-Date.parse(batches[0].captured_at)>3600000)await refresh(config);
+  let identityResult;try{identityResult=await require('./person-identity.cjs').reconcile({source,db});}catch{/* retry next cycle; affected imports are gated below */}
+  const identityPending=await source.from('person_identity_jobs').select('source_id,target_id').eq('state','pending');
+  if(identityPending.error && identityPending.error.code!=='PGRST205' && identityPending.error.code!=='42P01')throw Error('IDENTITY_QUEUE_UNAVAILABLE');
+  const held=new Set((identityPending.data||[]).flatMap(j=>[j.source_id,j.target_id]));
   const stateFile=optionsFile+'.state.json';
   const state=fs.existsSync(stateFile)?JSON.parse(fs.readFileSync(stateFile,'utf8')):{};
+  const completedIdentity=await source.from('person_identity_jobs').select('after_data').eq('state','completed').gte('completed_at',new Date(Date.now()-86400000).toISOString());
+  if(completedIdentity.error&&!['PGRST205','42P01'].includes(completedIdentity.error.code))throw Error('IDENTITY_QUEUE_UNAVAILABLE');
+  // Reset only the old identity failure, never reset a fresh clinical/import failure.
+  const repaired=new Set([...(identityResult?.preparations||[]),...(completedIdentity.data||[]).flatMap(j=>j.after_data?.preparations||[])]);
+  for(const id of repaired)if(state[id]&&['INVALID_CID','DUPLICATE_SOURCE_CID','IDENTITY_REQUIRES_REVIEW','SNAPSHOT_PERSON_NOT_FOUND','IDENTITY_CORRECTION_PENDING'].includes(state[id].code))delete state[id];
   const save=async value=>{fs.writeFileSync(stateFile+'.tmp',JSON.stringify(value,null,2));fs.renameSync(stateFile+'.tmp',stateFile);};
   const done=new Set(),jobs=[];let after=null;
   // Keyset pagination prevents old completed jobs from starving newer work.
   for(let page=0;page<100;page++){
-   let q=source.from('hosxp_fit_preparations').select('id,prepared_at').eq('state','awaiting_lan_validation').order('id').limit(100);
+   let q=source.from('hosxp_fit_preparations').select('id,prepared_at,person_id').eq('state','awaiting_lan_validation').order('id').limit(100);
    if(opt.scope==='new_only')q=q.gte('prepared_at',opt.startAt);
    if(after)q=q.gt('id',after);
    const batch=await read(q);if(!batch.length)break;
    const outcomes=await read(source.from('hosxp_fit_import_results').select('preparation_id').in('preparation_id',batch.map(j=>j.id)));
-   outcomes.forEach(r=>done.add(r.preparation_id));jobs.push(...batch.filter(j=>due(j,done,state,Date.now())));
+   outcomes.forEach(r=>done.add(r.preparation_id));jobs.push(...batch.filter(j=>!held.has(j.person_id)&&due(j,done,state,Date.now())));
    if(jobs.length>=opt.limit||batch.length<100)break;after=batch.at(-1).id;
   }
   const report=await processJobs({jobs,done,state,limit:opt.limit,now:Date.now(),save,importJob:async id=>{

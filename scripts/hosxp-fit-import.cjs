@@ -11,6 +11,9 @@ function writeEnabled(c,args=process.argv){return c.HOSXP_IMPORT_ENABLED==='true
 async function rows(query){const {data,error}=await query;if(error)throw new Error('SOURCE_READ_FAILED');return data;}
 async function sourceJob(source,id){
  const job=await rows(source.from('hosxp_fit_preparations').select('*').eq('id',id).single());
+ const identity=await source.from('person_identity_jobs').select('id').eq('state','pending').or('source_id.eq.'+job.person_id+',target_id.eq.'+job.person_id).limit(1);
+ if(identity.error && !['PGRST205','42P01'].includes(identity.error.code))throw Error('IDENTITY_QUEUE_UNAVAILABLE');
+ if(identity.data?.length)throw Error('IDENTITY_CORRECTION_PENDING');
  const person=await rows(source.from('population').select('person_id,cid,fname,lname,birth_date,fobt_screen,fobt_date').eq('person_id',job.person_id).single());
  const history=await rows(source.from('screening_history').select('id,person_id,kpi,result,screen_date,recorded_at').eq('id',job.history_id).single());
  const approval=await rows(source.from('screening_review').select('history_id,approved_by,approved_at').eq('history_id',job.history_id).maybeSingle());
@@ -23,7 +26,10 @@ async function sourceJob(source,id){
  const batch=batches[0];
  const targets=batch?await rows(source.from('hosxp_review_snapshot').select('cid,hosxp_person_id').eq('batch_id',batch.id).eq('cid',person.cid).limit(2)):[];
  const stale=snapshotStatus(batch,targets);if(stale)throw new Error(stale);
- return {job,person,snapshot:targets[0],approval};
+ const linked=await source.from('person_identity_links').select('cid,hn,hosxp_person_id').eq('person_id',person.person_id).maybeSingle();
+ if(linked.error&&!['PGRST205','42P01'].includes(linked.error.code))throw Error('IDENTITY_LINK_UNAVAILABLE');
+ if(linked.data&&(linked.data.cid!==person.cid||linked.data.hosxp_person_id!==String(targets[0].hosxp_person_id)))throw Error('IDENTITY_LINK_CHANGED');
+ return {job,person,snapshot:{...targets[0],...(linked.data?{linked_hn:linked.data.hn}:{})},approval};
 }
 const required={ovst:['hos_guid','vn','hn','vstdate','vsttime'],vn_stat:['vn','hn','pdx','inc_nondrug'],opdscreen:['hos_guid','vn','cc'],ovst_seq:['vn','seq_id'],ovstdiag:['ovst_diag_id','vn'],lab_head:['lab_order_number','vn','order_note'],lab_order:['lab_order_number','lab_items_code','lab_order_result'],opitemrece:['hos_guid','vn','finance_number'],visit_pttype:['vn','pttype','pttype_number','auth_code'],serial:['name','serial_no'],survey_fit_import_ledger:['preparation_id','payload_hash','vn','hn','screen_date','lab_order_number','lab_result','imported_at','policy_version']};
 async function schemaCheck(db){

@@ -46,6 +46,7 @@ async function targetCheck(db,person,date,snapshot){
  normalized(target.fname)!==normalized(person.fname)||normalized(target.lname)!==normalized(person.lname)||
  normalized(patient.fname)!==normalized(person.fname)||normalized(patient.lname)!==normalized(person.lname)||
  target.birthdate!==person.birth_date||patient.birthday!==person.birth_date)return 'IDENTITY_REQUIRES_REVIEW';
+ if(snapshot.linked_hn&&String(patient.hn)!==snapshot.linked_hn)return 'IDENTITY_LINK_CHANGED';
  if(!target.patient_hn||String(target.patient_hn)!==String(patient.hn))return 'HN_LINK_CONFLICT';
  const [labs]=await db.execute('SELECT 1 FROM lab_head h JOIN lab_order o ON o.lab_order_number=h.lab_order_number WHERE h.hn=? AND h.order_date=? AND o.lab_items_code=? LIMIT 1',[patient.hn,date,mapping.lab]);
  if(labs.length)return 'EXISTING_FIT_REQUIRES_REVIEW';
