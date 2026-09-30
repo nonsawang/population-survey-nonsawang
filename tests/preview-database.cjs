@@ -1,0 +1,12 @@
+const assert = require('node:assert/strict');
+const {assertPreviewDatabase: check} = require('../lib/preview-database.cjs');
+check({VERCEL_ENV:'production'});
+check({});
+assert.throws(()=>check({VERCEL_ENV:'preview'}), /PREVIEW_DATABASE_REQUIRED/);
+assert.throws(()=>check({VERCEL_ENV:'preview',PREVIEW_SUPABASE_PROJECT_REF:'gxidztlvqsppixlwrxeo',NEXT_PUBLIC_SUPABASE_URL:'https://gxidztlvqsppixlwrxeo.supabase.co'}));
+const testRef='abcdefghijklmnopqrst';
+assert.throws(()=>check({VERCEL_ENV:'preview',PREVIEW_SUPABASE_PROJECT_REF:testRef,NEXT_PUBLIC_SUPABASE_URL:'https://gxidztlvqsppixlwrxeo.supabase.co'}));
+check({VERCEL_ENV:'preview',PREVIEW_SUPABASE_PROJECT_REF:testRef,NEXT_PUBLIC_SUPABASE_URL:`https://${testRef}.supabase.co`});
+console.log('PASS: Preview requires an explicit isolated database; production configuration unchanged');
+check({VERCEL_ENV:'preview',APP_READ_ONLY:'true',PREVIEW_SUPABASE_PROJECT_REF:'gxidztlvqsppixlwrxeo',NEXT_PUBLIC_SUPABASE_URL:'https://gxidztlvqsppixlwrxeo.supabase.co'});
+assert.throws(()=>check({VERCEL_ENV:'preview',APP_READ_ONLY:'false',PREVIEW_SUPABASE_PROJECT_REF:'gxidztlvqsppixlwrxeo',NEXT_PUBLIC_SUPABASE_URL:'https://gxidztlvqsppixlwrxeo.supabase.co'}));

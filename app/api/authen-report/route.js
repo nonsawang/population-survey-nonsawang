@@ -1,9 +1,11 @@
 import {createHash} from 'node:crypto';
 import {sameOrigin,currentUser,databaseConfig,authResponse} from '@/lib/server-auth';
 import {parse} from '@/lib/authen-report-xlsx.cjs';
+import {isReadOnly,readOnlyResponse} from '@/lib/server-auth';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export async function POST(request){
+ if(isReadOnly())return readOnlyResponse();
  if(!sameOrigin(request))return authResponse({error:'ไม่มีสิทธิ์'},403);
  try{
   const user=await currentUser();if(!user)return authResponse({error:'กรุณาเข้าสู่ระบบ'},401);

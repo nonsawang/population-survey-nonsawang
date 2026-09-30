@@ -1,6 +1,8 @@
 import { sameOrigin, readBody, verifiedLineProfile, openSession, authResponse, authError } from '@/lib/server-auth';
+import {isReadOnly,readOnlyResponse} from '@/lib/server-auth';
 export const dynamic = 'force-dynamic';
 export async function POST(request) {
+  if(isReadOnly())return readOnlyResponse();
   if (!sameOrigin(request)) return authResponse({ error: 'FORBIDDEN' }, 403);
   try {
     const body = await readBody(request);

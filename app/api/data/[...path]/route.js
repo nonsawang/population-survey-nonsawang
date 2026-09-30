@@ -1,15 +1,17 @@
 import { sameOrigin, getSessionToken, currentUser, databaseConfig, readBody, authResponse, authError } from '@/lib/server-auth';
+import { isReadOnly, dataAllowed, readOnlyResponse } from '@/lib/server-auth';
 export const dynamic = 'force-dynamic';
 const tables = new Set(['population', 'vhv_data', 'app_users', 'activity_logs']);
 const rpc = new Set(['person_identity_search','person_identity_preview','person_identity_request','person_identity_status','authen_report_list','authen_report_accept','authen_report_refresh','hosxp_fit_import_status','hosxp_fit_preview','hosxp_fit_prepare','screening_history_list','screening_overview','screening_review_list','screening_review_approve','screening_search', 'hosxp_review_list', 'hosxp_review_open_session', 'hosxp_review_approve', 'app_admin_save_user', 'app_change_password']);
 async function handle(request, { params }) {
-  const parts = params.path || [];
+  const parts = (await params).path || [];
+  if (isReadOnly() && !dataAllowed(request.method, parts)) return readOnlyResponse();
   const isRpc = parts.length === 2 && parts[0] === 'rpc' && rpc.has(parts[1]);
   if (!(parts.length === 1 && tables.has(parts[0])) && !isRpc) return authResponse({ message: 'NOT_FOUND' }, 404);
   if (request.headers.get('sec-fetch-site') === 'cross-site' || (!['GET', 'HEAD'].includes(request.method) && !sameOrigin(request))) return authResponse({ message: 'FORBIDDEN' }, 403);
   if (isRpc && request.method !== 'POST') return authResponse({ message: 'METHOD_NOT_ALLOWED' }, 405);
   try {
-    const token = getSessionToken();
+    const token = await getSessionToken();
     const user = await currentUser(token);
     if (!user) return authResponse({ message: 'กรุณาเข้าสู่ระบบใหม่', code: 'AUTH_REQUIRED' }, 401);
     const { url, key } = databaseConfig();

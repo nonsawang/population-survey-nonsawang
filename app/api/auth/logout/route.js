@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request) {
   if (!sameOrigin(request)) return authResponse({ error: 'FORBIDDEN' }, 403);
   try {
-    const token = getSessionToken();
+    const token = await getSessionToken();
     if (token) await dbRpc('app_logout', {}, { token });
     const response = authResponse({ success: true });
     response.cookies.set(COOKIE_NAME, '', { ...sessionOptions, maxAge: 0 });

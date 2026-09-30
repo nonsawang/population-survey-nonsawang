@@ -1,6 +1,7 @@
 import { AuthProvider } from '@/lib/auth';
 import Script from 'next/script'; // 🟢 ดึง Script ของ Next.js มาใช้
 import './globals.css';
+import previewDatabase from '@/lib/preview-database.cjs';
 
 export const metadata = {
   title: 'ระบบสำรวจประชากร — รพ.สต.บ้านโนนสว่าง',
@@ -21,6 +22,7 @@ export default function RootLayout({ children }) {
         <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&family=Prompt:wght@400;600;700&display=swap" rel="stylesheet" />
       </head>
       <body>
+        {previewDatabase.isReadOnly() && <div role="status" style={{background:'#fff3cd',color:'#664d03',padding:'12px',textAlign:'center'}}>ทดสอบอ่านข้อมูลจริงเท่านั้น — บันทึก แก้ไข อนุมัติ และอัปโหลดถูกปิด — เข้าสู่ระบบด้วยบัญชี/รหัสผ่าน</div>}
         <AuthProvider>
           {children}
         </AuthProvider>
