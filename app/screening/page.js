@@ -28,6 +28,8 @@ export default function ScreeningPage() {
   const [page, setPage] = useState(1);
   const [loadError, setLoadError] = useState('');
   const requestId = useRef(0);
+  const formRef=useRef(null);
+  const [saveOk,setSaveOk]=useState(false);
   const [selected, setSelected] = useState(null);
   const [result, setResult] = useState('');
   const [screenDate, setScreenDate] = useState(screeningToday);
@@ -44,7 +46,11 @@ export default function ScreeningPage() {
   const doSearch = () => { setAppliedTerm(searchTerm); setPage(1); setRetry(n=>n+1); };
   useEffect(() => { const timer=setTimeout(()=>setAppliedTerm(searchTerm),300);return ()=>clearTimeout(timer); },[searchTerm]);
   useEffect(() => { if (!loading && !user) router.push('/login'); }, [user, loading, router]);
+  const dirty=selected && (result!==(selected.hasResult?selected.status:'') || screenDate!==(selected.screenDate && selected.screenDate!=='-'?selected.screenDate:screeningToday()));
+  const canLeave=()=>!dirty||window.confirm('มีผลที่ยังไม่ได้บันทึก ต้องการออกจากรายการนี้หรือไม่?');
+  useEffect(()=>{if(selected)formRef.current?.scrollIntoView({behavior:'smooth',block:'start'});},[selected?.personId]);
   const selectKPI = type => {
+    if(!canLeave())return;
     requestId.current += 1;
     setCurrentKPI(type); setSelected(null); setSearchTerm(''); setAppliedTerm('');
     setPage(1); setCandidates([]); setStats(null); setLoadError('');
@@ -79,12 +85,12 @@ export default function ScreeningPage() {
 
   const handleSave = async () => {
     if(saveLock.current) return; saveLock.current=true;
-    setSaving(true); setSaveMessage('');
+    setSaving(true); setSaveMessage('');setSaveOk(false);
     try {
       const row=await saveRef.current({personId:selected?.personId,type:currentKPI,result,date:screenDate});
       if(!row) return;
       setSelected(p=>({...p,status:result,screenDate,hasResult:true}));
-      setRetry(n=>n+1);
+      setRetry(n=>n+1);setSaveOk(true);
       setSaveMessage('บันทึกสำเร็จ และตรวจสอบผลกับวันที่จากฐานข้อมูลแล้ว');
     } catch(e) { setSaveMessage(e.message || 'บันทึกไม่สำเร็จ ข้อมูลที่กรอกยังอยู่ กรุณาลองใหม่'); }
     finally { saveLock.current=false; setSaving(false); }
@@ -94,7 +100,7 @@ export default function ScreeningPage() {
   return (
     <>
       <TopBar />
-      <div className="container survey-page py-3" style={{maxWidth:900}}>
+      <div className="container survey-page screening-mobile py-3" style={{maxWidth:900}}>
         <h5 className="text-center mb-3 fw-bold" style={{color:'var(--primary)'}}><i className="fa-solid fa-clipboard-check"/> บันทึกผลการคัดกรอง</h5>
 
         <div className="d-flex gap-2 mb-3">
@@ -109,7 +115,7 @@ export default function ScreeningPage() {
             {Object.entries(KPI_INFO).map(([key, info]) => (
               <div className="col-6 col-md-3" key={key}>
                 <button disabled={saving} onClick={() => selectKPI(key)} className={`btn btn-sm w-100 kpi-btn ${currentKPI === key ? `btn-${key==='HEP'?'info':key==='FOBT'?'warning':key==='HPV'?'danger':'success'} active` : `btn-outline-${key==='HEP'?'info':key==='FOBT'?'warning':key==='HPV'?'danger':'success'}`}`}>
-                  <i className={`fa-solid ${info.icon} fa-lg mb-1 d-block`}/><small className="fw-bold">{info.name.split(' ').pop()}</small>
+                  <i className={`fa-solid ${info.icon} fa-lg mb-1 d-block`}/><small className="fw-bold">{info.name}</small>
                 </button>
               </div>
             ))}
@@ -126,10 +132,10 @@ export default function ScreeningPage() {
             <div className="card-body p-3 p-md-4">
               {!selected ? (
                 <>
-                  <form onSubmit={e=>{e.preventDefault();doSearch();}} className="mb-3">
+                  <form onSubmit={e=>{e.preventDefault();document.activeElement?.blur();doSearch();}} className="mb-3">
                     <div className="row g-2">
                       <div className="col-12 col-md-4"><label htmlFor="screening-search-mode" className="form-label">ค้นหาด้วย</label><select id="screening-search-mode" className="form-select" value={searchMode} onChange={e=>{setSearchMode(e.target.value);setPage(1);}}><option value="auto">ชื่อ / เลขบัตร / บ้านเลขที่</option><option value="name">ชื่อ–นามสกุล</option><option value="cid">เลขบัตรประชาชน</option><option value="house">บ้านเลขที่</option></select></div>
-                      <div className="col-12 col-md-8"><label htmlFor="screening-search" className="form-label">คำค้น</label><input id="screening-search" type="text" inputMode={searchMode==='cid'?'numeric':'text'} autoComplete="off" className="form-control" placeholder={searchMode==='cid'?'เลขบัตร 4–13 หลัก':'ชื่อ นามสกุล เลขบัตร หรือบ้านเลขที่'} value={searchTerm} onChange={e=>{setSearchTerm(e.target.value);setPage(1);}} aria-describedby="screening-search-help" /></div>
+                      <div className="col-12 col-md-8"><label htmlFor="screening-search" className="form-label">คำค้น</label><input id="screening-search" type="search" enterKeyHint="search" autoCapitalize="none" spellCheck={false} inputMode={searchMode==='cid'?'numeric':'text'} autoComplete="off" className="form-control" placeholder={searchMode==='cid'?'เลขบัตร 4–13 หลัก':'ชื่อ นามสกุล เลขบัตร หรือบ้านเลขที่'} value={searchTerm} onChange={e=>{setSearchTerm(e.target.value);setPage(1);}} aria-describedby="screening-search-help" /></div>
                     </div>
                     <div className="d-flex gap-2 mt-2"><button className="btn btn-primary" type="submit" disabled={loadingCandidates}>ค้นหา</button><button className="btn btn-outline-secondary" type="button" disabled={!searchTerm} onClick={()=>{setSearchTerm('');setAppliedTerm('');setPage(1);}}>ล้างคำค้น</button></div>
                     <p id="screening-search-help" className="small text-muted mt-2 mb-0">ชื่อค้นบางส่วนได้ รองรับเลขไทยและเลขบัตรที่มีขีดหรือช่องว่าง เลขบัตรครบ 13 หลักจะค้นตรงทั้งเลข • ค้นเฉพาะกลุ่มเป้าหมาย {KPI_INFO[currentKPI].name} ตามเกณฑ์เดิม</p>
@@ -143,7 +149,7 @@ export default function ScreeningPage() {
                         const sc = p.hasResult ? (['ปกติ','ผ่าน','สมวัย'].includes(p.status) ? 'success' : 'danger') : 'warning';
                         return (
                           <div className="col-md-6" key={p.personId}>
-                            <button type="button" className={`card border-${sc} search-result-card w-100 text-start p-0`} aria-label={`เลือก ${p.name} บ้าน ${p.house} หมู่ ${p.moo} เลขบัตรลงท้าย ${String(p.cid).slice(-4)}`} onClick={() => { setSelected(p); setResult(p.hasResult ? p.status : ''); setScreenDate(p.screenDate && p.screenDate!=='-' ? p.screenDate : screeningToday()); setSaveMessage(''); }}>
+                            <button type="button" className={`card border-${sc} search-result-card w-100 text-start p-0`} aria-label={`เลือก ${p.name} บ้าน ${p.house} หมู่ ${p.moo} เลขบัตรลงท้าย ${String(p.cid).slice(-4)}`} onClick={() => { setSelected(p); setResult(p.hasResult ? p.status : ''); setScreenDate(p.screenDate && p.screenDate!=='-' ? p.screenDate : screeningToday()); setSaveMessage('');setSaveOk(false); }}>
                               <div className="card-body p-3">
                                 <div className="d-flex justify-content-between">
                                   <div>
@@ -166,7 +172,7 @@ export default function ScreeningPage() {
                   {!loadingCandidates && !loadError && !searching && stats?.total>20 && <nav aria-label="หน้าผลค้นหา" className="d-flex justify-content-between mt-3"><button className="btn btn-outline-primary" disabled={page===1} onClick={()=>setPage(p=>p-1)}>ก่อนหน้า</button><button className="btn btn-outline-primary" disabled={page*20>=stats.total} onClick={()=>setPage(p=>p+1)}>ถัดไป</button></nav>}
                 </>
               ) : (
-                <div className="card border-primary" style={{borderRadius:12}}>
+                <div ref={formRef} className="card border-primary screening-entry" style={{borderRadius:12}}>
                   <div className="card-header text-white" style={{background:'var(--primary)'}}><h6 className="mb-0 fw-bold"><i className="fa-solid fa-user-check me-1"/> ข้อมูลผู้รับการคัดกรอง</h6></div>
                   <div className="card-body">
                     <div className="row mb-3">
@@ -177,20 +183,16 @@ export default function ScreeningPage() {
                     <p className="small mb-3">เลขบัตรประชาชน <strong>{selected.cid}</strong> • ตรวจสอบชื่อและเลขบัตรก่อนบันทึกผล</p>
                     <div className="row g-3">
                       <div className="col-md-6">
-                        <label className="form-label fw-bold"><i className="fa-solid fa-clipboard-check"/> ผลการคัดกรอง *</label>
-                        <select className="form-select form-select-lg" disabled={saving} value={result} onChange={e => setResult(e.target.value)}>
-                          <option value="">-- เลือกผล --</option>
-                          {currentKPI === 'CHILD' ? <><option value="สมวัย">✅ สมวัย</option><option value="ไม่สมวัย">⚠️ ไม่สมวัย</option></> : <><option value="ปกติ">✅ ปกติ</option><option value="ผิดปกติ">⚠️ ผิดปกติ</option></>}
-                        </select>
+                        <fieldset disabled={saving}><legend className="form-label fw-bold fs-6">ผลการคัดกรอง *</legend><div className="screening-result-options">{(currentKPI==='CHILD'?['สมวัย','ไม่สมวัย']:['ปกติ','ผิดปกติ']).map((value,index)=><label key={value} className={result===value?'screening-result-option is-selected':'screening-result-option'}><input type="radio" name="screening-result" value={value} checked={result===value} onChange={()=>{setResult(value);setSaveMessage('');setSaveOk(false);}}/><span>{index===0?'✓':'!'} {value}</span></label>)}</div></fieldset>
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label fw-bold"><i className="fa-solid fa-calendar"/> วันที่คัดกรอง</label>
-                        <input type="date" max={screeningToday()} disabled={saving} className="form-control form-control-lg" value={screenDate} onChange={e => setScreenDate(e.target.value)} />
+                        <label htmlFor="screening-date" className="form-label fw-bold"><i className="fa-solid fa-calendar"/> วันที่คัดกรองจริง</label>
+                        <input id="screening-date" type="date" max={screeningToday()} disabled={saving} className="form-control form-control-lg" value={screenDate} onChange={e => {setScreenDate(e.target.value);setSaveMessage('');setSaveOk(false);}} />
                       </div>
                     </div>
-                    {saveMessage && <div className="alert alert-info mt-3" role="status">{saveMessage}</div>}<div className="d-flex gap-2 mt-4 justify-content-end">
-                      <button className="btn btn-secondary rounded-pill" disabled={saving} onClick={() => setSelected(null)}><i className="fa-solid fa-arrow-left me-1"/> กลับ</button>
-                      <button className="btn btn-success btn-lg rounded-pill px-4" onClick={handleSave} disabled={saving}>
+                    {saveMessage && <div className={saveOk?"alert alert-success mt-3":"alert alert-danger mt-3"} role={saveOk?"status":"alert"}>{saveMessage}</div>}<div className="d-flex gap-2 mt-4 justify-content-end screening-save-actions">
+                      <button className="btn btn-secondary rounded-pill" disabled={saving} onClick={() => {if(canLeave())setSelected(null);}}><i className="fa-solid fa-arrow-left me-1"/> {saveOk?'ค้นหาคนถัดไป':'กลับรายชื่อ'}</button>
+                      <button className="btn btn-success btn-lg rounded-pill px-4" onClick={handleSave} disabled={saving||!result||!screenDate||(saveOk&&!dirty)}>
                         {saving ? <><span className="spinner-border spinner-border-sm me-1"/>บันทึก...</> : <><i className="fa-solid fa-save me-1"/> บันทึกผล</>}
                       </button>
                     </div>
