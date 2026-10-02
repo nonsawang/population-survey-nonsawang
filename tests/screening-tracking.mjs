@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {trackingFor} from '../lib/screening-tracking.mjs';
+const h={id:'history-1',kpi:'FOBT',state:'approved'};
+const report=(id,code,state='written',vn='123')=>({results:[{row:1,historyId:id,matchVersion:'fit-source-v1',status:'matched'}],rows:[{row:1,code}],writes:[{row:1,state,vn}]});
+const imp={vn:'123',import_status:'imported',claim_status:'not_ready',claim_checks:{}};
+assert.equal(trackingFor(h,imp,[report('another','A')]).auth,'ไม่พบใน 20 รายงานล่าสุด');
+assert.equal(trackingFor(h,imp,[report(h.id,'A')]).auth,'บันทึก Authen แล้ว');
+assert.equal(trackingFor(h,imp,[report(h.id,'A'),report(h.id,'B')]).stage,'problem');
+assert.equal(trackingFor(h,imp,[report(h.id,'A','written','456')]).stage,'problem');
+assert.equal(trackingFor(h,imp,[]).claimReady,false);
+assert.equal(trackingFor(h,null,[]).stage,'pending');
+assert.equal(trackingFor(h,{import_status:'pending'},[]).stage,'queued');
+assert.equal(trackingFor({...h,kpi:'HPV'},null,[]).stage,'unsupported');
+console.log('PASS exact history matching, conflicting codes/VN, separate claim status, queue and unsupported types');
