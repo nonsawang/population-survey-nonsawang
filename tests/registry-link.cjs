@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const {candidate}=require('../scripts/hosxp-registry-link.cjs');const {PGlite}=require('@electric-sql/pglite');
+const cid='1000000000009',birth='1970-01-01';const w={person_id:'p',cid,birth_date:birth},person={person_id:1,cid,patient_hn:'H1',birthdate:birth},patient={hn:'H1',cid,birthday:birth};
+const row=candidate(w,[person],[patient]);assert.throws(()=>candidate(w,[person,person],[patient]));assert.throws(()=>candidate(w,[person],[{...patient,birthday:'1971-01-01'}]));
+(async()=>{const db=new PGlite();try{await db.exec(`CREATE ROLE anon;CREATE ROLE authenticated;CREATE ROLE service_role;CREATE TABLE population(person_id text PRIMARY KEY,cid text,birth_date date,fobt_screen text);CREATE TABLE person_identity_links(person_id text PRIMARY KEY,hosxp_person_id text UNIQUE,hn text UNIQUE,cid text UNIQUE,verified_at timestamptz,job_id uuid NOT NULL);CREATE TABLE person_identity_jobs(state text,source_id text,target_id text);CREATE TABLE person_identity_aliases(person_id text);`);
+const sql=fs.readFileSync('migrations/20260907_hosxp_review.sql','utf8');await db.exec(sql.slice(sql.indexOf('CREATE OR REPLACE FUNCTION public.hosxp_review_valid_cid'),sql.indexOf('CREATE OR REPLACE FUNCTION public.hosxp_review_actor')));await db.exec(fs.readFileSync('migrations/20261001_registry_identity_link.sql','utf8'));
+await db.query('INSERT INTO population VALUES($1,$2,$3,$4)',['p',cid,birth,'unchanged']);const apply=async r=>(await db.query('SELECT hosxp_registry_link($1::jsonb) r',[JSON.stringify([r])])).rows[0].r;
+assert.equal((await apply({...row,birth_date:'1971-01-01'})).blocked,1);
+assert.equal((await apply(row)).linked,1);assert.equal((await apply(row)).existing,1);assert.equal((await apply({...row,hn:'OTHER'})).blocked,1);
+assert.equal((await db.query('SELECT count(*)::int n FROM registry_link_audit')).rows[0].n,1);
+assert.equal((await db.query('SELECT fobt_screen FROM population')).rows[0].fobt_screen,'unchanged');
+await db.query('INSERT INTO population VALUES($1,$2,$3,$4)',['duplicate',cid,birth,'other']);assert.equal((await apply(row)).blocked,1);
+await db.exec('SET ROLE anon');await assert.rejects(()=>apply(row));console.log('PASS unique matching, DOB conflict, idempotency, remap rejected, duplicate rejected, audit, clinical data preserved, anonymous denied');
+}finally{await db.close()}})().catch(e=>{console.error(e);process.exitCode=1});

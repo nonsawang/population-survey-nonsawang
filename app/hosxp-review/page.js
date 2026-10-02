@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { RESIDENCY_TYPES, DISCHARGE_TYPES } from '@/lib/population-status';
 import { ScreeningReview } from '@/components/ScreeningWorkflow';
+import HosxpSyncStatus from '@/components/HosxpSyncStatus';
 import TopBar from '@/components/TopBar';
 import PersonIdentity from '@/components/PersonIdentity';
 import AuthenReportImport from '@/components/AuthenReportImport';
@@ -99,7 +100,7 @@ export default function HosxpReviewPage() {
   if (!user) return null;
   return <><TopBar showAdmin /><main className="container survey-page py-4 hosxp-workspace">
     <header className="survey-heading"><div><p className="survey-eyebrow">สำหรับเจ้าหน้าที่</p><h1>ตรวจสอบก่อนส่ง HOSxP</h1><p>จับคู่บุคคล ตรวจค่าเดิม–ใหม่ และอนุมัติรายการรอส่ง</p></div><a href="/" className="btn btn-outline-secondary">กลับหน้าสำรวจ</a></header>
-    {allowed && <><nav className="workflow-nav" aria-label="งานตรวจสอบ HOSxP"><a href="#screening-review"><strong>01</strong> ตรวจผลคัดกรอง</a><a href="#authen-report"><strong>02</strong> นำเข้า Authen</a><a href="#population-review"><strong>03</strong> ตรวจข้อมูลบุคคล</a><a href="#identity-tools"><strong>04</strong> จัดการบุคคลซ้ำ</a></nav><ScreeningReview/><AuthenReportImport key={identity}/><details id="identity-tools" className="card p-3 mb-4 workflow-section"><summary className="fw-bold">เครื่องมือจับคู่รหัสบุคคลและจัดการแถวซ้ำ</summary><div className="mt-3"><PersonIdentity key={identity+':identity'}/></div></details><h2 id="population-review" className="h4 mb-3">ตรวจข้อมูลบุคคลก่อนส่ง HOSxP</h2></>}
+    {allowed && <><HosxpSyncStatus/><nav className="workflow-nav" aria-label="งานตรวจสอบ HOSxP"><a href="#screening-review"><strong>01</strong> ตรวจผลคัดกรอง</a><a href="#authen-report"><strong>02</strong> นำเข้า Authen</a><a href="#population-review"><strong>03</strong> ตรวจข้อมูลบุคคล</a><a href="#identity-tools"><strong>04</strong> จัดการบุคคลซ้ำ</a></nav><ScreeningReview/><AuthenReportImport key={identity}/><details id="identity-tools" className="card p-3 mb-4 workflow-section"><summary className="fw-bold">เครื่องมือจับคู่รหัสบุคคลและจัดการแถวซ้ำ</summary><div className="mt-3"><PersonIdentity key={identity+':identity'}/></div></details><h2 id="population-review" className="h4 mb-3">ตรวจข้อมูลบุคคลก่อนส่ง HOSxP</h2></>}
     {!allowed ? <div className="alert alert-warning">หน้านี้สำหรับเจ้าหน้าที่และผู้ดูแลระบบ</div> : <>
       {error && <div className="alert alert-danger" role="alert">{error}</div>}
       {notice && <div className="alert alert-success" role="status">{notice}</div>}

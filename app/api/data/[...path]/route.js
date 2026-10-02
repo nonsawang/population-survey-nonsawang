@@ -2,7 +2,7 @@ import { sameOrigin, getSessionToken, currentUser, databaseConfig, readBody, aut
 import { isReadOnly, dataAllowed, readOnlyResponse } from '@/lib/server-auth';
 export const dynamic = 'force-dynamic';
 const tables = new Set(['population', 'vhv_data', 'app_users', 'activity_logs']);
-const rpc = new Set(['person_identity_search','person_identity_preview','person_identity_request','person_identity_status','authen_report_list','authen_report_accept','authen_report_refresh','hosxp_fit_import_status','hosxp_fit_preview','hosxp_fit_prepare','screening_history_list','screening_overview','screening_review_list','screening_review_approve','screening_search', 'hosxp_review_list', 'hosxp_review_open_session', 'hosxp_review_approve', 'app_admin_save_user', 'app_change_password']);
+const rpc = new Set(['hosxp_registry_status','person_identity_search','person_identity_preview','person_identity_request','person_identity_status','authen_report_list','authen_report_accept','authen_report_refresh','hosxp_fit_import_status','hosxp_fit_preview','hosxp_fit_prepare','screening_history_list','screening_overview','screening_review_list','screening_review_approve','screening_search', 'hosxp_review_list', 'hosxp_review_open_session', 'hosxp_review_approve', 'app_admin_save_user', 'app_change_password']);
 async function handle(request, { params }) {
   const parts = (await params).path || [];
   if (isReadOnly() && !dataAllowed(request.method, parts)) return readOnlyResponse();
