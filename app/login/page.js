@@ -52,7 +52,7 @@ export default function LoginPage() {
     else { setPassword(''); setCid(''); }
   };
   return <div className="login-bg pb-5"><div className="login-card" style={{ maxWidth:420, margin:'0 auto' }}>
-    <div className="text-center mb-4"><div className="logo-circle"><i className="fa-solid fa-hospital fa-2x text-white" /></div><h1 className="h5 fw-bold mt-3">ระบบสำรวจประชากร</h1><p className="text-muted small">รพ.สต.บ้านโนนสว่าง จ.ร้อยเอ็ด</p></div>
+    <div className="text-center mb-4"><div className="logo-circle"><i className="fa-solid fa-hospital fa-2x text-white" /></div><h1 className="h5 fw-bold mt-3">ระบบสุขภาพโนนสว่าง</h1><p className="text-muted small mb-1">สำรวจรายครัวเรือน • คัดกรองสุขภาพ • เชื่อมโยง HOSxP</p><p className="text-muted small">รพ.สต.บ้านโนนสว่าง จ.ร้อยเอ็ด</p></div>
     {(error || authError) && <div className="alert alert-danger small" role="alert">{error || authError}</div>}
     {(loading || busy) && <p className="text-center" role="status"><span className="spinner-border spinner-border-sm me-2" />กำลังตรวจสอบ...</p>}
     {!profile && <button type="button" className="btn w-100 py-3 fw-bold text-white mb-4" style={{background:'#00B900'}} disabled={!lineReady || busy || loading} onClick={async () => {

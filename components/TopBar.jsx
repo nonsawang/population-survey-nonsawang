@@ -29,7 +29,7 @@ export default function TopBar({ showAdmin = false }) {
   return (
     <div className="top-bar">
       <a className="top-bar-brand" href="/">
-        <i className="fa-solid fa-hospital me-2" style={{opacity:.7}} /><strong>รพ.สต.บ้านโนนสว่าง</strong>
+        <i className="fa-solid fa-hospital me-2" style={{opacity:.7}} /><strong>ระบบสุขภาพโนนสว่าง</strong>
       </a>
       <div className="top-bar-actions">
         {user && (

@@ -383,7 +383,7 @@ const submitVhvChange = async () => {
     <>
       <TopBar showAdmin />
       <div className="container survey-page py-4">
-        <header className="survey-heading"><div><p className="survey-eyebrow">รพ.สต.บ้านโนนสว่าง</p><h1>ระบบสำรวจประชากร</h1><p>ติดตามงานคงค้าง ค้นหาบ้าน และบันทึกการสำรวจ</p></div><a className="btn btn-primary" href="#survey-house-search"><i className="fa-solid fa-magnifying-glass me-2" aria-hidden="true"/>ค้นหาบ้าน</a></header>
+        <header className="survey-heading"><div><p className="survey-eyebrow">รพ.สต.บ้านโนนสว่าง</p><h1>ระบบสุขภาพโนนสว่าง</h1><p>สำรวจรายครัวเรือน • คัดกรองสุขภาพ • เชื่อมโยง HOSxP</p></div><a className="btn btn-primary" href="#survey-house-search"><i className="fa-solid fa-magnifying-glass me-2" aria-hidden="true"/>ค้นหาบ้าน</a></header>
 
 <nav className="survey-navigation" aria-label="เมนูงานสำรวจ">
           {/* 🟢 เช็กสิทธิ์: ถ้าไม่ใช่ อสม. ถึงจะมองเห็นปุ่ม Screening */}

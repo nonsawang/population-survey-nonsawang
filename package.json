@@ -1,5 +1,6 @@
 {
   "name": "population-survey-nonsawang",
+  "description": "ระบบสำรวจประชากรรายครัวเรือนและคัดกรองสุขภาพ เชื่อมโยง HOSxP โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านโนนสว่าง",
   "version": "3.1.0",
   "private": true,
   "scripts": {

@@ -4,8 +4,8 @@ import './globals.css';
 import previewDatabase from '@/lib/preview-database.cjs';
 
 export const metadata = {
-  title: 'ระบบสำรวจประชากร — รพ.สต.บ้านโนนสว่าง',
-  description: 'ระบบสำรวจประชากรและคัดกรองสุขภาพ',
+  title: 'ระบบสุขภาพโนนสว่าง — รพ.สต.บ้านโนนสว่าง',
+  description: 'ระบบสำรวจประชากรรายครัวเรือนและคัดกรองสุขภาพ เชื่อมโยง HOSxP โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านโนนสว่าง',
 };
 
 export const viewport = {
