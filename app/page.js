@@ -9,299 +9,11 @@ import SurveyWorkPanel from '@/components/SurveyWorkPanel';
 import { writeLog } from '@/lib/logger';
 import { populationStatus, statusUpdate, RESIDENCY_TYPES, DISCHARGE_TYPES } from '@/lib/population-status';
 
-// ✅ SweetAlert2 — ใช้ CDN จาก layout.js (window.Swal)
-const getSwal = () => typeof window !== 'undefined' ? window.Swal : null;
-const swal = (opts) => { const S = getSwal(); return S ? S.fire(opts) : alert(opts.title || opts.text || ''); };
-const Toast = (icon, title) => { const S = getSwal(); return S ? S.mixin({ toast:true, position:'top-end', showConfirmButton:false, timer:2000, timerProgressBar:true }).fire({ icon, title }) : null; };
-const showLoading = (title) => { const S = getSwal(); return S ? S.fire({ title, allowOutsideClick:false, didOpen:()=>S.showLoading() }) : null; };
-const closeLoading = () => { const S = getSwal(); return S ? S.close() : null; };
+import PersonCard from '@/components/survey/PersonCard';
+import ModalShell from '@/components/survey/ModalShell';
+import { getSwal, swal, Toast, showLoading, closeLoading } from '@/lib/survey-feedback';
+import { surveyErrorMessage } from '@/lib/survey-errors.mjs';
 
-// ═══════════════════════════════════════════
-// PersonCard — การ์ดแต่ละคน
-// ═══════════════════════════════════════════
-function PersonCard({ person, onSave, onMove, onRefresh, user }) {
-  const [relValue, setRelValue] = useState(person.relation);
-  const [chronicValue, setChronicValue] = useState('');
-  const [chronicOther, setChronicOther] = useState('');
-  const [showOther, setShowOther] = useState(false);
-  const [riskOpen, setRiskOpen] = useState(false);
-  const [smokeStatus, setSmokeStatus] = useState(person.smokingStatus || '');
-  const [alcoStatus, setAlcoStatus] = useState(person.alcoholStatus || '');
-  const [fagerAnswers, setFagerAnswers] = useState(person.fagerstromAnswers || {});
-  const [assistAnswers, setAssistAnswers] = useState(person.assistAnswers || {});
-  const [saving, setSaving] = useState(false);
-  const [typeValue, setTypeValue] = useState(person.residencyType);
-  const [dischargeValue, setDischargeValue] = useState(person.dischargeCode);
-  useEffect(() => { setTypeValue(person.residencyType); setDischargeValue(person.dischargeCode); }, [person.residencyType, person.dischargeCode]);
-
-  // 🎯 State ของคัดกรองพยาธิใบไม้ตับ
-  const [ovAnswers, setOvAnswers] = useState({ q1: '', q2: '', q3: '', q4: '', q5: '' });
-  const [ovOpen, setOvOpen] = useState(true);
-
-  // 🎯 เพิ่ม useEffect เพื่อดึงข้อมูลเดิมมาแสดงเสมอเมื่อเปิดบ้าน
-  useEffect(() => {
-    const newOv = person.ovAnswers || { q1: '', q2: '', q3: '', q4: '', q5: '' };
-    setOvAnswers(newOv);
-    const hasData = !!newOv.q1;
-    setOvOpen(!hasData); // ถ้ามีข้อมูลแล้วให้พับกล่อง (false) ถ้าไม่มีให้เปิด (true)
-  }, [JSON.stringify(person.ovAnswers)]);
-
-  useEffect(() => {
-    const cc = (!person.chronic || person.chronic === '-') ? 'ปกติ (ไม่มีโรค)' : person.chronic;
-    if (CHRONIC_LIST.includes(cc)) { setChronicValue(cc); setShowOther(false); }
-    else { setChronicValue('__OTHER__'); setChronicOther(cc); setShowOther(true); }
-  }, [person.chronic]);
-
-  const getChronicFinal = () => chronicValue === '__OTHER__' ? (chronicOther.trim() || '-') : chronicValue;
-
-  const doSave = async (type, discharge = person.dischargeCode, changes = {}) => {
-    if (!person.statusSchemaReady) { swal({ icon:'info', title:'ต้องปรับตาราง Supabase ก่อน', text:'รัน migration สถานะ HOSxP แล้วโหลดหน้านี้ใหม่' }); return; }
-    if (!DISCHARGE_TYPES.some(item => item.code === discharge)) { swal({ icon: 'warning', title: 'กรุณาระบุเหตุจำหน่ายก่อน', text: 'ข้อมูล Type 0 เดิมยังไม่มีเหตุจำหน่ายที่ตรงกับ HOSxP' }); return; }
-    setSaving(true);
-    try { await onSave(person.personId, type, changes.relation ?? relValue, changes.chronic ?? getChronicFinal(), discharge); }
-    finally { setSaving(false); }
-  };
-
-  // เช็คว่าเคยมีข้อมูลถูกกรอกไว้ไหม
-  const hasOvData = !!ovAnswers.q1;
-
-  // ฟังก์ชันเช็คความเสี่ยง (ตอบ "เคย" หรือ "พบ" ในข้อ 1-3 ถือว่าเสี่ยงทันที)
-  const checkOvRisk = () => {
-    const isQ1Risk = ovAnswers.q1 === 'ตรวจแล้วพบไข่พยาธิ';
-    const isQ2Risk = typeof ovAnswers.q2 === 'string' && ovAnswers.q2.includes('เคย') && ovAnswers.q2 !== 'ไม่เคย';
-    const isQ3Risk = ovAnswers.q3 === 'เคย';
-    return isQ1Risk || isQ2Risk || isQ3Risk;
-  };
-  const isAtRisk = checkOvRisk();
-
-  const saveOvScreening = async (ovData) => {
-    setSaving(true);
-    showLoading('กำลังบันทึกข้อมูลคัดกรอง...');
-    
-    const { error } = await supabase.from('population').update({
-      ov_q1: ovData.q1, ov_q2: ovData.q2, ov_q3: ovData.q3, ov_q4: ovData.q4, ov_q5: ovData.q5,
-      ov_date: new Date().toISOString(), updated_at: new Date().toISOString()
-    }).eq('person_id', person.personId);
-
-    closeLoading();
-    setSaving(false);
-
-    if (!error) {
-      const riskText = isAtRisk ? 'มีความเสี่ยง' : 'ไม่มีความเสี่ยง';
-      await writeLog(user?.userId, user?.username, 'SCREENING_OV', `คัดกรองพยาธิฯ | Q5: ${ovData.q5} | ประเมิน: ${riskText}`, person.personId);
-      
-      swal({ icon: 'success', title: 'บันทึกสำเร็จ!', text: 'บันทึกข้อมูลคัดกรองเรียบร้อย', timer: 2000, showConfirmButton: false }).then(() => {
-        setOvOpen(false); 
-        onRefresh();
-      });
-    } else {
-      swal({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: error.message });
-    }
-  };
-
-  const doSaveRisk = async () => {
-    if (!smokeStatus && !alcoStatus) { swal({ icon: 'warning', title: 'กรุณาเลือกสถานะบุหรี่หรือสุรา', timer: 1500, showConfirmButton: false }); return; }
-    setSaving(true);
-    showLoading('กำลังบันทึก...');
-
-    const fScore = smokeStatus === 'สูบ' ? ['f1', 'f2', 'f3', 'f4', 'f5', 'f6'].reduce((s, k) => s + (parseInt(fagerAnswers[k]) || 0), 0) : null;
-    const aScore = alcoStatus === 'ดื่ม' ? ['a1', 'a2', 'a3', 'a4', 'a5'].reduce((s, k) => s + (parseInt(assistAnswers[k]) || 0), 0) : null;
-
-    const { error } = await supabase.from('population').update({
-      smoking_status: smokeStatus || null, alcohol_status: alcoStatus || null,
-      fagerstrom_score: fScore, fagerstrom_answers: smokeStatus === 'สูบ' ? JSON.stringify(fagerAnswers) : null,
-      assist_score: aScore, assist_answers: alcoStatus === 'ดื่ม' ? JSON.stringify(assistAnswers) : null,
-      updated_at: new Date().toISOString()
-    }).eq('person_id', person.personId);
-
-    closeLoading(); setSaving(false);
-
-    if (!error) {
-      await writeLog(user?.userId, user?.username, 'RISK_BEHAVIOR', `บุหรี่: ${smokeStatus || 'ไม่ระบุ'} | สุรา: ${alcoStatus || 'ไม่ระบุ'}`, person.personId);
-      swal({ icon: 'success', title: 'บันทึกสำเร็จ!', timer: 2000, showConfirmButton: false }).then(() => {
-        setRiskOpen(false); 
-        onRefresh();
-      });
-    } else swal({ icon: 'error', title: 'ผิดพลาด', text: error.message });
-  };
-
-  const fT = ['f1', 'f2', 'f3', 'f4', 'f5', 'f6'].reduce((s, k) => s + (parseInt(fagerAnswers[k]) || 0), 0);
-  const aT = ['a1', 'a2', 'a3', 'a4', 'a5'].reduce((s, k) => s + (parseInt(assistAnswers[k]) || 0), 0);
-  const rels = ['เจ้าบ้าน', 'ผู้อาศัย', 'บิดา/มารดา', 'เขย/สะใภ้', 'บุตร/หลาน', 'เช่าอาศัย', 'อื่นๆ'];
-
-  return (
-    <div className={`card card-person border-type${person.residencyType} fade-in`} style={{ opacity: saving ? 0.6 : 1, pointerEvents: saving ? 'none' : 'auto' }}>
-      {saving && <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 5 }}><span className="spinner-border spinner-border-sm text-primary" /></div>}
-      <div className="card-body p-3">
-        {/* Header */}
-        <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
-          <h6 className="fw-bold mb-0" style={{ color: 'var(--primary)' }}>
-            {person.fullname}
-            {person.smokingStatus && person.smokingStatus !== '-' && person.smokingStatus !== '' && <span className="badge ms-1" style={{ fontSize: '.65rem', background: '#6f42c1', color: 'white' }}><i className="fa-solid fa-smoking me-1" />{person.smokingStatus === 'สูบ' ? 'สูบ' : 'เลิกแล้ว'}</span>}
-            {person.alcoholStatus && person.alcoholStatus !== '-' && person.alcoholStatus !== '' && <span className="badge ms-1" style={{ fontSize: '.65rem', background: '#0d6efd', color: 'white' }}><i className="fa-solid fa-wine-bottle me-1" />{person.alcoholStatus === 'ดื่ม' ? 'ดื่ม' : 'เลิกแล้ว'}</span>}
-          </h6>
-          <span className="badge bg-light text-dark border" style={{ fontSize: '.8em' }}>อายุ {person.age}</span>
-        </div>
-
-        {/* Relation + Chronic */}
-        <div className="row g-2 mb-3 p-2 rounded-3 mx-0" style={{ background: '#f8f9fa' }}>
-          <div className="col-12 col-sm-6 px-1">
-            <label className="text-muted" style={{ fontSize: '.68em', fontWeight: 600 }}>สถานะในบ้าน</label>
-            <select className="form-select form-select-sm border-0 fw-bold" style={{ fontSize: '.85rem', color: 'var(--primary)' }} value={relValue} onChange={e => { setRelValue(e.target.value); doSave(person.residencyType, person.dischargeCode, { relation: e.target.value }); }}>
-              {rels.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </div>
-          <div className="col-12 col-sm-6 px-1">
-            <label className="text-muted" style={{ fontSize: '.68em', fontWeight: 600 }}>โรคประจำตัว</label>
-            <select className="form-select form-select-sm border-0 fw-bold text-danger" style={{ fontSize: '.85rem' }} value={chronicValue} onChange={e => { setChronicValue(e.target.value); setShowOther(e.target.value === '__OTHER__'); if (e.target.value !== '__OTHER__') doSave(person.residencyType, person.dischargeCode, { chronic: e.target.value }); }}>
-              {CHRONIC_LIST.map(c => <option key={c} value={c}>{c}</option>)}
-              <option value="__OTHER__">อื่นๆ (ระบุ)</option>
-            </select>
-            {showOther && (
-              <div className="input-group input-group-sm mt-1">
-                <input type="text" className="form-control border-danger" style={{ fontSize: '.8rem' }} placeholder="ระบุโรค..." value={chronicOther} onChange={e => setChronicOther(e.target.value)} onKeyDown={e => e.key === 'Enter' && doSave(person.residencyType)} />
-                <button className="btn btn-danger btn-sm" onClick={() => doSave(person.residencyType)}><i className="fa-solid fa-check" /></button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="border rounded-3 p-3 my-3 bg-white">
-          <h3 className="h6 fw-bold">สถานะตาม HOSxP</h3>
-          {!person.statusSchemaReady && <p className="small text-danger" role="status">ต้องรัน migration สถานะ HOSxP ใน Supabase ก่อนบันทึก</p>}
-          {person.needsStatusReview && <p className="small text-warning-emphasis">{person.legacyDischarge ? 'Type 0 เดิมใช้ทั้งจำหน่ายและนอกเขต กรุณาตรวจประเภทอยู่อาศัยและสถานะจำหน่ายตามข้อเท็จจริง' : 'กรุณาตรวจประเภทอยู่อาศัยก่อนส่งข้อมูลเข้า HOSxP'}</p>}
-          <div className="row g-2">
-            <div className="col-12 col-md-7"><label className="form-label" htmlFor={'residency-' + person.personId}>ประเภทอยู่อาศัย</label><select id={'residency-' + person.personId} className="form-select" value={typeValue} onChange={e => setTypeValue(e.target.value)}><option value="">ยังไม่ระบุ</option>{RESIDENCY_TYPES.map(item => <option key={item.code} value={item.code}>Type {item.code} — {item.label}</option>)}</select></div>
-            <div className="col-12 col-md-5"><label className="form-label" htmlFor={'discharge-' + person.personId}>สถานะจำหน่าย</label><select id={'discharge-' + person.personId} className="form-select" value={dischargeValue} onChange={e => setDischargeValue(e.target.value)}><option value="" disabled>รอตรวจเหตุจำหน่ายเดิม</option>{DISCHARGE_TYPES.map(item => <option key={item.code} value={item.code}>{item.code} — {item.label}</option>)}</select></div>
-          </div>
-          <button type="button" className="btn btn-primary w-100 mt-3" disabled={saving || !dischargeValue || !person.statusSchemaReady} onClick={async () => {
-            if (dischargeValue !== person.dischargeCode) {
-              const label = DISCHARGE_TYPES.find(item => item.code === dischargeValue)?.label;
-              const S = getSwal();
-              const confirmed = S ? (await S.fire({ title: 'ยืนยันเปลี่ยนสถานะจำหน่าย', text: person.fullname + ' → ' + label, icon: 'warning', showCancelButton: true, confirmButtonText: 'ยืนยัน', cancelButtonText: 'ยกเลิก' })).isConfirmed : window.confirm(person.fullname + ' → ' + label);
-              if (!confirmed) return;
-            }
-            await doSave(typeValue, dischargeValue);
-          }}>บันทึกประเภทอยู่อาศัยและสถานะจำหน่าย</button>
-          <button type="button" onClick={() => onMove(person)} className="btn btn-outline-secondary w-100 mt-2">ย้ายบ้านภายในพื้นที่</button>
-        </div>
-
-        {/* ─── Risk Section (บุหรี่/สุรา) ─── */}
-        <div className="risk-section mt-3 border-top pt-3">
-          <div className="d-flex align-items-center justify-content-between">
-            <span className="small text-muted fw-bold"><i className="fa-solid fa-triangle-exclamation text-warning me-1" />คัดกรองบุหรี่/สุรา</span>
-            <button className="btn btn-outline-secondary risk-toggle-btn" onClick={() => setRiskOpen(!riskOpen)}>
-              <i className={`fa-solid fa-chevron-${riskOpen ? 'up' : 'down'}`} /> {person.smokingStatus || person.alcoholStatus ? 'แก้ไข' : 'บันทึก'}
-            </button>
-          </div>
-          <div className={`risk-body ${riskOpen ? 'open' : ''}`}>
-            <div className="mt-2"><label className="small fw-bold text-muted mb-1"><i className="fa-solid fa-smoking text-secondary me-1" />การสูบบุหรี่</label>
-              <select className="form-select form-select-sm" value={smokeStatus} onChange={e => setSmokeStatus(e.target.value)}>
-                <option value="">เลือก</option><option value="ไม่สูบ ไม่เคยสูบบุหรี่">ไม่สูบ ไม่เคยสูบบุหรี่</option><option value="ไม่สูบ เคยสูบบุหรี่แต่เลิกแล้ว">เคยสูบแต่เลิกแล้ว</option><option value="สูบ">สูบ</option>
-              </select>
-            </div>
-            {smokeStatus === 'สูบ' && <div className="sub-test"><div className="d-flex justify-content-between align-items-center mb-2"><span className="text-primary fw-bold" style={{ fontSize: '.78rem' }}>Fagerstrom</span><span className={`score-badge ${fT <= 3 ? 'score-low' : fT <= 6 ? 'score-med' : 'score-high'}`}>คะแนน {fT}</span></div>
-              {[{ k: 'f1', q: 'สูบวันละกี่มวน?', o: [['0', '≤10'], ['1', '11-20'], ['2', '21-30'], ['3', '≥31']] }, { k: 'f2', q: 'มวนแรกหลังตื่น?', o: [['3', 'ภายใน 5 นาที'], ['2', '6-30 นาที'], ['1', '31-60 นาที'], ['0', '>60 นาที']] }, { k: 'f3', q: 'สูบจัดชั่วโมงแรก?', o: [['1', 'ใช่'], ['0', 'ไม่ใช่']] }, { k: 'f4', q: 'มวนที่ไม่อยากเลิก?', o: [['1', 'มวนแรกเช้า'], ['0', 'มวนอื่น']] }, { k: 'f5', q: 'ลำบากในเขตปลอดบุหรี่?', o: [['1', 'ลำบาก'], ['0', 'ไม่ลำบาก']] }, { k: 'f6', q: 'สูบแม้เจ็บป่วย?', o: [['1', 'ใช่'], ['0', 'ไม่ใช่']] }].map(({ k, q, o }) => <div key={k}><label>{q}</label><select className="form-select form-select-sm mb-2" value={fagerAnswers[k] || ''} onChange={e => setFagerAnswers({ ...fagerAnswers, [k]: e.target.value })}><option value="">เลือก</option>{o.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>)}
-            </div>}
-            <div className="mt-2"><label className="small fw-bold text-muted mb-1"><i className="fa-solid fa-wine-bottle text-secondary me-1" />การดื่มสุรา</label>
-              <select className="form-select form-select-sm" value={alcoStatus} onChange={e => setAlcoStatus(e.target.value)}>
-                <option value="">เลือก</option><option value="ไม่ดื่ม/ตลอดชีวิตไม่เคยดื่มเลย">ไม่ดื่ม/ไม่เคยดื่ม</option><option value="เคยดื่มแต่หยุดแล้ว 1 ปีขึ้นไป">เคยดื่มแต่หยุดแล้ว</option><option value="ดื่ม">ดื่ม</option>
-              </select>
-            </div>
-            {alcoStatus === 'ดื่ม' && <div className="sub-test"><div className="d-flex justify-content-between align-items-center mb-2"><span className="text-success fw-bold" style={{ fontSize: '.78rem' }}>ASSIST</span><span className={`score-badge ${aT <= 10 ? 'score-low' : aT <= 26 ? 'score-med' : 'score-high'}`}>คะแนน {aT}</span></div>
-              {[{ k: 'a1', q: 'ดื่มบ่อยแค่ไหน?', o: [['6', 'เกือบทุกวัน'], ['4', 'ทุกสัปดาห์'], ['3', 'ทุกเดือน'], ['2', 'ครั้งสองครั้ง'], ['0', 'ไม่เคย']] }, { k: 'a2', q: 'อยากดื่มมากๆ?', o: [['6', 'เกือบทุกวัน'], ['5', 'ทุกสัปดาห์'], ['4', 'ทุกเดือน'], ['3', 'ครั้งสองครั้ง'], ['0', 'ไม่เคย']] }, { k: 'a3', q: 'เกิดปัญหา?', o: [['7', 'เกือบทุกวัน'], ['6', 'ทุกสัปดาห์'], ['5', 'ทุกเดือน'], ['4', 'ครั้งสองครั้ง'], ['0', 'ไม่เคย']] }, { k: 'a4', q: 'เสียงาน/การเรียน?', o: [['8', 'เกือบทุกวัน'], ['7', 'ทุกสัปดาห์'], ['6', 'ทุกเดือน'], ['5', 'ครั้งสองครั้ง'], ['0', 'ไม่เคย']] }, { k: 'a5', q: 'คนอื่นตักเตือน?', o: [['3', 'เคย (ก่อน 3 เดือน)'], ['6', 'เคย (ใน 3 เดือน)'], ['0', 'ไม่เคย']] }].map(({ k, q, o }) => <div key={k}><label>{q}</label><select className="form-select form-select-sm mb-2" value={assistAnswers[k] || ''} onChange={e => setAssistAnswers({ ...assistAnswers, [k]: e.target.value })}><option value="">เลือก</option>{o.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>)}
-            </div>}
-            <button onClick={doSaveRisk} className="btn btn-sm btn-primary w-100 rounded-pill mt-3 fw-bold" disabled={saving}><i className="fa-solid fa-save me-1" /> บันทึกคัดกรองบุหรี่/สุรา</button>
-          </div>
-        </div>
-
-        {/* ─── Liver Fluke Screening Section (OV) ─── */}
-        {person.age >= 15 && (
-          <div className="risk-section mt-3 border-top pt-3">
-            <div className="d-flex align-items-center justify-content-between">
-              <div>
-                <span className="small text-danger fw-bold"><i className="fa-solid fa-microscope me-1" />คัดกรองพยาธิใบไม้ตับ (ปี 69)</span>
-                {hasOvData && (
-                  <span className={`badge ms-2 ${isAtRisk ? 'bg-danger' : 'bg-success'}`} style={{ fontSize: '.65rem' }}>
-                    {isAtRisk ? (
-                      <><i className="fa-solid fa-circle-exclamation me-1" /> มีความเสี่ยง</>
-                    ) : (
-                      <><i className="fa-solid fa-check-circle me-1" /> ไม่มีความเสี่ยง</>
-                    )}
-                  </span>
-                )}
-              </div>
-              <button className="btn btn-outline-secondary risk-toggle-btn" onClick={() => setOvOpen(!ovOpen)}>
-                <i className={`fa-solid fa-chevron-${ovOpen ? 'up' : 'down'}`} /> {hasOvData ? 'แก้ไข' : 'บันทึก'}
-              </button>
-            </div>
-            
-            <div className={`risk-body ${ovOpen ? 'open' : ''}`}>
-              <div className="mt-3">
-                <div className="mb-2">
-                  <label className="small text-muted mb-1">1. คุณเคยตรวจพบพยาธิใบไม้ตับหรือไม่?</label>
-                  <select className="form-select form-select-sm" value={ovAnswers.q1} onChange={e => setOvAnswers({ ...ovAnswers, q1: e.target.value })}>
-                    <option value="">เลือก</option>
-                    <option value="ไม่เคยตรวจ">ไม่เคยตรวจ</option>
-                    <option value="ตรวจแต่ไม่พบ">ตรวจแต่ไม่พบ</option>
-                    <option value="ตรวจแล้วพบไข่พยาธิ">ตรวจแล้วพบไข่พยาธิ</option>
-                    <option value="จำไม่ได้">จำไม่ได้</option>
-                  </select>
-                </div>
-
-                <div className="mb-2">
-                  <label className="small text-muted mb-1">2. คุณเคยได้รับการรักษาด้วยยาฆ่าพยาธิใบไม้ตับหรือไม่?</label>
-                  <select className="form-select form-select-sm" value={ovAnswers.q2} onChange={e => setOvAnswers({ ...ovAnswers, q2: e.target.value })}>
-                    <option value="">เลือก</option>
-                    {['ไม่เคย', 'เคย 1 ครั้ง', 'เคย 2 ครั้ง', 'เคย 3 ครั้ง', 'เคยมากกว่า 3 ครั้ง', 'จำไม่ได้'].map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                </div>
-
-                <div className="mb-2">
-                  <label className="small text-muted mb-1">3. คุณเคยรับประทานปลาน้ำจืดที่มีเกล็ดดิบๆสุกๆ หรือปลาร้าไม่ต้มสุก หรือไม่?</label>
-                  <select className="form-select form-select-sm" value={ovAnswers.q3} onChange={e => setOvAnswers({ ...ovAnswers, q3: e.target.value })}>
-                    <option value="">เลือก</option>
-                    <option value="ไม่เคย">ไม่เคย</option>
-                    <option value="เคย">เคย</option>
-                  </select>
-                </div>
-
-                <div className="mb-2">
-                  <label className="small text-muted mb-1">4. คุณได้รับการวินิจฉัยจากแพทย์ว่าเป็นโรคใดบ้างต่อไปนี้?</label>
-                  <select className="form-select form-select-sm" value={ovAnswers.q4} onChange={e => setOvAnswers({ ...ovAnswers, q4: e.target.value })}>
-                    <option value="">เลือก</option>
-                    <option value="ไม่เป็น">ไม่เป็น</option>
-                    <option value="ตับอักเสบ บี">ตับอักเสบ บี</option>
-                    <option value="ตับอักเสบ ซี">ตับอักเสบ ซี</option>
-                    <option value="เบาหวาน">เบาหวาน</option>
-                    <option value="อื่นๆ">อื่นๆ</option>
-                  </select>
-                </div>
-
-                <div className="mb-3">
-                  <label className="small text-muted mb-1">5. ท่านต้องการตรวจหาพยาธิใบไม้ตับ ด้วยวิธีตรวจจากปัสสาวะ ด้วยชุดตรวจ OV-ATK หรือไม่?</label>
-                  <select className="form-select form-select-sm" value={ovAnswers.q5} onChange={e => setOvAnswers({ ...ovAnswers, q5: e.target.value })}>
-                    <option value="">เลือก</option>
-                    <option value="ต้องการตรวจ">ต้องการตรวจ</option>
-                    <option value="ไม่ต้องการตรวจ">ไม่ต้องการตรวจ</option>
-                  </select>
-                </div>
-
-                <button onClick={() => saveOvScreening(ovAnswers)} className="btn btn-sm btn-danger w-100 rounded-pill fw-bold" disabled={saving}>
-                  <i className="fa-solid fa-save me-1" /> บันทึกข้อมูลคัดกรอง
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════
-// Main Survey Page
-// ═══════════════════════════════════════════
 export default function SurveyPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -354,16 +66,16 @@ export default function SurveyPage() {
     if (allowedMoos && !allowedMoos.includes(targetMoo)) { swal({icon:'error',title:'ไม่มีสิทธิ์เข้าถึงหมู่ ' + targetMoo}); return; }
     setMoo(targetMoo); setHouse(targetHouse.trim()); setResults(null);
     setSearching(true); showLoading('กำลังค้นหา...');
-    
+
     const { data, error } = await supabase.from('population').select('*').eq('house', targetHouse.trim()).eq('moo', targetMoo).order('fname');
-    
+
     closeLoading(); setSearching(false);
-    if (error) { swal({icon:'error',title:'ค้นหาไม่สำเร็จ',text:error.message}); return; }
-    
+    if (error) { swal({icon:'error',title:'ค้นหาไม่สำเร็จ',text:surveyErrorMessage(error)}); return; }
+
     const mapped = (data || []).map(r => {
       let fa = {}; try { if (r.fagerstrom_answers) fa = JSON.parse(r.fagerstrom_answers); } catch(e) {}
       let aa = {}; try { if (r.assist_answers) aa = JSON.parse(r.assist_answers); } catch(e) {}
-      
+
       // 🎯 สิ่งที่เพิ่มเข้ามา: ดึงข้อมูล OV จากฐานข้อมูล (ถ้าเป็น null ให้แปลงเป็นค่าว่าง)
       const ov = {
         q1: r.ov_q1 || '',
@@ -373,27 +85,27 @@ export default function SurveyPage() {
         q5: r.ov_q5 || ''
       };
 
-      return { 
-        personId: r.person_id, 
-        cid: r.cid||'-', 
-        fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''), 
-        age: calculateAge(r.birth_date), 
-        relation: r.relation||'ไม่ระบุ', 
+      return {
+        personId: r.person_id,
+        cid: r.cid||'-',
+        fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''),
+        age: calculateAge(r.birth_date),
+        relation: r.relation||'ไม่ระบุ',
         residencyType: populationStatus(r).residencyType,
         dischargeCode: populationStatus(r).dischargeCode,
         needsStatusReview: populationStatus(r).needsReview,
         legacyDischarge: populationStatus(r).legacyDischarge,
         statusSchemaReady: Object.prototype.hasOwnProperty.call(r, 'status_model_version'),
-        chronic: r.chronic||'-', 
-        vhv: r.vhv||'ไม่ระบุ', 
-        smokingStatus: r.smoking_status||'', 
-        alcoholStatus: r.alcohol_status||'', 
-        fagerstromScore: r.fagerstrom_score, 
-        assistScore: r.assist_score, 
-        fagerstromAnswers: fa, 
+        chronic: r.chronic||'-',
+        vhv: r.vhv||'ไม่ระบุ',
+        smokingStatus: r.smoking_status||'',
+        alcoholStatus: r.alcohol_status||'',
+        fagerstromScore: r.fagerstrom_score,
+        assistScore: r.assist_score,
+        fagerstromAnswers: fa,
         assistAnswers: aa,
         // 🎯 สิ่งที่เพิ่มเข้ามา: ส่งข้อมูล OV ที่จัดแล้วเข้าไปใน prop ของ PersonCard
-        ovAnswers: ov 
+        ovAnswers: ov
       };
     });
     setResults(mapped);
@@ -404,11 +116,11 @@ const searchDataSilent = async () => {
     setWorkRefresh(value => value + 1);
     if (!moo || !house.trim()) return;
     const { data } = await supabase.from('population').select('*').eq('house', house.trim()).eq('moo', moo).order('fname');
-    
+
     const mapped = (data || []).map(r => {
       let fa = {}; try { if (r.fagerstrom_answers) fa = JSON.parse(r.fagerstrom_answers); } catch(e) {}
       let aa = {}; try { if (r.assist_answers) aa = JSON.parse(r.assist_answers); } catch(e) {}
-      
+
       // 🎯 เพิ่มดึงข้อมูล OV
       const ov = {
         q1: r.ov_q1 || '',
@@ -418,23 +130,23 @@ const searchDataSilent = async () => {
         q5: r.ov_q5 || ''
       };
 
-      return { 
-        personId: r.person_id, 
-        cid: r.cid||'-', 
-        fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''), 
-        age: calculateAge(r.birth_date), 
-        relation: r.relation||'ไม่ระบุ', 
+      return {
+        personId: r.person_id,
+        cid: r.cid||'-',
+        fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''),
+        age: calculateAge(r.birth_date),
+        relation: r.relation||'ไม่ระบุ',
         residencyType: populationStatus(r).residencyType,
         dischargeCode: populationStatus(r).dischargeCode,
         needsStatusReview: populationStatus(r).needsReview,
         legacyDischarge: populationStatus(r).legacyDischarge,
-        chronic: r.chronic||'-', 
-        vhv: r.vhv||'ไม่ระบุ', 
-        smokingStatus: r.smoking_status||'', 
-        alcoholStatus: r.alcohol_status||'', 
-        fagerstromScore: r.fagerstrom_score, 
-        assistScore: r.assist_score, 
-        fagerstromAnswers: fa, 
+        chronic: r.chronic||'-',
+        vhv: r.vhv||'ไม่ระบุ',
+        smokingStatus: r.smoking_status||'',
+        alcoholStatus: r.alcohol_status||'',
+        fagerstromScore: r.fagerstrom_score,
+        assistScore: r.assist_score,
+        fagerstromAnswers: fa,
         assistAnswers: aa,
         ovAnswers: ov // 🎯 ส่งเข้าไปที่ PersonCard
       };
@@ -445,22 +157,22 @@ const searchDataSilent = async () => {
 const handleSave = async (personId, newType, relation, chronic, dischargeCode) => {
     const { error } = await supabase
       .from('population')
-      .update({ 
+      .update({
         ...statusUpdate(newType, dischargeCode),
-        relation: sanitizeInput(relation), 
-        chronic: chronic || '-', 
-        updated_at: new Date().toISOString() 
+        relation: sanitizeInput(relation),
+        chronic: chronic || '-',
+        updated_at: new Date().toISOString()
       })
       .eq('person_id', personId);
-      
+
     if (error) {
-      swal({icon:'error',title:'บันทึกไม่สำเร็จ',text:['42703','PGRST204'].includes(error.code) ? 'ต้องปรับตาราง Supabase ด้วย migration สถานะ HOSxP ก่อนใช้งาน' : error.message});
+      swal({icon:'error',title:'บันทึกไม่สำเร็จ',text:surveyErrorMessage(error)});
     } else {
       // 🎯 [เพิ่มใหม่] บันทึก Activity Log: UPDATE_STATUS
       const detailStr = `ประเภทอยู่อาศัย->${newType || 'ไม่ระบุ'} | สถานะจำหน่าย->${dischargeCode} | ${relation}`;
       await writeLog(user?.userId, user?.username, 'UPDATE_STATUS', detailStr, personId);
     }
-    
+
     await searchDataSilent();
   };
 
@@ -477,23 +189,23 @@ const handleSave = async (personId, newType, relation, chronic, dischargeCode) =
 const submitVhvChange = async () => {
     if (!selectedVhv) { swal({icon:'warning',title:'กรุณาเลือก อสม.'}); return; }
     showLoading('กำลังอัปเดต...');
-    
-    const { error } = await supabase.from('population').update({ 
-      vhv: selectedVhv, 
-      updated_at: new Date().toISOString() 
+
+    const { error } = await supabase.from('population').update({
+      vhv: selectedVhv,
+      updated_at: new Date().toISOString()
     }).eq('house', vhvHouse).eq('moo', vhvMoo);
-    
+
     closeLoading(); setShowVhvModal(false);
-    
+
     if (!error) {
       // 🎯 [เพิ่มใหม่] บันทึก Activity Log: CHANGE_VHV
       const detailStr = `เปลี่ยน อสม. บ้านเลขที่ ${vhvHouse} ม.${vhvMoo} เป็น ${selectedVhv}`;
       await writeLog(user?.userId, user?.username, 'CHANGE_VHV', detailStr, `${vhvMoo}-${vhvHouse}`);
-      
+
       Toast('success','อัปเดต อสม. เรียบร้อย');
       searchDataSilent();
     } else {
-      swal({icon:'error',title:'ไม่สำเร็จ',text:error.message});
+      swal({icon:'error',title:'ไม่สำเร็จ',text:surveyErrorMessage(error)});
     }
   };
 
@@ -503,16 +215,16 @@ const submitVhvChange = async () => {
     showLoading('กำลังย้าย...');
     const { data: targetRows } = await supabase.from('population').select('vhv').eq('house', moveHouse.trim()).eq('moo', moveMoo).limit(1);
     const newVhv = (targetRows && targetRows[0]?.vhv) || 'ไม่ระบุ';
-    
-    const { error } = await supabase.from('population').update({ 
-      house: moveHouse.trim(), 
-      moo: moveMoo, 
-      vhv: newVhv, 
-      updated_at: new Date().toISOString() 
+
+    const { error } = await supabase.from('population').update({
+      house: moveHouse.trim(),
+      moo: moveMoo,
+      vhv: newVhv,
+      updated_at: new Date().toISOString()
     }).eq('person_id', moveTarget.personId);
-    
-    closeLoading(); 
-    
+
+    closeLoading();
+
     if (!error) {
       // 🎯 [เพิ่มใหม่] บันทึก Activity Log: MOVE_HOUSE
       const detailStr = `ย้ายไปบ้านเลขที่ ${moveHouse.trim()} ม.${moveMoo}`;
@@ -524,7 +236,7 @@ const submitVhvChange = async () => {
       });
     } else {
       setMoveTarget(null);
-      swal({icon:'error',title:'ย้ายไม่สำเร็จ',text:error.message});
+      swal({icon:'error',title:'ย้ายไม่สำเร็จ',text:surveyErrorMessage(error)});
     }
   };
 
@@ -545,10 +257,10 @@ const submitVhvChange = async () => {
         // อัปเดตพิกัดให้ "ทุกคน" ที่อยู่ในหมู่และบ้านเลขที่นี้พร้อมกัน (คอลัมน์ house และ moo)
         const { error } = await supabase
           .from('population')
-          .update({ 
-            latitude: latitude, 
-            longitude: longitude, 
-            updated_at: new Date().toISOString() 
+          .update({
+            latitude: latitude,
+            longitude: longitude,
+            updated_at: new Date().toISOString()
           })
           .eq('house', house.trim())
           .eq('moo', moo);
@@ -557,11 +269,11 @@ const submitVhvChange = async () => {
         setSavingGps(false);
 
         if (error) {
-          swal({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: error.message });
+          swal({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: surveyErrorMessage(error) });
         } else {
-          swal({ 
-            icon: 'success', 
-            title: 'พิกัดถูกบันทึกแล้ว!', 
+          swal({
+            icon: 'success',
+            title: 'พิกัดถูกบันทึกแล้ว!',
             text: `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
             timer: 2500,
             showConfirmButton: false
@@ -591,7 +303,7 @@ const submitVhvChange = async () => {
     if (!f.fname?.trim()) { swal({icon:'warning',title:'กรุณากรอกชื่อจริง'}); return; }
     if (!f.lname?.trim()) { swal({icon:'warning',title:'กรุณากรอกนามสกุล'}); return; }
     if (!f.vhv) { swal({icon:'warning',title:'กรุณาเลือก อสม.'}); return; }
-    
+
     // CID validation
     let cleanCid = null;
     if (f.cid && f.cid.trim() && f.cid.trim() !== '-') {
@@ -599,14 +311,14 @@ const submitVhvChange = async () => {
       if (!cidResult.valid) { swal({icon:'error',title:'เลขบัตรประชาชนไม่ถูกต้อง',text:'ตรวจสอบ 13 หลักและ checksum'}); return; }
       cleanCid = cidResult.clean;
     }
-    
+
     // Build birth ISO
     let birthISO = null;
     if (f.birth_day && f.birth_month && f.birth_year) {
       const y = parseInt(f.birth_year) - 543;
       birthISO = `${y}-${f.birth_month}-${f.birth_day}`;
     }
-    
+
     // Chronic
     let chronicVal = f.chronic === '__OTHER__' ? (f.chronicOther?.trim() || '-') : f.chronic;
 
@@ -626,9 +338,9 @@ const submitVhvChange = async () => {
       ...statusUpdate(f.type || '3', '9'), chronic: chronicVal || '-', vhv: sanitizeInput(f.vhv),
       updated_at: new Date().toISOString(), status: 'Active'
     });
-    
+
     closeLoading(); setShowAddModal(false);
-    
+
     if (!error) {
       // 🎯 [เพิ่มใหม่] บันทึก Activity Log: ADD_PERSON
       const actionType = isUpdate ? 'MOVE_IN' : 'ADD_PERSON';
@@ -637,7 +349,7 @@ const submitVhvChange = async () => {
 
       const msg = isUpdate ? 'ย้ายมาบ้านนี้เรียบร้อย' : 'เพิ่มผู้อาศัยใหม่เรียบร้อย';
       swal({icon:'success',title:'สำเร็จ!',text:msg,showConfirmButton:false,timer:1500}).then(() => searchDataSilent());
-    } else swal({icon:'error',title:'ไม่สำเร็จ',text:error.message});
+    } else swal({icon:'error',title:'ไม่สำเร็จ',text:surveyErrorMessage(error)});
   };
   const searchCidAuto = async () => {
     const cid = (addForm.cid || '').replace(/\D/g, '');
@@ -680,7 +392,7 @@ const submitVhvChange = async () => {
               <i className="fa-solid fa-clipboard-check" aria-hidden="true"/> คัดกรองสุขภาพ
             </a>
           )}
-          
+
           {/* 🟢 เช็กสิทธิ์: ถ้าไม่ใช่ อสม. ถึงจะมองเห็นปุ่ม Dashboard */}
           {user?.role !== 'vhv' && (
             <a href="/dashboard" className="survey-nav-link">
@@ -689,19 +401,19 @@ const submitVhvChange = async () => {
           )}
 
 {/* 3. ปุ่มแดชบอร์ดใหม่ (GAS) */}
-          <a 
+          <a
             // 🟢 แนบ username ของคนที่ล็อกอินอยู่ ส่งไปให้ GAS ด้วย
             href="/dashboard"
-            target="_blank" 
+            target="_blank"
             rel="noopener noreferrer"
-            className="survey-nav-link" 
-             
+            className="survey-nav-link"
+
             title="แดชบอร์ด GAS"
           >
             <i className="fa-solid fa-chart-pie" aria-hidden="true"/> รายงาน GAS ↗
           </a>
         </nav>
-          
+
         <SurveyWorkPanel user={user} refreshKey={workRefresh} opening={searching} onOpenHouse={(m, h) => searchData(m, h)} />
 
         {/* Search */}
@@ -811,13 +523,13 @@ const submitVhvChange = async () => {
                     </div>
                     <button onClick={openVhvModal} className="btn btn-sm btn-light border rounded-pill text-muted" style={{fontSize: '.75rem'}}>เปลี่ยน อสม.</button>
                   </div>
-                  
+
                   <hr className="my-2" style={{opacity: 0.1}}/>
-                  
-                  <button 
-                    onClick={handleSaveGPS} 
+
+                  <button
+                    onClick={handleSaveGPS}
                     disabled={savingGps}
-                    className="btn btn-sm w-100 rounded-pill fw-bold d-flex align-items-center justify-content-center" 
+                    className="btn btn-sm w-100 rounded-pill fw-bold d-flex align-items-center justify-content-center"
                     style={{background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', height: '40px'}}
                   >
                     {savingGps ? (
@@ -844,29 +556,23 @@ const submitVhvChange = async () => {
 
       {/* ✅ Move Modal */}
       {moveTarget && (
-        <div className="modal fade show d-block" style={{background:'rgba(0,0,0,.5)'}}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content" style={{borderRadius:16,overflow:'hidden'}}>
-              <div className="modal-header bg-warning text-dark"><h5 className="modal-title fw-bold"><i className="fa-solid fa-truck-moving"/> ย้ายที่อยู่</h5><button className="btn-close" onClick={() => setMoveTarget(null)}/></div>
-              <div className="modal-body">
+        <ModalShell title="ย้ายที่อยู่" icon="fa-truck-moving" onClose={() => setMoveTarget(null)} variant="warning" footer={<><button className="btn btn-secondary rounded-pill" onClick={() => setMoveTarget(null)}>ยกเลิก</button><button className="btn btn-warning rounded-pill fw-bold" onClick={handleMove}><i className="fa-solid fa-check me-1"/> ยืนยันย้าย</button></>}>
+
                 <p>กำลังย้าย: <strong className="text-primary">{moveTarget.fullname}</strong></p>
                 <div className="row g-2">
                   <div className="col-5"><label className="small fw-bold">ย้ายไปหมู่ที่</label><select className="form-select text-center" value={moveMoo} onChange={e => setMoveMoo(e.target.value)}><option value="" disabled>เลือก</option>{VALID_MOOS.map(m => <option key={m} value={m}>หมู่ {m}</option>)}</select></div>
                   <div className="col-7"><label className="small fw-bold">เลขที่บ้านใหม่</label><input type="text" className="form-control" value={moveHouse} onChange={e => setMoveHouse(e.target.value)} placeholder="บ้านเลขที่ใหม่" /></div>
                 </div>
-              </div>
-              <div className="modal-footer"><button className="btn btn-secondary rounded-pill" onClick={() => setMoveTarget(null)}>ยกเลิก</button><button className="btn btn-warning rounded-pill fw-bold" onClick={handleMove}><i className="fa-solid fa-check me-1"/> ยืนยันย้าย</button></div>
-            </div>
-          </div>
-        </div>
+
+        </ModalShell>
       )}
       {/* ✅ Add Person Modal */}
       {showAddModal && (
-        <div className="modal fade show d-block" style={{background:'rgba(0,0,0,.5)',zIndex:1055}}>
-          <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-            <div className="modal-content border-0 shadow-lg" style={{borderRadius:16,overflow:'hidden'}}>
-              <div className="modal-header text-white" style={{background:'var(--primary)'}}><h5 className="modal-title fw-bold"><i className="fa-solid fa-user-plus"/> เพิ่มผู้อาศัยใหม่</h5><button className="btn-close btn-close-white" onClick={()=>setShowAddModal(false)}/></div>
-              <div className="modal-body p-4">
+        <ModalShell title="เพิ่มผู้อาศัยใหม่" icon="fa-user-plus" onClose={() => setShowAddModal(false)} scrollable zIndex={1055} bodyClassName="p-4" footer={<>
+                <button className="btn btn-outline-secondary rounded-pill px-4" onClick={()=>setShowAddModal(false)}>ยกเลิก</button>
+                <button className="btn rounded-pill px-4 text-white" style={{background:'var(--primary)'}} onClick={submitNewPerson}><i className="fa-solid fa-save me-1"/> บันทึก</button>
+              </>}>
+
                 <div className="alert alert-light py-2 mb-3 text-center border" style={{borderRadius:10}}><span className="fw-bold text-primary small"><i className="fa-solid fa-location-dot"/> บ้านเลขที่ {house} ม.{moo}</span></div>
 
                 {/* อสม. */}
@@ -938,26 +644,19 @@ const submitVhvChange = async () => {
                   </select>
                   {addForm.chronic==='__OTHER__' && <input type="text" className="form-control mt-1" placeholder="ระบุโรคประจำตัว..." value={addForm.chronicOther} onChange={e=>setAddForm({...addForm,chronicOther:e.target.value})} />}
                 </div>
-              </div>
-              <div className="modal-footer" style={{background:'#f8f9fa'}}>
-                <button className="btn btn-outline-secondary rounded-pill px-4" onClick={()=>setShowAddModal(false)}>ยกเลิก</button>
-                <button className="btn rounded-pill px-4 text-white" style={{background:'var(--primary)'}} onClick={submitNewPerson}><i className="fa-solid fa-save me-1"/> บันทึก</button>
-              </div>
-            </div>
-          </div>
-        </div>
+
+        </ModalShell>
       )}
 
       {/* ✅ VHV Change Modal — เลือกจาก vhv_data ใน Supabase */}
       {showVhvModal && (
-        <div className="modal fade show d-block" style={{background:'rgba(0,0,0,.5)',zIndex:1060}}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content" style={{borderRadius:16,overflow:'hidden'}}>
-              <div className="modal-header text-white" style={{background:'var(--primary)'}}>
-                <h5 className="modal-title fw-bold"><i className="fa-solid fa-user-nurse me-2"/> เปลี่ยน อสม.</h5>
-                <button className="btn-close btn-close-white" onClick={() => setShowVhvModal(false)} />
-              </div>
-              <div className="modal-body">
+        <ModalShell title="เปลี่ยน อสม." icon="fa-user-nurse" onClose={() => setShowVhvModal(false)} zIndex={1060} footer={<>
+                <button className="btn btn-outline-secondary rounded-pill px-4" onClick={() => setShowVhvModal(false)}>ยกเลิก</button>
+                <button className="btn rounded-pill px-4 text-white fw-bold" style={{background:'var(--primary)'}} onClick={submitVhvChange} disabled={!selectedVhv}>
+                  <i className="fa-solid fa-save me-1"/> บันทึก
+                </button>
+              </>}>
+
                 <div className="alert alert-light border py-2 mb-3 text-center" style={{borderRadius:10}}>
                   <small className="text-primary fw-bold"><i className="fa-solid fa-location-dot me-1"/> บ้านเลขที่ {vhvHouse} ม.{vhvMoo}</small>
                 </div>
@@ -971,16 +670,8 @@ const submitVhvChange = async () => {
                 <div className="alert alert-info border-0 mt-3 small mb-0" style={{borderRadius:10}}>
                   <i className="fa-solid fa-info-circle me-1"/> ระบบจะเปลี่ยน อสม. ให้ทุกคนในบ้านนี้
                 </div>
-              </div>
-              <div className="modal-footer" style={{background:'#f8f9fa'}}>
-                <button className="btn btn-outline-secondary rounded-pill px-4" onClick={() => setShowVhvModal(false)}>ยกเลิก</button>
-                <button className="btn rounded-pill px-4 text-white fw-bold" style={{background:'var(--primary)'}} onClick={submitVhvChange} disabled={!selectedVhv}>
-                  <i className="fa-solid fa-save me-1"/> บันทึก
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+
+        </ModalShell>
       )}
     </>
   );
