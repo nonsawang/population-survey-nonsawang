@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
@@ -9,6 +9,7 @@ import SurveyWorkPanel from '@/components/SurveyWorkPanel';
 import { writeLog } from '@/lib/logger';
 import { populationStatus, statusUpdate, RESIDENCY_TYPES, DISCHARGE_TYPES } from '@/lib/population-status';
 
+import { readCard } from '@/lib/eform-card.mjs';
 import PersonCard from '@/components/survey/PersonCard';
 import ModalShell from '@/components/survey/ModalShell';
 import { getSwal, swal, Toast, showLoading, closeLoading } from '@/lib/survey-feedback';
@@ -36,6 +37,9 @@ export default function SurveyPage() {
   const [vhvHouse, setVhvHouse] = useState('');
   const [vhvMoo, setVhvMoo] = useState('');
   // ✅ Add person modal
+  const cardLock = useRef(false);
+  const [readingCard, setReadingCard] = useState(false);
+  const [cardNotice, setCardNotice] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState({ cid:'', title:'นาย', fname:'', lname:'', birth_day:'', birth_month:'', birth_year:'', relation:'ผู้อาศัย', type:'3', chronic:'ปกติ (ไม่มีโรค)', chronicOther:'', vhv:'' });
 
@@ -322,6 +326,12 @@ const submitVhvChange = async () => {
     // Chronic
     let chronicVal = f.chronic === '__OTHER__' ? (f.chronicOther?.trim() || '-') : f.chronic;
 
+    if (readingCard) return;
+    if (cleanCid && !f.existingPersonId) {
+      const { data: duplicates, error: duplicateError } = await supabase.from('population').select('person_id').eq('cid', cleanCid).limit(1);
+      if (duplicateError) { swal({icon:'error',title:'ตรวจรายชื่อเดิมไม่สำเร็จ',text:surveyErrorMessage(duplicateError)}); return; }
+      if (duplicates?.length) { swal({icon:'warning',title:'มีรายชื่อนี้แล้ว',text:'กรุณาค้นหาข้อมูลเดิมก่อน เพื่อไม่ให้เกิดรายชื่อซ้ำ'}); return; }
+    }
     const existingId = f.existingPersonId || null;
     const recordId = existingId || ('P-' + Date.now());
     const isUpdate = !!existingId;
@@ -339,7 +349,8 @@ const submitVhvChange = async () => {
       updated_at: new Date().toISOString(), status: 'Active'
     });
 
-    closeLoading(); setShowAddModal(false);
+    closeLoading();
+    if (!error) setShowAddModal(false);
 
     if (!error) {
       // 🎯 [เพิ่มใหม่] บันทึก Activity Log: ADD_PERSON
@@ -351,6 +362,35 @@ const submitVhvChange = async () => {
       swal({icon:'success',title:'สำเร็จ!',text:msg,showConfirmButton:false,timer:1500}).then(() => searchDataSilent());
     } else swal({icon:'error',title:'ไม่สำเร็จ',text:surveyErrorMessage(error)});
   };
+  const handleReadCard = async () => {
+    if (cardLock.current) return;
+    cardLock.current = true; setReadingCard(true); setCardNotice('กำลังอ่านบัตร…');
+    try {
+      let card;
+      try { card = await readCard(); }
+      catch (error) { setCardNotice(error instanceof SyntaxError ? 'ข้อมูลจากเครื่องอ่านไม่สมบูรณ์ กรุณาลองใหม่' : error.message); return; }
+      if (!validateCID(card.cid).valid) { setCardNotice('เลขบัตรที่อ่านได้ไม่ผ่านการตรวจสอบ กรุณาลองใหม่'); return; }
+      const { data, error } = await supabase.from('population').select('person_id,house,moo').eq('cid', card.cid).limit(2);
+      if (error) { setCardNotice(surveyErrorMessage(error)); return; }
+      if (data?.length > 1) { setCardNotice('พบเลขบัตรซ้ำหลายรายการ กรุณาให้เจ้าหน้าที่ตรวจสอบก่อนบันทึก'); return; }
+      if (data?.length === 1) {
+        const found = data[0];
+        if (!found.house || !found.moo || (allowedMoos && !allowedMoos.includes(String(found.moo)))) {
+          setCardNotice('พบข้อมูลเดิม แต่ไม่สามารถเปิดบ้านนี้ได้ กรุณาติดต่อเจ้าหน้าที่'); return;
+        }
+        setShowAddModal(false); setMoo(String(found.moo)); setHouse(String(found.house));
+        await searchData(String(found.moo), String(found.house));
+        setCardNotice('พบรายชื่อเดิมแล้ว เปิดบ้านของบุคคลนี้ให้ตรวจสอบเรียบร้อย');
+        return;
+      }
+      if (!moo || !house.trim()) { setCardNotice('ไม่พบรายชื่อในข้อมูลที่บัญชีนี้เข้าถึง กรุณาเลือกหมู่และบ้านที่จะเพิ่ม แล้วกดอ่านบัตรอีกครั้ง'); return; }
+      setAddForm({ ...card, existingPersonId: null, relation:'ผู้อาศัย', type:'3', chronic:'ปกติ (ไม่มีโรค)', chronicOther:'', vhv:'' });
+      setShowAddModal(true);
+      setCardNotice('เติมข้อมูลจากบัตรแล้ว กรุณาตรวจสอบบ้าน หมู่ และเลือก อสม. ก่อนบันทึก ที่อยู่บนบัตรอาจต่างจากที่อยู่จริง');
+    } catch { setCardNotice('ค้นหาข้อมูลไม่สำเร็จ กรุณาลองใหม่ ยังไม่ได้บันทึกข้อมูล'); }
+    finally { cardLock.current = false; setReadingCard(false); }
+  };
+
   const searchCidAuto = async () => {
     const cid = (addForm.cid || '').replace(/\D/g, '');
     if (cid.length !== 13) { swal({icon:'warning',title:'เลขบัตรต้องครบ 13 หลัก'}); return; }
@@ -385,6 +425,11 @@ const submitVhvChange = async () => {
       <div className="container survey-page py-4">
         <header className="survey-heading"><div><p className="survey-eyebrow">รพ.สต.บ้านโนนสว่าง</p><h1>ระบบสุขภาพโนนสว่าง</h1><p>สำรวจรายครัวเรือน • คัดกรองสุขภาพ • เชื่อมโยง HOSxP</p></div><a className="btn btn-primary" href="#survey-house-search"><i className="fa-solid fa-magnifying-glass me-2" aria-hidden="true"/>ค้นหาบ้าน</a></header>
 
+<div className="card p-3 mb-3">
+          <button type="button" className="btn btn-outline-primary" disabled={readingCard} onClick={handleReadCard}><i className="fa-solid fa-id-card me-2" />{readingCard ? 'กำลังอ่านและค้นหา…' : 'อ่านบัตรประชาชน'}</button>
+          <small className="text-muted mt-2">เปิด E-Form Agent บนเครื่องที่เสียบบัตรและเปิดเว็บนี้</small>
+          <p className="small mb-0 mt-2" role="status">{cardNotice}</p>
+        </div>
 <nav className="survey-navigation" aria-label="เมนูงานสำรวจ">
           {/* 🟢 เช็กสิทธิ์: ถ้าไม่ใช่ อสม. ถึงจะมองเห็นปุ่ม Screening */}
           {user?.role !== 'vhv' && (
@@ -570,11 +615,13 @@ const submitVhvChange = async () => {
       {showAddModal && (
         <ModalShell title="เพิ่มผู้อาศัยใหม่" icon="fa-user-plus" onClose={() => setShowAddModal(false)} scrollable zIndex={1055} bodyClassName="p-4" footer={<>
                 <button className="btn btn-outline-secondary rounded-pill px-4" onClick={()=>setShowAddModal(false)}>ยกเลิก</button>
-                <button className="btn rounded-pill px-4 text-white" style={{background:'var(--primary)'}} onClick={submitNewPerson}><i className="fa-solid fa-save me-1"/> บันทึก</button>
+                <button className="btn rounded-pill px-4 text-white" style={{background:'var(--primary)'}} onClick={submitNewPerson} disabled={readingCard}><i className="fa-solid fa-save me-1"/> บันทึก</button>
               </>}>
 
                 <div className="alert alert-light py-2 mb-3 text-center border" style={{borderRadius:10}}><span className="fw-bold text-primary small"><i className="fa-solid fa-location-dot"/> บ้านเลขที่ {house} ม.{moo}</span></div>
 
+                <button type="button" className="btn btn-outline-primary w-100 mb-2" disabled={readingCard} onClick={handleReadCard}>{readingCard ? 'กำลังอ่านและค้นหา…' : 'อ่านบัตรประชาชน'}</button>
+                <p className="small text-muted" role="status">{cardNotice}</p>
                 {/* อสม. */}
                 <div className="mb-3 p-3 rounded-3" style={{background:'#e8eaf6'}}>
                   <label className="small fw-bold mb-2" style={{color:'var(--primary)'}}><i className="fa-solid fa-user-nurse"/> อสม. ผู้รับผิดชอบ</label>
@@ -596,7 +643,7 @@ const submitVhvChange = async () => {
                 <div className="row g-2 mb-3">
                   <div className="col-4"><label className="small fw-bold text-muted">คำนำหน้า</label>
                     <select className="form-select" value={addForm.title} onChange={e=>setAddForm({...addForm,title:e.target.value})}>
-                      {['นาย','นาง','น.ส.','ด.ช.','ด.ญ.'].map(t=><option key={t} value={t}>{t}</option>)}
+                      {Array.from(new Set(['นาย','นาง','น.ส.','ด.ช.','ด.ญ.',addForm.title].filter(Boolean))).map(t=><option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
                   <div className="col-8"><label className="small fw-bold text-muted">ชื่อจริง <span className="text-danger">*</span></label>

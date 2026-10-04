@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { cardForm } from '../lib/eform-card.mjs';
+const sample = {rsCode:'Y',pid:'1234567890123',titleTh:'นาย',firstnameTh:'ทดสอบ',lastnameTh:'ระบบ',birthDate:'25430229'};
+assert.equal(cardForm(sample).birth_year,'2543');
+assert.equal(cardForm(sample).birth_day,'29');
+assert.equal(cardForm({...sample,birthDate:'25420229'}).birth_day,'');
+assert.equal(cardForm({...sample,birthDate:'25430000'}).birth_year,'');
+assert.equal(cardForm(JSON.stringify({...sample,birthDate:'20000229'})).birth_year,'2543');
+assert.throws(()=>cardForm({...sample,rsCode:'N'}));
+assert.throws(()=>cardForm({...sample,pid:''}));
+assert.equal('cardId' in cardForm({...sample,cardId:'do-not-store'}),false);
+console.log('E-Form mapping checks passed');
