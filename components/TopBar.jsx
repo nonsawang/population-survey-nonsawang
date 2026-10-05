@@ -1,11 +1,26 @@
 'use client';
 import { useAuth, ROLE_LABELS } from '@/lib/auth';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useId } from 'react';
+import Link from 'next/link';
+import { useRouter, usePathname } from 'next/navigation';
 import ProfileAvatar from '@/components/ProfileAvatar';
 
-export default function TopBar({ showAdmin = false }) {
+export default function TopBar() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuId = useId();
+  useEffect(() => setMenuOpen(false), [pathname]);
+  const mainLinks = [
+    ['/', 'สำรวจครัวเรือน', 'fa-house-user'],
+    ['/screening', 'คัดกรองรายบุคคล', 'fa-heart-pulse'],
+    ['/map', 'แผนที่', 'fa-map-location-dot'],
+    ['/dashboard', 'ภาพรวม', 'fa-chart-pie'],
+  ];
+  const links = user?.role === 'manager' ? [mainLinks[3], ...mainLinks.slice(0, 3)] : mainLinks;
+  const navLink = ([href, label, icon]) => <Link key={href} href={href} onClick={() => setMenuOpen(false)} className={`top-bar-link${pathname === href ? ' is-active' : ''}`} aria-current={pathname === href ? 'page' : undefined}><i className={`fa-solid ${icon}`} aria-hidden="true" />{label}</Link>;
+
 
   const handleLogout = () => {
     const S = typeof window !== 'undefined' ? window.Swal : null;
@@ -27,47 +42,25 @@ export default function TopBar({ showAdmin = false }) {
   };
 
   return (
-    <div className="top-bar">
-      <a className="top-bar-brand" href="/">
-        <i className="fa-solid fa-hospital me-2" style={{opacity:.7}} /><strong>ระบบสุขภาพโนนสว่าง</strong>
-      </a>
-      <div className="top-bar-actions">
-        {user && (
-          // 🟢 ปรับให้ใช้ flex เพื่อให้รูปภาพและข้อความอยู่กึ่งกลางบรรทัดเดียวกัน
-          <span style={{opacity:.9, fontSize:'.85rem', display:'flex', alignItems:'center', gap:'6px'}}>
-            
-            {/* 🟢 เช็กว่ามีรูปโปรไฟล์ LINE หรือไม่ */}
-            <ProfileAvatar src={user.avatarUrl} name={user.displayName || user.username} size={32} className="shadow-sm" />
-
-            <span>
-              {user.displayName || user.username}{' '}
-              <span style={{opacity:.6,fontSize:'.78em'}}>({ROLE_LABELS[user.role] || user.role})</span>
-            </span>
-          </span>
-        )}
-
-        {/* 🟢 ปุ่มลิงก์ไปหน้าแผนที่ (แสดงเมื่อล็อกอินแล้ว) */}
-        {user && (
-          <a className="top-bar-link" href="/map" title="ดูแผนที่พิกัดบ้าน">
-            <i className="fa-solid fa-map-location-dot" /> แผนที่
-          </a>
-        )}
-
-        {['staff', 'admin'].includes(user?.role) && (
-          <a className="top-bar-link" href="/hosxp-review">
-            <i className="fa-solid fa-list-check" /> ตรวจสอบก่อนส่ง HOSxP
-          </a>
-        )}
-
-        {showAdmin && user?.role === 'admin' && (
-          <a className="top-bar-link" href="/admin">
-            <i className="fa-solid fa-users-gear" /> ผู้ดูแล
-          </a>
-        )}
-        <button onClick={handleLogout} className="btn-topbar-logout">
-          <i className="fa-solid fa-right-from-bracket" /> ออกจากระบบ
-        </button>
-      </div>
-    </div>
+    <header className="top-bar app-navigation" onKeyDown={event => { if (event.key === 'Escape') { setMenuOpen(false); document.getElementById(`${menuId}-toggle`)?.focus(); } }}>
+      <Link className="top-bar-brand" href={user?.role === 'manager' ? '/dashboard' : '/'}>
+        <i className="fa-solid fa-hospital me-2" aria-hidden="true" /><strong>ระบบสุขภาพโนนสว่าง</strong>
+      </Link>
+      {user && <>
+        <button type="button" id={`${menuId}-toggle`} className="top-bar-menu-toggle" aria-expanded={menuOpen} aria-controls={menuId} onClick={() => setMenuOpen(!menuOpen)}><i className={`fa-solid ${menuOpen ? 'fa-xmark' : 'fa-bars'}`} aria-hidden="true" /> {menuOpen ? 'ปิดเมนู' : 'เมนู'}</button>
+        <div id={menuId} className={`top-bar-panel${menuOpen ? ' is-open' : ''}`}>
+          <nav className="top-bar-main" aria-label="งานหลัก">{links.map(navLink)}</nav>
+          {['staff','admin'].includes(user.role) && <nav className="top-bar-tools" aria-label="เครื่องมือเจ้าหน้าที่">
+            {navLink(['/hosxp-review', 'ตรวจสอบก่อนส่ง HOSxP', 'fa-list-check'])}
+            {user.role === 'admin' && navLink(['/admin', 'ผู้ดูแล', 'fa-users-gear'])}
+          </nav>}
+          <div className="top-bar-account">
+            <ProfileAvatar src={user.avatarUrl} name={user.displayName || user.username} size={32} />
+            <span>{user.displayName || user.username}<small className="d-block">{ROLE_LABELS[user.role] || user.role}</small></span>
+            <button type="button" onClick={handleLogout} className="btn-topbar-logout"><i className="fa-solid fa-right-from-bracket" aria-hidden="true" /> ออกจากระบบ</button>
+          </div>
+        </div>
+      </>}
+    </header>
   );
 }

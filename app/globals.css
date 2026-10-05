@@ -310,3 +310,24 @@ body { background-color: var(--bg); font-family: 'Sarabun', sans-serif; }
  .screening-mobile .screening-save-actions .btn { flex:1; min-height:48px; padding:10px!important; font-size:1rem; white-space:normal; }
  .screening-mobile .screening-result-option { padding:12px; }
 }
+
+/* Main navigation: shared across survey, screening and reporting pages. */
+.top-bar-panel { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; width: 100%; }
+.top-bar-main, .top-bar-tools, .top-bar-account { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.top-bar-tools { border-left: 1px solid rgba(255,255,255,.35); padding-left: 12px; }
+.top-bar-account { margin-left: auto; }
+.top-bar-account > span { overflow-wrap: anywhere; }
+.top-bar-account small { opacity: .8; }
+.top-bar-link.is-active { background: white; color: var(--primary); font-weight: 700; box-shadow: inset 0 -3px 0 #f0b629; }
+.top-bar-menu-toggle { display: none; min-height: 44px; border: 1px solid rgba(255,255,255,.5); border-radius: 10px; background: transparent; color: white; padding: 8px 12px; }
+@media (max-width: 991px) {
+  .app-navigation { position: relative; }
+  .app-navigation .top-bar-brand { font-size: .9rem; }
+  .top-bar-menu-toggle { display: inline-flex; align-items: center; gap: 8px; }
+  .top-bar-panel { display: none; }
+  .top-bar-panel.is-open { display: flex; flex-direction: column; align-items: stretch; }
+  .top-bar-main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .top-bar-tools { border-left: 0; border-top: 1px solid rgba(255,255,255,.35); padding: 12px 0 0; }
+  .top-bar-tools .top-bar-link { flex: 1; }
+  .top-bar-account { margin-left: 0; border-top: 1px solid rgba(255,255,255,.35); padding-top: 12px; }
+}
