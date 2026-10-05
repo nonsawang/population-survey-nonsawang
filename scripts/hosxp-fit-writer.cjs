@@ -1,3 +1,4 @@
+const {retryDeadlock}=require('./hosxp-deadlock-retry.cjs');
 const {randomUUID,createHash}=require('node:crypto');
 const {mapping}=require('./hosxp-fit-preflight.cjs');
 const {targetCheck}=require('./validate-hosxp-fit-queue.cjs');
@@ -54,7 +55,7 @@ async function claimChecks(db,vn){
  const [invoices]=await db.execute("SELECT 1 FROM opitemrece WHERE vn=? AND icode=? AND length(trim(finance_number))>0 LIMIT 1",[vn,mapping.fee]);
  return {mapping:String(fee?.billcode)==='31209'&&Number(fee?.nhso_adp_type_id)===15&&String(fee?.nhso_adp_code)==='31209',auth:rights.length===1,invoice:invoices.length===1,export_verified:false};
 }
-async function writeVisit(db,{job,person,snapshot,revalidate,now=()=>new Date()}){
+async function writeVisitAttempt(db,{job,person,snapshot,revalidate,now=()=>new Date()}){
  const hash=payloadHash(job),lock='survey-fit:'+job.id;
  const [[acquired]]=await db.execute('SELECT GET_LOCK(?,5) ok',[lock]);
  if(Number(acquired.ok)!==1)fail('IMPORT_BUSY');
@@ -107,4 +108,6 @@ async function writeVisit(db,{job,person,snapshot,revalidate,now=()=>new Date()}
   await db.execute('SELECT RELEASE_LOCK(?)',[lock]);
  }
 }
+// Each failed attempt has rolled back and released its named lock before retry.
+async function writeVisit(db,context){return retryDeadlock(()=>writeVisitAttempt(db,context));}
 module.exports={POLICY,stamp,payloadHash,vnFor,serial,readBack,claimChecks,writeVisit,addFitPP};
