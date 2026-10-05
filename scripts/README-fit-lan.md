@@ -33,4 +33,17 @@ node scripts/validate-hosxp-fit-queue.cjs
 
 รันจริง 16 ก.ย. 2569 เวลา 10:05 น.: ซิงก์ snapshot 19,035 รายการ คิว FIT 22 รายการผ่าน VALIDATED_NOT_IMPORTED ไม่มีการเขียน HOSxP หรือสร้าง VN ผลนี้เป็นการตรวจ ณ เวลานั้นเท่านั้น
 
-คำสั่งทำงานครั้งเดียว ยังไม่ได้ติดตั้งงานรันอัตโนมัติ และผลตรวจรายคิวยังไม่ได้ส่งกลับหน้าเว็บ ยังไม่มีตัวสร้าง visit ต้องตรวจข้อมูลซ้ำใน transaction ก่อนเขียนจริง และพัฒนาการออกเลข VN/รายการบริการ การป้องกัน retry ซ้ำ และ acknowledgement ให้ครบก่อนเปิดนำเข้า
+## ขอบเขต hybrid และตัวนำเข้า FIT (ตรวจโค้ด 5 ต.ค. 2569)
+
+`run-hosxp-hybrid.cjs` ยังเป็นคำสั่งซิงก์ snapshot และตรวจคิวเท่านั้น: เรียก `refresh()` แล้ว `validate-hosxp-fit-queue.run()` ไม่เรียก writer ไม่ออก VN และไม่ acknowledge ผลตรวจรายคิวกลับหน้าเว็บ การรันคำสั่งนี้อย่างเดียวจึงไม่ทำให้นำเข้าเสร็จครบกระบวนการ
+
+ตัวนำเข้า FIT เป็นอีกเส้นทางหนึ่ง:
+
+- `fit-auto-launcher.cjs` → `hosxp-fit-auto.cjs` → `hosxp-fit-import.cjs` → `hosxp-fit-writer.cjs`
+- Writer มีการสร้าง VN/visit/แล็บ/ค่าบริการ/PP Special ใน transaction พร้อมตรวจข้อมูลซ้ำก่อน commit
+- มี lock, ledger และ payload hash สำหรับ replay งานเดิม ส่วน schema ledger กำหนด unique HN+วันที่ และ VN
+- `hosxp-fit-import.cjs` มี `acknowledge()` บันทึกผลลง `hosxp_fit_import_results` หลังตรวจกลับจาก HOSxP และมีเส้นทางกู้คืนกรณี commit แล้วส่งผลกลับไม่สำเร็จ
+
+ความสามารถของ writer ไม่ได้ทำให้ hybrid กลายเป็นตัวนำเข้าโดยอัตโนมัติ และไม่ได้ยืนยันว่าทุกหน่วยบริการหรือทุกประเภทคัดกรองรองรับแล้ว
+
+หลักฐานการตรวจ: ยืนยัน unique index และ InnoDB ในฐานจริงแล้ว; ชุดทดสอบจำลอง writer/retry ผ่าน แต่ยังไม่ได้ทดสอบ concurrency บน MySQL/MariaDB ทดสอบจริง จึงยังไม่ยืนยันการป้องกัน retry/งานชนกันครบทุกสถานการณ์ การมีไฟล์ launcher ไม่ใช่หลักฐานว่า scheduler กำลังใช้โค้ดรุ่นนี้ ต้องตรวจ task และ log แยกต่างหาก
