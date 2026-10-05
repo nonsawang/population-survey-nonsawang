@@ -1,3 +1,6 @@
+const {batchRows}=require('./hosxp-fit-batch.cjs');
+const {mappingVersion}=require('./hosxp-fit-config.cjs');
+const {queueConflict}=require('./hosxp-fit-queue-conflict.cjs');
 // LAN validation only. No INSERT/UPDATE/DELETE against either database.
 const path=require('node:path');
 const {createClient}=require('@supabase/supabase-js');
@@ -19,7 +22,7 @@ function validateSource(job,history,person,approved,today){
  const result=history.result==='ปกติ'?'Negative':'Positive';
  if(!p||p.history_id!==history.id||p.person_id!==job.person_id||p.screen_date!==history.screen_date||job.screen_date!==history.screen_date||p.source_result!==history.result||p.lab_result!==result)return 'PAYLOAD_CHANGED';
  // Legacy immutable preparations omit policy; the writer records the user's PP/import-time policy separately.
- if(p.mapping_version!=='fit-20260914'||p.lab_code!==mapping.lab||p.fee_code!==mapping.fee||p.department_code!==mapping.department||p.specialty_code!==mapping.specialty||p.doctor_code!==mapping.doctor||p.diagnosis!==mapping.diagnosis||(p.pttype!==undefined&&p.pttype!=='PP')||(p.visit_time_policy!==undefined&&p.visit_time_policy!=='import_time')||p.visit_policy!=='new_visit_per_screening_type')return 'MAPPING_CHANGED';
+ if(p.mapping_version!==mappingVersion||p.lab_code!==mapping.lab||p.fee_code!==mapping.fee||p.department_code!==mapping.department||p.specialty_code!==mapping.specialty||p.doctor_code!==mapping.doctor||p.diagnosis!==mapping.diagnosis||(p.pttype!==undefined&&p.pttype!=='PP')||(p.visit_time_policy!==undefined&&p.visit_time_policy!=='import_time')||p.visit_policy!=='new_visit_per_screening_type')return 'MAPPING_CHANGED';
  if(!validCid(person.cid))return 'INVALID_CID';
  return null;
 }
@@ -76,28 +79,36 @@ async function run(config){
    let query=source.from('hosxp_fit_preparations').select('id,history_id,person_id,screen_date,payload,state').eq('state','awaiting_lan_validation').order('id').limit(100);
    if(after)query=query.gt('id',after);
    const {data:jobs,error}=await query;if(error)throw new Error('QUEUE_READ_FAILED');
+   const fields='person_id,cid,fname,lname,birth_date,fobt_screen,fobt_date';
+   const [histories,people,approvals]=await Promise.all([
+    batchRows(source,'screening_history','id',jobs.map(j=>j.history_id),'id,person_id,kpi,result,screen_date,recorded_at'),
+    batchRows(source,'population','person_id',jobs.map(j=>j.person_id),fields),
+    batchRows(source,'screening_review','history_id',jobs.map(j=>j.history_id),'history_id')
+   ]);
+   const cids=people.map(p=>p.cid).filter(Boolean);
+   const [cidPeople,snapshots]=await Promise.all([
+    batchRows(source,'population','cid',cids,'person_id,cid'),
+    batch?batchRows(source,'hosxp_review_snapshot','cid',cids,'cid,hosxp_person_id',q=>q.eq('batch_id',batch.id)):Promise.resolve([])
+   ]);
+   const unique=(rows,key)=>{const m=new Map();for(const r of rows){if(m.has(r[key]))throw Error('SOURCE_READ_FAILED');m.set(r[key],r);}return m;};
+   const historyById=unique(histories,'id'),personById=unique(people,'person_id'),approvalById=unique(approvals,'history_id');
    for(const job of jobs){
-    const h=await row(source,'screening_history','id',job.history_id,'id,person_id,kpi,result,screen_date,recorded_at');
-    const fields='person_id,cid,fname,lname,birth_date,fobt_screen,fobt_date';
-    const person=await row(source,'population','person_id',job.person_id,fields);
-    const approval=await row(source,'screening_review','history_id',job.history_id,'history_id');
-    let status=validateSource(job,h,person,approval,today);
+    const h=historyById.get(job.history_id),person=personById.get(job.person_id),approval=approvalById.get(job.history_id);
+    let status=await queueConflict(source,job,person) || validateSource(job,h,person,approval,today);
     if(!status){
      const {data:newer,error:newerError}=await source.from('screening_history').select('id').eq('person_id',job.person_id).eq('kpi','FOBT').gt('recorded_at',h.recorded_at).limit(1);
      if(newerError)throw new Error('SOURCE_READ_FAILED');
      if(newer.length)status='SOURCE_CHANGED';
     }
     if(!status){
-     const {data:duplicates,error:duplicateError}=await source.from('population').select('person_id').eq('cid',person.cid).limit(2);
-     if(duplicateError)throw new Error('SOURCE_READ_FAILED');
+     const duplicates=cidPeople.filter(p=>p.cid===person.cid);
      if(duplicates.length!==1)status='DUPLICATE_SOURCE_CID';
     }
     let snapshot;
     if(!status){
      if(!batch)status='SNAPSHOT_STALE';
      else{
-      const {data:targets,error:targetError}=await source.from('hosxp_review_snapshot').select('cid,hosxp_person_id').eq('batch_id',batch.id).eq('cid',person.cid).limit(2);
-      if(targetError)throw new Error('SOURCE_READ_FAILED');
+      const targets=snapshots.filter(p=>p.cid===person.cid);
       status=snapshotStatus(batch,targets);snapshot=targets[0];
      }
     }
@@ -107,7 +118,7 @@ async function run(config){
      const current=await row(source,'population','person_id',job.person_id,fields);
      if(!current||JSON.stringify(current)!==JSON.stringify(person))status='SOURCE_CHANGED';
     }
-    report.jobs.push({preparation_id:job.id,status});report.counts[status]=(report.counts[status]||0)+1;
+    report.jobs.push({preparation_id:job.id,status,...(status==='QUEUE_CONFLICT'?{message:'รายการชนกันในคิว — บุคคลเดียวกันและวันที่คัดกรองเดียวกัน ต้องตรวจสอบก่อนนำเข้า'}:{})});report.counts[status]=(report.counts[status]||0)+1;
    }
    if(jobs.length<100)break;after=jobs[jobs.length-1].id;
   }

@@ -1,0 +1,11 @@
+{
+  "mappingVersion": "fit-20260914",
+  "mapping": {
+    "lab": 10214,
+    "fee": "3905544",
+    "department": "048",
+    "specialty": "15",
+    "doctor": "0029",
+    "diagnosis": "Z121"
+  }
+}

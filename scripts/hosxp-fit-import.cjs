@@ -1,3 +1,4 @@
+const {queueConflict}=require('./hosxp-fit-queue-conflict.cjs');
 // Explicit single-job writer. Default is read-only, never an unattended batch.
 const path=require('node:path');
 const mysql=require('mysql2/promise');
@@ -17,6 +18,7 @@ async function sourceJob(source,id){
  const person=await rows(source.from('population').select('person_id,cid,fname,lname,birth_date,fobt_screen,fobt_date').eq('person_id',job.person_id).single());
  const history=await rows(source.from('screening_history').select('id,person_id,kpi,result,screen_date,recorded_at').eq('id',job.history_id).single());
  const approval=await rows(source.from('screening_review').select('history_id,approved_by,approved_at').eq('history_id',job.history_id).maybeSingle());
+ const conflict=await queueConflict(source,job,person);if(conflict)throw new Error(conflict);
  const invalid=validateSource(job,history,person,approval,stamp().date);if(invalid)throw new Error(invalid);
  const newer=await rows(source.from('screening_history').select('id').eq('person_id',job.person_id).eq('kpi','FOBT').gt('recorded_at',history.recorded_at).limit(1));
  if(newer.length)throw new Error('SOURCE_CHANGED');

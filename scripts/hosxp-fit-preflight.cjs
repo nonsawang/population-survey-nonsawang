@@ -2,7 +2,7 @@
 const path = require('node:path');
 const {readConfig} = require('./refresh-hosxp-review.cjs');
 const mysql = require('mysql2/promise');
-const mapping = Object.freeze({lab:10214,fee:'3905544',department:'048',specialty:'15',doctor:'0029',diagnosis:'Z121'});
+const {mapping}=require('./hosxp-fit-config.cjs');
 function verify(catalog) {
   const issues=[];
   const exact=(rows,check,label)=>{if(rows.length!==1||!check(rows[0]))issues.push(label);};
