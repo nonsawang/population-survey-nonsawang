@@ -17,7 +17,7 @@ function cycle() {
     try {
       const summary = JSON.parse(result.stdout.trim());
       if (![summary.checked, summary.updated, summary.blocked].every(Number.isInteger)) throw Error();
-      status = {...status, ok: true, checked: summary.checked, updated: summary.updated, blocked: summary.blocked};
+      status = {...status, ok: true, checked: summary.checked, updated: summary.updated, blocked: summary.blocked, registrations: summary.registrations || null};
     } catch { status.error = 'REGISTRY_INVALID_SUMMARY'; }
   } else status.error = result.error?.code === 'ETIMEDOUT' ? 'REGISTRY_TIMEOUT' : 'REGISTRY_SYNC_FAILED';
   // Never persist raw stdout/stderr: only aggregate counts and fixed error codes.
