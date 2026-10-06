@@ -10,3 +10,7 @@ assert.throws(()=>cardForm({...sample,rsCode:'N'}));
 assert.throws(()=>cardForm({...sample,pid:''}));
 assert.equal('cardId' in cardForm({...sample,cardId:'do-not-store'}),false);
 console.log('E-Form mapping checks passed');
+
+for (const rsCode of ['N', undefined, 'unexpected']) {
+  assert.throws(() => cardForm({...sample, rsCode}), /ยังไม่ได้ค้นหารายชื่อในฐาน/);
+}

@@ -96,7 +96,7 @@ export default function ScreeningPage() {
           age:calculateAge(r.birth_date),house:r.house,moo:r.moo,status:r.screen_result||'-',
           screenDate:r.screen_date||'-',hasResult:!['','-','รอผล'].includes(r.screen_result||'')
         })));
-        setStats({total:data.total,done:data.done,pending:data.total-data.done});
+        setStats({total:data.total,done:data.done,pending:data.total-data.done,nonTarget:data.non_target_count||0});
       } catch(e) {
         if(request===requestId.current && !controller.signal.aborted) {
           setLoadError('ค้นหาไม่สำเร็จ กรุณาลองใหม่');
@@ -173,7 +173,7 @@ export default function ScreeningPage() {
                   </form>
                   {loadingCandidates && <div className="text-center py-3" role="status"><span className="spinner-border text-primary"/> กำลังโหลดรายชื่อ...</div>}
                   {loadError && <div className="alert alert-danger" role="alert">{loadError} <button className="btn btn-outline-danger ms-2" onClick={()=>setRetry(n=>n+1)}>ลองใหม่</button></div>}
-                  {!loadingCandidates && !loadError && <p role="status" aria-live="polite" className="small text-muted">{searching?'กำลังค้นหา...':!search.ready?search.message:stats?.total?`พบ ${stats.total.toLocaleString('th-TH')} คน • หน้า ${page} / ${Math.ceil(stats.total/20)}`:'ไม่พบรายชื่อในกลุ่มคัดกรองนี้ กรุณาตรวจคำค้นหรือเลือกประเภทคัดกรองให้ตรงกับผู้รับบริการ'}</p>}
+                  {!loadingCandidates && !loadError && <p role="status" aria-live="polite" className="small text-muted">{searching?'กำลังค้นหา...':!search.ready?search.message:stats?.total?`พบ ${stats.total.toLocaleString('th-TH')} คน • หน้า ${page} / ${Math.ceil(stats.total/20)}`:stats?.nonTarget?`พบรายชื่อในฐาน ${stats.nonTarget.toLocaleString('th-TH')} คน แต่ไม่ใช่กลุ่มเป้าหมายของ${KPI_INFO[currentKPI].name} ตามเกณฑ์อายุ เพศ และสถานะทะเบียนที่ระบบกำหนด`:'ไม่พบรายชื่อในข้อมูลที่บัญชีนี้เข้าถึง กรุณาตรวจคำค้นหรือให้เจ้าหน้าที่ตรวจทะเบียน'}</p>}
                   {!loadingCandidates && !loadError && !searching && filtered.length > 0 && (
                     <div className="row g-2">
                       {filtered.map((p,i) => {
