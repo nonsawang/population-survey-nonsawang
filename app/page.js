@@ -5,7 +5,6 @@ import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { calculateAge, sanitizeInput, validateCID, VALID_MOOS, CHRONIC_LIST } from '@/lib/utils';
 import TopBar from '@/components/TopBar';
-import SurveyWorkPanel from '@/components/SurveyWorkPanel';
 import { writeLog } from '@/lib/logger';
 import { populationStatus, statusUpdate, RESIDENCY_TYPES, DISCHARGE_TYPES } from '@/lib/population-status';
 
@@ -22,7 +21,6 @@ export default function SurveyPage() {
   const [house, setHouse] = useState('');
   const [results, setResults] = useState(null);
   const [searching, setSearching] = useState(false);
-  const [workRefresh, setWorkRefresh] = useState(0);
   useEffect(() => {
     if (results !== null) document.getElementById('survey-house-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [results]);
@@ -117,7 +115,6 @@ export default function SurveyPage() {
   };
   // ✅ Refresh เงียบๆ — ไม่แสดง Swal loading (ใช้หลังบันทึก Type)
 const searchDataSilent = async () => {
-    setWorkRefresh(value => value + 1);
     if (!moo || !house.trim()) return;
     const { data } = await supabase.from('population').select('*').eq('house', house.trim()).eq('moo', moo).order('fname');
 
@@ -416,6 +413,17 @@ const submitVhvChange = async () => {
     }
   };
 
+  const openedHouse = useRef(false);
+  useEffect(() => {
+    if (!user || openedHouse.current) return;
+    openedHouse.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const targetMoo = params.get('moo'), targetHouse = params.get('house');
+    if (targetMoo && targetHouse && VALID_MOOS.map(String).includes(targetMoo) && targetHouse.length <= 100) {
+      searchData(targetMoo, targetHouse);
+    }
+  }, [user]);
+
   if (loading) return <div className="text-center py-5"><span className="spinner-border text-primary" /></div>;
   if (!user) return null;
 
@@ -430,36 +438,9 @@ const submitVhvChange = async () => {
           <small className="text-muted mt-2">เปิด E-Form Agent บนเครื่องที่เสียบบัตรและเปิดเว็บนี้</small>
           <p className="small mb-0 mt-2" role="status">{cardNotice}</p>
         </div>
-<nav className="survey-navigation" aria-label="เมนูงานสำรวจ">
-          {/* 🟢 เช็กสิทธิ์: ถ้าไม่ใช่ อสม. ถึงจะมองเห็นปุ่ม Screening */}
-          {user?.role !== 'vhv' && (
-            <a href="/screening" className="survey-nav-link">
-              <i className="fa-solid fa-clipboard-check" aria-hidden="true"/> คัดกรองสุขภาพ
-            </a>
-          )}
+<nav className="survey-navigation" aria-label="งานติดตาม"><a href="/tracking" className="survey-nav-link"><i className="fa-solid fa-list-check" aria-hidden="true" /> ติดตามงานสำรวจ</a></nav>
 
-          {/* 🟢 เช็กสิทธิ์: ถ้าไม่ใช่ อสม. ถึงจะมองเห็นปุ่ม Dashboard */}
-          {user?.role !== 'vhv' && (
-            <a href="/dashboard" className="survey-nav-link">
-              <i className="fa-solid fa-chart-line" aria-hidden="true"/> แดชบอร์ด
-            </a>
-          )}
 
-{/* 3. ปุ่มแดชบอร์ดใหม่ (GAS) */}
-          <a
-            // 🟢 แนบ username ของคนที่ล็อกอินอยู่ ส่งไปให้ GAS ด้วย
-            href="/dashboard"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="survey-nav-link"
-
-            title="แดชบอร์ด GAS"
-          >
-            <i className="fa-solid fa-chart-pie" aria-hidden="true"/> รายงาน GAS ↗
-          </a>
-        </nav>
-
-        <SurveyWorkPanel user={user} refreshKey={workRefresh} opening={searching} onOpenHouse={(m, h) => searchData(m, h)} />
 
         {/* Search */}
         <div id="survey-house-search" className="card survey-search border-0 shadow-sm mb-4 fade-in" style={{borderRadius:16}}>

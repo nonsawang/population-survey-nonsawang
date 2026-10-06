@@ -14,11 +14,12 @@ export default function TopBar() {
   useEffect(() => setMenuOpen(false), [pathname]);
   const mainLinks = [
     ['/', 'สำรวจครัวเรือน', 'fa-house-user'],
+    ['/tracking', 'ติดตามงานสำรวจ', 'fa-list-check'],
     ['/screening', 'คัดกรองรายบุคคล', 'fa-heart-pulse'],
     ['/map', 'แผนที่', 'fa-map-location-dot'],
     ['/dashboard', 'ภาพรวม', 'fa-chart-pie'],
   ];
-  const links = user?.role === 'manager' ? [mainLinks[3], ...mainLinks.slice(0, 3)] : mainLinks;
+  const links = user?.role === 'manager' ? [...mainLinks.filter(link => link[0] === '/dashboard'), ...mainLinks.filter(link => link[0] !== '/dashboard')] : mainLinks;
   const navLink = ([href, label, icon]) => <Link key={href} href={href} onClick={() => setMenuOpen(false)} className={`top-bar-link${pathname === href ? ' is-active' : ''}`} aria-current={pathname === href ? 'page' : undefined}><i className={`fa-solid ${icon}`} aria-hidden="true" />{label}</Link>;
 
 
