@@ -7,6 +7,7 @@ import { readCard } from '@/lib/eform-card.mjs';
 import { calculateAge, validateCID } from '@/lib/utils';
 import { createScreeningSaver, screeningToday } from '@/lib/screening-save';
 import { ScreeningHistory, ScreeningOverview } from '@/components/ScreeningWorkflow';
+import RegisterScreeningPerson from '@/components/RegisterScreeningPerson';
 import TopBar from '@/components/TopBar';
 
 import { searchScreeningPeople, maskedScreeningCid } from '@/lib/screening-search';
@@ -21,6 +22,7 @@ const KPI_INFO = {
 export default function ScreeningPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [registerOpen,setRegisterOpen]=useState(false);
   const [currentKPI, setCurrentKPI] = useState(null);
   const [readingCard,setReadingCard]=useState(false);
   const [cardMessage,setCardMessage]=useState('');
@@ -119,6 +121,7 @@ export default function ScreeningPage() {
 
   return (
     <>
+      {registerOpen && ['staff','admin'].includes(user.role) && <RegisterScreeningPerson onClose={()=>setRegisterOpen(false)} onRegistered={cid=>{setRegisterOpen(false);setSearchMode('cid');setSearchTerm(cid);setAppliedTerm(cid);setPage(1);setRetry(n=>n+1);setCardMessage('เพิ่มทะเบียนเว็บแล้ว รอตรวจทะเบียน HOSxP ยังไม่มีการสร้าง HN/visit');}} />}
       <TopBar />
       <div className="container survey-page screening-mobile py-3" style={{maxWidth:900}}>
         <h5 className="text-center mb-3 fw-bold" style={{color:'var(--primary)'}}><i className="fa-solid fa-clipboard-check"/> บันทึกผลการคัดกรอง</h5>
@@ -157,6 +160,7 @@ export default function ScreeningPage() {
                     <p className="small text-muted mt-2 mb-0">ใช้ E-Form Agent บนเครื่องที่เสียบเครื่องอ่านบัตร • ค้นตามสิทธิ์และเกณฑ์ของประเภทคัดกรองที่เลือก</p>
                     <p className="small mt-2 mb-0" role="status" aria-live="polite">{cardMessage}</p>
                   </div>
+                  {['staff','admin'].includes(user.role) && <button type="button" className="btn btn-outline-success mb-3" disabled={readingCard||saving} onClick={()=>setRegisterOpen(true)}><i className="fa-solid fa-user-plus me-2"/>เพิ่มบุคคลใหม่</button>}
                   <form onSubmit={e=>{e.preventDefault();document.activeElement?.blur();doSearch();}} className="mb-3">
                     <div className="row g-2">
                       <div className="col-12 col-md-4"><label htmlFor="screening-search-mode" className="form-label">ค้นหาด้วย</label><select id="screening-search-mode" className="form-select" value={searchMode} onChange={e=>{setSearchMode(e.target.value);setPage(1);}}><option value="auto">ชื่อ / เลขบัตร / บ้านเลขที่</option><option value="name">ชื่อ–นามสกุล</option><option value="cid">เลขบัตรประชาชน</option><option value="house">บ้านเลขที่</option></select></div>
