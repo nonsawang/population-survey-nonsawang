@@ -8,7 +8,7 @@ function cycle() {
   const config = JSON.parse(fs.readFileSync(path.join(runtime, 'registry-auto.json'), 'utf8').replace(/^\uFEFF/, ''));
   if (!config.enabled) return;
   const startedAt = new Date().toISOString();
-  const result = spawnSync(process.execPath, [path.join(__dirname, 'hosxp-registry-sync.cjs'), '--apply'], {
+  const result = spawnSync(process.execPath, [path.join(__dirname, 'hosxp-registry-sync.cjs'), '--apply',...(config.registrationChecks===true?['--registrations']:[])], {
     cwd: root, windowsHide: true, timeout: 1200000, encoding: 'utf8',
     env: {...process.env, NODE_PATH: config.nodePath}, maxBuffer: 1048576,
   });

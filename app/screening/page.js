@@ -7,6 +7,7 @@ import { readCard } from '@/lib/eform-card.mjs';
 import { calculateAge, validateCID } from '@/lib/utils';
 import { createScreeningSaver, screeningToday } from '@/lib/screening-save';
 import { ScreeningHistory, ScreeningOverview } from '@/components/ScreeningWorkflow';
+import RegistrationStatus from '@/components/RegistrationStatus';
 import RegisterScreeningPerson from '@/components/RegisterScreeningPerson';
 import TopBar from '@/components/TopBar';
 
@@ -121,6 +122,7 @@ export default function ScreeningPage() {
 
   return (
     <>
+      {['staff','admin'].includes(user.role) && <RegistrationStatus key={String(registerOpen)} />}
       {registerOpen && ['staff','admin'].includes(user.role) && <RegisterScreeningPerson onClose={()=>setRegisterOpen(false)} onRegistered={cid=>{setRegisterOpen(false);setSearchMode('cid');setSearchTerm(cid);setAppliedTerm(cid);setPage(1);setRetry(n=>n+1);setCardMessage('เพิ่มทะเบียนเว็บแล้ว รอตรวจทะเบียน HOSxP ยังไม่มีการสร้าง HN/visit');}} />}
       <TopBar />
       <div className="container survey-page screening-mobile py-3" style={{maxWidth:900}}>

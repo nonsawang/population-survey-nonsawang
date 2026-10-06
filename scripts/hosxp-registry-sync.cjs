@@ -23,6 +23,6 @@ if(require.main===module){(async()=>{
  if(new URL(config.SUPABASE_URL).protocol!=='https:')throw Error('HTTPS_REQUIRED');
  const source=require('@supabase/supabase-js').createClient(config.SUPABASE_URL,config.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
  const db=await require('mysql2/promise').createConnection({host:config.HOSXP_DB_HOST,port:Number(config.HOSXP_DB_PORT||3306),user:config.HOSXP_DB_USER,password:config.HOSXP_DB_PASSWORD,database:config.HOSXP_DB_NAME,dateStrings:true,connectTimeout:10000,charset:'utf8mb4'});
- try{await db.query('START TRANSACTION READ ONLY');console.log(JSON.stringify(await sync({source,db,apply:process.argv.includes('--apply')})));}finally{await db.rollback();await db.end();}
+ try{await db.query('START TRANSACTION READ ONLY');const apply=process.argv.includes('--apply');const registrations=process.argv.includes('--registrations')?await require('./hosxp-registration-check.cjs').checkRegistrations({source,db,apply}):null;console.log(JSON.stringify({...await sync({source,db,apply}),registrations}));}finally{await db.rollback();await db.end();}
 })().catch(()=>{console.error('REGISTRY_SYNC_FAILED');process.exitCode=1});}
 module.exports={sync};
