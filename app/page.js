@@ -380,7 +380,14 @@ const submitVhvChange = async () => {
         setCardNotice('พบรายชื่อเดิมแล้ว เปิดบ้านของบุคคลนี้ให้ตรวจสอบเรียบร้อย');
         return;
       }
-      if (!moo || !house.trim()) { setCardNotice('ไม่พบรายชื่อในข้อมูลที่บัญชีนี้เข้าถึง กรุณาเลือกหมู่และบ้านที่จะเพิ่ม แล้วกดอ่านบัตรอีกครั้ง'); return; }
+      if (!moo || !house.trim()) {
+        const notice='ไม่พบรายชื่อในข้อมูลที่บัญชีนี้เข้าถึง กรุณาเลือกหมู่และบ้านที่จะเพิ่ม แล้วกดอ่านบัตรอีกครั้ง หากบุคคลอาจอยู่ต่างพื้นที่ ให้เจ้าหน้าที่ตรวจทะเบียนก่อนเพิ่ม';
+        setCardNotice(notice);
+        await swal({icon:'info',title:'อ่านบัตรสำเร็จ แต่ไม่พบรายชื่อ',text:notice,confirmButtonText:'เลือกหมู่และบ้าน'});
+        document.getElementById('survey-house-search')?.scrollIntoView({behavior:'smooth',block:'start'});
+        return;
+      }
+      await swal({icon:'info',title:'อ่านบัตรสำเร็จ แต่ไม่พบรายชื่อ',text:'ไม่พบในข้อมูลที่บัญชีนี้เข้าถึง จะเปิดแบบฟอร์มพร้อมข้อมูลบัตร กรุณาตรวจสอบก่อนบันทึก',confirmButtonText:'ตรวจข้อมูลเพื่อเพิ่มบุคคล'});
       setAddForm({ ...card, existingPersonId: null, relation:'ผู้อาศัย', type:'3', chronic:'ปกติ (ไม่มีโรค)', chronicOther:'', vhv:'' });
       setShowAddModal(true);
       setCardNotice('เติมข้อมูลจากบัตรแล้ว กรุณาตรวจสอบบ้าน หมู่ และเลือก อสม. ก่อนบันทึก ที่อยู่บนบัตรอาจต่างจากที่อยู่จริง');
@@ -435,8 +442,8 @@ const submitVhvChange = async () => {
 
 <div className="card p-3 mb-3">
           <button type="button" className="btn btn-outline-primary" disabled={readingCard} onClick={handleReadCard}><i className="fa-solid fa-id-card me-2" />{readingCard ? 'กำลังอ่านและค้นหา…' : 'อ่านบัตรประชาชน'}</button>
-          <small className="text-muted mt-2">เปิด E-Form Agent บนเครื่องที่เสียบบัตรและเปิดเว็บนี้</small>
-          <p className="small mb-0 mt-2" role="status">{cardNotice}</p>
+          <small className="text-muted mt-2">เสียบบัตร เปิด E-Form Agent แล้วกดปุ่ม “อ่านบัตรประชาชน” — ระบบยังไม่อ่านอัตโนมัติเมื่อเสียบบัตร</small>
+          {cardNotice && <p className="alert alert-info mb-0 mt-2" role="status" aria-live="polite">{cardNotice}</p>}
         </div>
 <nav className="survey-navigation" aria-label="งานติดตาม"><a href="/tracking" className="survey-nav-link"><i className="fa-solid fa-list-check" aria-hidden="true" /> ติดตามงานสำรวจ</a></nav>
 
