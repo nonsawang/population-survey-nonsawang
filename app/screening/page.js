@@ -3,7 +3,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
-import { calculateAge } from '@/lib/utils';
+import { readCard } from '@/lib/eform-card.mjs';
+import { calculateAge, validateCID } from '@/lib/utils';
 import { createScreeningSaver, screeningToday } from '@/lib/screening-save';
 import { ScreeningHistory, ScreeningOverview } from '@/components/ScreeningWorkflow';
 import TopBar from '@/components/TopBar';
@@ -21,6 +22,10 @@ export default function ScreeningPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [currentKPI, setCurrentKPI] = useState(null);
+  const [readingCard,setReadingCard]=useState(false);
+  const [cardMessage,setCardMessage]=useState('');
+  const cardRequest=useRef(0), cardBusy=useRef(false);
+  useEffect(()=>()=>{cardRequest.current++;},[]);
   const [searchTerm, setSearchTerm] = useState('');
   const [candidates, setCandidates] = useState([]);
   const [searchMode, setSearchMode] = useState('auto');
@@ -49,8 +54,23 @@ export default function ScreeningPage() {
   const dirty=selected && (result!==(selected.hasResult?selected.status:'') || screenDate!==(selected.screenDate && selected.screenDate!=='-'?selected.screenDate:screeningToday()));
   const canLeave=()=>!dirty||window.confirm('มีผลที่ยังไม่ได้บันทึก ต้องการออกจากรายการนี้หรือไม่?');
   useEffect(()=>{if(selected)formRef.current?.scrollIntoView({behavior:'smooth',block:'start'});},[selected?.personId]);
+  const handleReadCard=async()=>{
+    if(cardBusy.current||saving||!currentKPI||!canLeave())return;
+    const token=++cardRequest.current;
+    cardBusy.current=true;setReadingCard(true);setCardMessage('กำลังอ่านบัตรประชาชน…');
+    try{
+      const card=await readCard();
+      if(token!==cardRequest.current)return;
+      if(!validateCID(card.cid).valid){setCardMessage('เลขบัตรไม่ผ่านการตรวจสอบ กรุณาลองอ่านใหม่');return;}
+      setSelected(null);setSaveMessage('');setSaveOk(false);
+      setSearchMode('cid');setSearchTerm(card.cid);setAppliedTerm(card.cid);setPage(1);setRetry(n=>n+1);
+      setCardMessage('อ่านบัตรแล้ว — ค้นหาในกลุ่มเป้าหมายที่เลือก กรุณาตรวจรายชื่อก่อนบันทึกผล');
+    }catch(error){if(token===cardRequest.current)setCardMessage(error instanceof SyntaxError?'ข้อมูลบัตรไม่สมบูรณ์ กรุณาลองใหม่':error.message);}
+    finally{cardBusy.current=false;setReadingCard(false);}
+  };
   const selectKPI = type => {
     if(!canLeave())return;
+    cardRequest.current++; setCardMessage('');
     requestId.current += 1;
     setCurrentKPI(type); setSelected(null); setSearchTerm(''); setAppliedTerm('');
     setPage(1); setCandidates([]); setStats(null); setLoadError('');
@@ -132,6 +152,11 @@ export default function ScreeningPage() {
             <div className="card-body p-3 p-md-4">
               {!selected ? (
                 <>
+                  <div className="mb-3">
+                    <button type="button" className="btn btn-outline-primary w-100" onClick={handleReadCard} disabled={readingCard||saving}><i className="fa-solid fa-id-card me-2" aria-hidden="true" />{readingCard?'กำลังอ่านบัตร…':'อ่านบัตรประชาชนเพื่อค้นหา'}</button>
+                    <p className="small text-muted mt-2 mb-0">ใช้ E-Form Agent บนเครื่องที่เสียบเครื่องอ่านบัตร • ค้นตามสิทธิ์และเกณฑ์ของประเภทคัดกรองที่เลือก</p>
+                    <p className="small mt-2 mb-0" role="status" aria-live="polite">{cardMessage}</p>
+                  </div>
                   <form onSubmit={e=>{e.preventDefault();document.activeElement?.blur();doSearch();}} className="mb-3">
                     <div className="row g-2">
                       <div className="col-12 col-md-4"><label htmlFor="screening-search-mode" className="form-label">ค้นหาด้วย</label><select id="screening-search-mode" className="form-select" value={searchMode} onChange={e=>{setSearchMode(e.target.value);setPage(1);}}><option value="auto">ชื่อ / เลขบัตร / บ้านเลขที่</option><option value="name">ชื่อ–นามสกุล</option><option value="cid">เลขบัตรประชาชน</option><option value="house">บ้านเลขที่</option></select></div>
