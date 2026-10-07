@@ -1,15 +1,13 @@
-# Existing NHSO Authen lookup — not enabled in the automatic importer
+# NHSO Authen V1.1 — read-only
 
-`nhso-authen-status.cjs` implements GET check-authen-status with a Kiosk Authentication Token. It does not create Authen, write HOSxP, or certify claim readiness.
+Reference: supplied เอกสารAPI_เพื่อคืนค่าข้อมูลสถานะการ_Authen_ให้หน่วยบริการV1.1.pdf, pages 1–7.
+Production host: authenucws.nhso.go.th. Test host: test.nhso.go.th.
+Bearer Kiosk Authentication Token from New Authen is required. No token exchange is specified. Never reuse a closing-rights token without confirming its scope.
+personalId and serviceDate are required; serviceCode is optional. FIT service code remains unverified; PG0060001 is described as OPD/IPD/PP in this document.
 
-Documented reference: NHSO Authentication presentation 25 April 2023, page 9, https://www.saleamhealth.com/wp-content/uploads/2024/06/Authentication_สปสช_25042023.pdf . This historical reference is not proof of current token validity or response schema.
+checkStatus returns validated matches from serviceHistories, not raw demographics. It verifies personalId, provider, service date and an optional service code. Missing identity, ambiguity or malformed responses do not authorize writes. statusAuthen supports boolean and exact strings true/false because the table and example disagree. Cancellation status is always unknown: V1.1 has no explicit cancellation field. No outcome certifies claim eligibility.
 
-Before live use:
+Run `node tests/nhso-authen-status.cjs` for synthetic tests.
+For the previously authorized VN 690911103821 / HN 0006422 / date 2026-09-22, run `node scripts/check-selected-authen-readonly.cjs` only after securely setting NHSO_KIOSK_TOKEN and NHSO_KIOSK_TOKEN_CONFIRMED=yes in the local process environment. No token command should be pasted into chat or stored in shell history. It reads HOSxP in a read-only transaction and prints only counts and comparison results; no raw CID, token or Claim Code. It never creates or updates HOSxP records and is not connected to the scheduler.
 
-1. Confirm that the locally supplied token is a New Authen Kiosk Authentication Token; do not assume a token found in HOSxP is interchangeable. Never place it in NEXT_PUBLIC variables or Git.
-2. Confirm the service code for the specific FIT visit. No OPD example code is defaulted.
-3. Read the current visit date and patient identity from HOSxP, with a unique match. Obtain an explicitly selected first visit for read-only verification.
-4. Verify current response fields for identity, provider, service/date, code, and cancellation status before implementing a mapper. Multiple matches or missing fields must block writes.
-5. A future write must recheck the visit, preserve existing codes, prevent reuse across visits, and log the actor and outcome without raw patient data or tokens.
-
-Current result is always `received_requires_mapping_review`, `writeAllowed: false`. The module is intentionally not wired into the scheduled import or browser: live setup and response mapping remain incomplete. Never log the request URL (it contains CID), Authorization header, or raw response.
+2026-10-07 connectivity probe: both documented URLs returned HTTP 500 with JSON content type when called without token or parameters. This only confirms an HTTP response, not successful authentication or schema support. No patient data or token was sent. Live authenticated retrieval is pending confirmation of the token type.

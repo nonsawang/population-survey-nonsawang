@@ -1,14 +1,25 @@
 const assert=require('node:assert/strict');
-const {requestFor,checkStatus}=require('../scripts/nhso-authen-status.cjs');
+const {requestFor,checkStatus,interpretStatus}=require('../scripts/nhso-authen-status.cjs');
 const first='123456789012';let sum=0;for(let i=0;i<12;i++)sum+=Number(first[i])*(13-i);
 const personalId=first+((11-sum%11)%10);
 const input={zone:'test',token:'test-only',personalId,serviceDate:'2026-09-22',serviceCode:'TEST001'};
 (async()=>{
 const req=requestFor(input);assert.equal(req.url.hostname,'test.nhso.go.th');assert.equal(req.options.redirect,'error');assert.equal(req.options.method,'GET');
-for(const change of [{zone:'https://other.example'},{token:''},{personalId:'123'},{serviceDate:'2026-02-30'},{serviceCode:''}])assert.throws(()=>requestFor({...input,...change}));
-const result=await checkStatus(input,{fetchImpl:async()=>new Response(JSON.stringify({example:true}),{headers:{'content-type':'application/json'}})});assert.equal(result.writeAllowed,false);
+for(const change of [{zone:'https://other.example'},{token:''},{personalId:'123'},{serviceDate:'2026-02-30'}])assert.throws(()=>requestFor({...input,...change}));
+const result=await checkStatus(input,{fetchImpl:async()=>new Response(JSON.stringify({statusAuthen:false}),{headers:{'content-type':'application/json'}})});assert.equal(result.writeAllowed,false);
 await assert.rejects(()=>checkStatus(input,{fetchImpl:async()=>{throw Error('secret '+personalId);}}),e=>e.message==='AUTHEN_NETWORK_FAILED');
 await assert.rejects(()=>checkStatus(input,{fetchImpl:async()=>new Response('',{status:401})}),/AUTHEN_ACCESS_DENIED/);
 await assert.rejects(()=>checkStatus(input,{fetchImpl:async()=>new Response('<html>login</html>',{headers:{'content-type':'text/html'}})}),/AUTHEN_RESPONSE_NOT_JSON/);
+const entry={hospital:{hcode:'05080'},serviceDateTime:input.serviceDate+'T09:00:00',claimCode:'SYNTHETIC',service:{code:input.serviceCode}};
+const valid={statusAuthen:true,personalId,serviceHistories:[entry]}, scope={...input,hcode:'05080'};
+assert.equal(interpretStatus(valid,scope).status,'matched_read_only');
+assert.equal(interpretStatus({...valid,statusAuthen:'false'},scope).status,'not_confirmed');
+assert.equal(interpretStatus({...valid,personalId:undefined},scope).status,'identity_missing');
+assert.equal(interpretStatus({...valid,personalId:'different'},scope).status,'identity_mismatch');
+assert.equal(interpretStatus({...valid,serviceHistories:[entry,entry]},scope).status,'multiple_matches');
+for(const change of [{hcode:'99999'},{serviceDate:'2026-09-23'},{serviceCode:'OTHER'}])assert.equal(interpretStatus(valid,{...scope,...change}).status,'no_matching_service');
+assert.equal(requestFor({...input,serviceCode:undefined}).url.searchParams.has('serviceCode'),false);
+assert.equal(requestFor({...input,zone:'production'}).url.hostname,'authenucws.nhso.go.th');
+assert.equal(interpretStatus(valid,scope).writeAllowed,false);
 console.log('PASS: fixed destinations, explicit service code, valid identity/date, no redirects, sanitized errors, read-only response');
 })().catch(e=>{console.error(e.message);process.exitCode=1;});
