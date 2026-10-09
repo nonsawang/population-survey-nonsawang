@@ -54,3 +54,9 @@ Production Token authorization by the operator is recorded in the conversation, 
 Outgoing transactionId is HCODE + the immutable ledger UUID. The UUID column remains the internal unique suffix; every retry/reconciliation must use the same prefix and suffix. No database migration is required for this composition. The request validator rejects missing or mismatched HCODE prefixes.
 
 serviceDateTime and invoiceDateTime remain epoch milliseconds, now rejecting values later than the validation clock. Amount fields accept finite nonnegative numbers up to 99999999.99 with at most two decimal places; the validator does not round financial values silently. Boundary tests cover all three amount fields and both dates. Transport remains mock-only. This supersedes the earlier unresolved date-unit note: dataset pages 19 and 21 explicitly document milliseconds and no future dates.
+
+## FIT eligibility policy scaffold
+
+nhso-fit-close-policy.cjs validates a trusted screening/visit/manual-approval snapshot and separates the next action after closure confirmation from the HOSxP write outcome. It requires a saved normal/abnormal FIT result, matching CID/date, 6000 satang total, verified service mapping, actual entitlement and an explicit split of charges. PP is the service group, never a replacement for entitlement.
+
+This policy is not yet wired to a database snapshot loader, authenticated approval endpoint or live writer. Approval freshness/card attestation and persistence remain required. nextCloseAction is a pure decision helper, not a persistent HOSxP retry queue. Do not treat its tests as end-to-end production authorization.
