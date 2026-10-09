@@ -6,7 +6,7 @@ function canonical(value){
  return value;
 }
 function fingerprint(input){
- const body=JSON.parse(requestFor({...input,transactionId:'pending-reservation'}).options.body);
+ const body=JSON.parse(requestFor({...input,transactionId:String(input.hcode)+'pending-reservation'}).options.body);
  delete body.transactionId;
  return createHash('sha256').update(JSON.stringify(canonical(body))).digest('hex');
 }
@@ -31,7 +31,7 @@ async function sendReserved(input,{ledger,fetchImpl,mode,receipts}={}){
  try{reservation=await ledger.reserve(input,hash,owner);}catch{return {status:'reservation_unconfirmed',retrySendAllowed:false};}
  if(!reservation?.acquired)return {status:'already_reserved',retrySendAllowed:false};
  if(!reservation.id||!reservation.transactionId) return {status:'reservation_unconfirmed',retrySendAllowed:false};
- const result=await submitClose({...input,transactionId:reservation.transactionId},{mode:'mock',fetchImpl});
+ const result=await submitClose({...input,transactionId:input.hcode+reservation.transactionId},{mode:'mock',fetchImpl});
  const receipt={id:reservation.id,owner,simulated:true,state:result.status==='simulated_success'?'confirmed':'outcome_unknown',seq:result.seq===undefined?null:String(result.seq),code:result.authenCode??null};
  if(receipts){
   try{await receipts.save(receipt);}catch{return {status:'receipt_storage_failed',simulated:true,retrySendAllowed:false,receipt};}
@@ -39,4 +39,5 @@ async function sendReserved(input,{ledger,fetchImpl,mode,receipts}={}){
  return retryRecord(receipt,{ledger});
 }
 module.exports={fingerprint,testLedger,sendReserved,retryRecord};
+
 

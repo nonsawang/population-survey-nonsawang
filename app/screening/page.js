@@ -232,7 +232,7 @@ export default function ScreeningPage() {
                 </div>
               )}
 
-              {selected && ['staff','admin'].includes(user.role) && <CloseRightsReview key={[selected.personId,currentKPI,screenDate,result,dirty,saving].join('|')} person={selected} serviceName={KPI_INFO[currentKPI].name} date={screenDate} result={result} saved={selected.hasResult && !dirty} busy={saving} />} 
+              {selected && ['staff','admin'].includes(user.role) && <CloseRightsReview key={[selected.personId,currentKPI,screenDate,result,dirty,saving].join('|')} person={selected} kpi={currentKPI} serviceName={KPI_INFO[currentKPI].name} date={screenDate} result={result} saved={selected.hasResult && !dirty} busy={saving} />} 
               {selected && <ScreeningHistory key={selected.personId+currentKPI} personId={selected.personId} kpi={currentKPI} refresh={retry}/>}
               {/* Stats */}
               {stats && (
@@ -253,4 +253,5 @@ export default function ScreeningPage() {
 }
 
 function pct(n,d) { return d > 0 ? (n/d*100).toFixed(1) : '0.0'; }
+
 

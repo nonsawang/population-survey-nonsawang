@@ -42,3 +42,15 @@ Run node tests/nhso-close-dispatch.cjs. These fault-injection tests use a mock l
 nhso-receipt-key.ps1 creates a 32-byte random key protected by Windows DPAPI CurrentUser. Creation refuses to overwrite an existing key; loading never silently regenerates it. The Node wrapper uses a private child-process pipe and sanitized errors. Run recovery under the same Windows account/profile. Do not delete or rotate the protected key while receipts depend on it. This is not protection against malicious code running as that same user; restrict the directory using deployment ACLs. Key backup/profile recovery and rotation are not automated.
 
 The local Run-Ledger-Test.cmd now includes tests/nhso-close-postgres.cjs: real PostgreSQL ledger RPCs through psql plus a simulated HTTP transport. It tests key reloading, encrypted receipt recovery after acknowledgement failure, and a child process exiting with code 77 after receiving the simulated successful response but before saving a receipt. The last case must remain reserved; the result code is unavailable, and reconciliation is required instead of resubmission. This test is not a power-loss durability guarantee or a real NHSO API test. The integrated test must be run directly on Windows if initdb stalls inside the agent sandbox.
+
+## Contract correction after Test Zone Swagger inspection
+
+Authorization now uses Bearer, matching the live Swagger security scheme. sourceId is limited to 50 characters, visitNumber to 30 and transactionId to 255. Any nonempty dataError blocks success even if seq/authenCode are present. Tests cover these conditions.
+
+Production Token authorization by the operator is recorded in the conversation, but no production request has been sent. The transport remains mock-only: the exact date representation (Swagger int32 versus the reference client's epoch milliseconds), trusted HOSxP visit/entitlement/amount mapping and server-side enforcement of the manual staff confirmation remain unresolved. Frontend card matching alone is not a server-side authorization mechanism. Do not enable a Production URL merely by changing the test-only guard.
+
+## Dataset v10.1 validation (2026-10-08)
+
+Outgoing transactionId is HCODE + the immutable ledger UUID. The UUID column remains the internal unique suffix; every retry/reconciliation must use the same prefix and suffix. No database migration is required for this composition. The request validator rejects missing or mismatched HCODE prefixes.
+
+serviceDateTime and invoiceDateTime remain epoch milliseconds, now rejecting values later than the validation clock. Amount fields accept finite nonnegative numbers up to 99999999.99 with at most two decimal places; the validator does not round financial values silently. Boundary tests cover all three amount fields and both dates. Transport remains mock-only. This supersedes the earlier unresolved date-unit note: dataset pages 19 and 21 explicitly document milliseconds and no future dates.
