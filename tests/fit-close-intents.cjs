@@ -1,0 +1,25 @@
+const {PGlite}=require('@electric-sql/pglite');const fs=require('fs'),assert=require('node:assert/strict');
+(async()=>{const db=new PGlite();try{
+await db.exec(`CREATE ROLE anon;CREATE ROLE authenticated;CREATE ROLE service_role;
+CREATE TABLE app_users(id uuid PRIMARY KEY);CREATE TABLE population(person_id text PRIMARY KEY,cid text,fobt_screen text,fobt_date date);
+CREATE TABLE screening_history(id uuid PRIMARY KEY,person_id text,kpi text,source text,result text,screen_date date,recorded_at timestamptz);
+CREATE TABLE screening_review(history_id uuid);
+CREATE TABLE hosxp_fit_preparations(id uuid PRIMARY KEY,history_id uuid);
+CREATE TABLE hosxp_fit_import_results(preparation_id uuid,vn text,import_status text);
+CREATE FUNCTION app_current_user() RETURNS jsonb LANGUAGE sql AS $$ SELECT '{"userId":"00000000-0000-4000-8000-000000000001"}'::jsonb $$;
+CREATE FUNCTION nhso_close_allowed() RETURNS boolean LANGUAGE sql AS $$ SELECT coalesce(current_setting('test.allowed',true),'')='yes' $$;`);
+await db.exec(fs.readFileSync(require('path').join(__dirname,'../migrations/20261012_fit_close_intents.sql'),'utf8'));
+await db.exec(`INSERT INTO app_users VALUES('00000000-0000-4000-8000-000000000001');
+INSERT INTO population VALUES('fixture','0000000000000','ปกติ',(now() AT TIME ZONE 'Asia/Bangkok')::date);
+INSERT INTO screening_history VALUES('00000000-0000-4000-8000-000000000002','fixture','FOBT','web','ปกติ',(now() AT TIME ZONE 'Asia/Bangkok')::date,now());
+INSERT INTO screening_review VALUES('00000000-0000-4000-8000-000000000002');
+INSERT INTO hosxp_fit_preparations VALUES('00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000002');
+INSERT INTO hosxp_fit_import_results VALUES('00000000-0000-4000-8000-000000000003','fixture-vn','imported');`);
+const call=(cid='0000000000000',confirm=true)=>db.query('SELECT fit_close_request($1,$2,$3,$4) r',['fixture',cid,'ปกติ',confirm]);
+await assert.rejects(call(),/PERMISSION/);await db.exec("SET test.allowed='yes'");
+await assert.rejects(call('1111111111111'),/IDENTITY/);await assert.rejects(call(undefined,false),/MANUAL/);
+const a=(await call()).rows[0].r,b=(await call()).rows[0].r;assert.equal(a.id,b.id);assert.equal(a.sent,false);
+await db.exec("UPDATE screening_history SET screen_date=screen_date-1");await assert.rejects(call(),/CURRENT_DAY/);
+await db.exec('SET ROLE anon');await assert.rejects(db.exec('SELECT * FROM fit_close_intents'),/permission denied/);
+console.log('PASS: manual intent permission, card identity, same-day result, replay and table access');
+}finally{await db.close()}})().catch(e=>{console.error(e);process.exitCode=1});

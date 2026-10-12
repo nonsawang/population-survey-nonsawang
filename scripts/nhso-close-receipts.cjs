@@ -1,13 +1,14 @@
 const fs=require('node:fs');
 const path=require('node:path');
 const {createCipheriv,createDecipheriv,randomBytes,createHash}=require('node:crypto');
-function receiptStore(directory,key){
+function receiptStore(directory,key,{production=false}={}){
+ const valid=receipt=>production ? receipt?.simulated===false&&receipt.zone==='production' : receipt?.simulated===true;
  if(!Buffer.isBuffer(key)||key.length!==32)throw Error('RECEIPT_KEY_REQUIRED');
  fs.mkdirSync(directory,{recursive:true,mode:0o700});
  const filename=id=>path.join(directory,createHash('sha256').update(String(id)).digest('hex')+'.receipt');
  return {
   save(receipt){
-   if(receipt?.simulated!==true||!receipt.id)throw Error('INVALID_RECEIPT');
+   if(!valid(receipt)||!receipt.id)throw Error('INVALID_RECEIPT');
    const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);
    cipher.setAAD(Buffer.from(String(receipt.id)));
    const ciphertext=Buffer.concat([cipher.update(JSON.stringify(receipt),'utf8'),cipher.final()]);
@@ -23,7 +24,7 @@ function receiptStore(directory,key){
     const decipher=createDecipheriv('aes-256-gcm',key,Buffer.from(encoded.iv,'base64'));
     decipher.setAAD(Buffer.from(String(id)));decipher.setAuthTag(Buffer.from(encoded.tag,'base64'));
     const receipt=JSON.parse(Buffer.concat([decipher.update(Buffer.from(encoded.data,'base64')),decipher.final()]).toString('utf8'));
-    if(receipt.id!==id||receipt.simulated!==true)throw Error();
+    if(receipt.id!==id||!valid(receipt))throw Error();
     return receipt;
    }catch{throw Error('RECEIPT_UNAVAILABLE_OR_INVALID');}
   }

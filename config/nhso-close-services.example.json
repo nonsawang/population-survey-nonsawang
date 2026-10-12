@@ -1,0 +1,13 @@
+{
+  "hcode": "",
+  "zone": "test",
+  "services": {
+    "FOBT": {
+      "enabled": false,
+      "api": "nhso-claim-detail",
+      "code": "",
+      "reference": "",
+      "verifiedBy": ""
+    }
+  }
+}

@@ -60,3 +60,24 @@ serviceDateTime and invoiceDateTime remain epoch milliseconds, now rejecting val
 nhso-fit-close-policy.cjs validates a trusted screening/visit/manual-approval snapshot and separates the next action after closure confirmation from the HOSxP write outcome. It requires a saved normal/abnormal FIT result, matching CID/date, 6000 satang total, verified service mapping, actual entitlement and an explicit split of charges. PP is the service group, never a replacement for entitlement.
 
 This policy is not yet wired to a database snapshot loader, authenticated approval endpoint or live writer. Approval freshness/card attestation and persistence remain required. nextCloseAction is a pure decision helper, not a persistent HOSxP retry queue. Do not treat its tests as end-to-end production authorization.
+
+## Service code separation (2026-10-09)
+
+No PP0040003 mapping is configured. Do not derive a close-rights claimServiceCode from FIT normal/abnormal results, Authen serviceCode or e-Claim ADP.CODE. These require separate contract evidence.
+
+nhso-close-service-config.cjs resolves a code from trusted server/LAN configuration scoped to facility, zone and screening type. The example config has no code and is disabled. Enable only after recording the nhso-claim-detail reference and verifier. Verification metadata is an operator attestation, not proof supplied by the browser. The policy rejects a conflicting visit code and requires actor.closeAllowed=true from the authenticated permission lookup in addition to staff/admin role.
+
+The readiness endpoint explicitly reports the missing close-service configuration. Configuration loading, trusted snapshot creation and manual approval enforcement are still not connected to live sending; this change does not enable a Production request. Run tests/nhso-close-service-config.cjs and tests/nhso-fit-close-policy.cjs.
+
+## FIT Authen writeback adapter
+
+hosxp-fit-auth-writeback.cjs writes a confirmed test ledger authen_code to visit_pttype.auth_code for the VN already recorded by survey_fit_import_ledger. It locks both records, requires one PP rights row and InnoDB, refuses a different existing code, reads back the result and treats an identical code as an idempotent replay. It never calls an NHSO sender. Seq remains in the source closure ledger. Export verification remains false.
+
+The adapter currently requires isolatedTestDatabase=true and rejects production evidence. Tests use a fake SQL connection including a committed write with a lost acknowledgement; they are not a real MySQL concurrency test. A production ledger loader, cross-database screening/closure binding and authenticated manual approval are still required before enabling it. No real HOSxP data was changed.
+
+The test-only hosxp-fit-auth-queue.cjs loads queue/evidence using a service-role client, writes MySQL, then acknowledges the queue. Missing acknowledgement returns ack_pending; retries read back the same code. Migration 20261009_fit_auth_writeback_queue.sql is prepared, not installed. The MariaDB integration test uses real InnoDB tables but a simulated Supabase client. It covers 8 concurrent connections, lost commit acknowledgement and queue acknowledgement failure. Current sandbox runs timed out connecting to localhost:33317; no integration PASS is claimed.
+
+## Production transport adapter (not activated)
+nhso-close-production.cjs constructs the fixed HTTPS Production URL and requires explicit enablement plus reserveManualIntent/record and a durable receipt store. Only same-day Bangkok service/invoice dates are allowed. It performs one HTTP request after reservation, persists the response before acknowledgement, and never retries a remote request. Tests inject mocked HTTP; no NHSO request was sent. The existing test reservation RPC is incompatible by design: the production reserveManualIntent database function and trusted snapshot loader remain to be implemented. Production receipt stores must use a separate directory with production=true; simulation receipts are rejected by that store. This adapter is not connected to a route or scheduler and does not make the web workflow live.
+
+Production reservation and loader: 20261012_fit_close_reservation.sql validates persisted manual intent, captured card CID, current result/date/import and actor permission under locks. It reserves a single ledger row atomically and rejects changed payloads. nhso-close-live-loader.cjs reads actual MySQL FIT/amount/entitlement records and connects processCloseIntent to sendProduction. This requires explicitly configured staff recorder CIDs, facility/source/department/token and encrypted receipts. Default remains disabled. Reservation tests passed in PGlite; MySQL loader tests use fixture query responses, not a live database. Migrations have not been installed. Configuration, full cross-database integration and UI activation are still pending.

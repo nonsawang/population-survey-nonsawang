@@ -1,8 +1,8 @@
 const {cidValid}=require('../lib/authen-report.cjs');
 const SCHEMA_CONFIRMED=false;
 const endpoint='https://test.nhso.go.th/nhsoendpoint/api/nhso-claim-detail';
-function requestFor(input,{now=Date.now()}={}){
-  if(input.zone!=='test')throw Error('CLOSE_RIGHTS_TEST_ONLY');
+function requestFor(input,{now=Date.now(),allowProduction=false}={}){
+  if(input.zone!=='test'&&!(allowProduction===true&&input.zone==='production'))throw Error('CLOSE_RIGHTS_TEST_ONLY');
   if(typeof input.token!=='string'||!input.token.trim()||/[\r\n]/.test(input.token))throw Error('CLOSE_RIGHTS_TOKEN_REQUIRED');
   if(!cidValid(input.personalId)||!cidValid(input.recorderPid))throw Error('CLOSE_RIGHTS_INVALID_CID');
   if(!/^\d{5}$/.test(input.hcode))throw Error('CLOSE_RIGHTS_INVALID_HCODE');
@@ -26,7 +26,7 @@ function requestFor(input,{now=Date.now()}={}){
     body[key]=input[key];
   }
   Object.assign(body,{hcode:input.hcode,pid:input.personalId,recorderPid:input.recorderPid});
-  return {url:endpoint,options:{method:'POST',headers:{Authorization:'Bearer '+input.token.trim(),Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify(body),redirect:'error',cache:'no-store'}};
+  return {url:input.zone==='production'?'https://nhsoapi.nhso.go.th/nhsoendpoint/api/nhso-claim-detail':endpoint,options:{method:'POST',headers:{Authorization:'Bearer '+input.token.trim(),Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify(body),redirect:'error',cache:'no-store'}};
 }
 // Deliberately no default network transport. This scaffold cannot submit live requests.
 async function submitClose(input,{fetchImpl,mode,timeoutMs=15000}={}){
