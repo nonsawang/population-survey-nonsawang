@@ -27,11 +27,27 @@ export default function CloseRightsReview({ person, kpi, serviceName, date, resu
   const [matched, setMatched] = useState(false);
   const [reviewed, setReviewed] = useState(false);
   const [message, setMessage] = useState('');
+  const [submitting,setSubmitting]=useState(false);
+  const [requested,setRequested]=useState(false);
+  const submitLock=useRef(false);
+  async function requestClose(){
+    if(submitLock.current||!matched||!reviewed||!saved||busy||readiness?.canRequest!==true)return;
+    submitLock.current=true;setSubmitting(true);
+    const version=generation.current;
+    try{
+      const response=await fetch('/api/close-rights/request',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({personId:person.personId,cardCid:String(person.cid||'').trim(),result,confirm:true}),signal:AbortSignal.timeout(20000)});
+      const data=await response.json();
+      if(version!==generation.current)return;
+      if(!response.ok){setMessage(data.error||'รับคำสั่งไม่สำเร็จ');return;}
+      setRequested(true);setMessage('รับคำยืนยันเข้าคิวแล้ว ยังไม่ใช่หลักฐานว่าปิดสิทธิ์สำเร็จ');
+    }catch{if(version===generation.current)setMessage('ยังยืนยันผลรับคำสั่งไม่ได้ กรุณาตรวจสถานะก่อนส่งซ้ำ');}
+    finally{submitLock.current=false;if(version===generation.current)setSubmitting(false);}
+  }
   const pending = useRef(false);
   const generation = useRef(0);
   useEffect(() => () => { generation.current++; }, []);
   async function verifyCard() {
-    if (pending.current || readinessLock.current || busy) return;
+    if (pending.current || readinessLock.current || busy || submitLock.current || requested) return;
     pending.current = true;
     const request = ++generation.current;
     setReading(true); setMatched(false); setReviewed(false); setMessage('กำลังอ่านบัตร…');
@@ -89,7 +105,7 @@ export default function CloseRightsReview({ person, kpi, serviceName, date, resu
       {readiness && <div className="alert alert-info small" role="status">
         {readiness.error || <><strong>ยังไม่พร้อมส่งปิดสิทธิ์</strong><ul className="mb-0 mt-2">{readiness.blockers?.map(item=><li key={item.code}>{item.message}</li>)}</ul><div className="mt-2">การตรวจนี้ยังไม่ได้ตรวจ visit หรือยืนยันสิทธิผู้ป่วย</div></>}
       </div>}
-      <button type="button" className="btn btn-secondary w-100" disabled aria-describedby="close-rights-disabled-reason">3. ปิดสิทธิ์ — ยังไม่เปิดใช้งาน</button>
+      <button type="button" className="btn btn-primary w-100" onClick={requestClose} disabled={submitting || requested || !matched || !reviewed || !saved || busy || readiness?.canRequest!==true} aria-describedby="close-rights-disabled-reason">{submitting?'กำลังรับคำยืนยัน…':requested?'รับคำยืนยันแล้ว':'3. ยืนยันเข้าคิวปิดสิทธิ์ FIT'}</button>
       <p id="close-rights-disabled-reason" className="small text-muted mt-2 mb-0">
         {matched && reviewed ? 'ตรวจข้อมูลคัดกรองแล้ว แต่ยังไม่ส่งคำขอ ' : ''}
         รอทดสอบ API Test Zone และตรวจ visit สิทธิการรักษา รหัสบริการ และยอดเงินจาก HOSxP ก่อนเปิดใช้งาน

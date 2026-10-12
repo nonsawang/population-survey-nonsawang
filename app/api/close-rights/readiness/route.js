@@ -17,7 +17,9 @@ export async function POST(request){
    {code:'LIVE_TRANSPORT_DISABLED',message:'ยังไม่เปิดตัวส่ง API จริง'}
   ];
   if(isReadOnly())blockers.unshift({code:'READ_ONLY_MODE',message:'ระบบกำลังอยู่ในโหมดอ่านอย่างเดียว'});
-  return authResponse({canSubmit:false,manualOnly:true,patientVerified:false,blockers});
+  // Queue acceptance is distinct from successful remote transmission.
+  const canRequest=!isReadOnly() && process.env.NHSO_CLOSE_MANUAL_QUEUE_ENABLED==='true';
+  return authResponse({canSubmit:false,canRequest,manualOnly:true,patientVerified:false,blockers});
  }catch{return authResponse({error:'ตรวจความพร้อมไม่สำเร็จ กรุณาลองใหม่'},503);}
 }
 

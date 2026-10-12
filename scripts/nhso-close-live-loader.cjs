@@ -37,7 +37,12 @@ function productionLedger(client,snapshot,input){return {
 };}
 async function processCloseIntent({client,db,intentId,config,receipts,enabled=false}){
  if(enabled!==true)throw Error('PRODUCTION_DISABLED');
- const {input,snapshot}=await loadCloseInput({client,db,intentId,config});
+ // Resolve the protected recorder only from the server-authenticated intent actor.
+ // Never accept a recorder ID or actor ID supplied by the browser.
+ const initial=await rpc(client,'fit_close_load',{p_intent:intentId});
+ const {resolveRecorder}=require('./nhso-recorder.cjs');
+ const recorderPid=await resolveRecorder(client,initial.actor_id);
+ const {input,snapshot}=await loadCloseInput({client,db,intentId,config:{...config,recorders:{[initial.actor_id]:recorderPid}}});
  const {sendProduction}=require('./nhso-close-production.cjs');
  return sendProduction(input,{enabled:true,receipts,ledger:productionLedger(client,snapshot,input)});
 }
