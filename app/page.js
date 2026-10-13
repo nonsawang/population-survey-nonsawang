@@ -10,6 +10,7 @@ import { populationStatus, statusUpdate, RESIDENCY_TYPES, DISCHARGE_TYPES } from
 
 import { readCard } from '@/lib/eform-card.mjs';
 import PersonCard from '@/components/survey/PersonCard';
+import PersonSearch from '@/components/survey/PersonSearch';
 import ModalShell from '@/components/survey/ModalShell';
 import { getSwal, swal, Toast, showLoading, closeLoading } from '@/lib/survey-feedback';
 import { surveyErrorMessage } from '@/lib/survey-errors.mjs';
@@ -450,6 +451,7 @@ const submitVhvChange = async () => {
 
 
         {/* Search */}
+        <PersonSearch onOpenHouse={searchData} busy={searching || readingCard} />
         <div id="survey-house-search" className="card survey-search border-0 shadow-sm mb-4 fade-in" style={{borderRadius:16}}>
           <div className="card-body p-4">
             <h2 className="h5 fw-bold mb-1">ค้นหาบ้านเพื่อสำรวจ</h2><p className="text-muted small mb-3">เลือกหมู่และกรอกเลขที่บ้าน เพื่อดูรายชื่อผู้อาศัย</p>

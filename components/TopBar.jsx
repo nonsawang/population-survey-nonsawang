@@ -50,7 +50,11 @@ export default function TopBar() {
       {user && <>
         <button type="button" id={`${menuId}-toggle`} className="top-bar-menu-toggle" aria-expanded={menuOpen} aria-controls={menuId} onClick={() => setMenuOpen(!menuOpen)}><i className={`fa-solid ${menuOpen ? 'fa-xmark' : 'fa-bars'}`} aria-hidden="true" /> {menuOpen ? 'ปิดเมนู' : 'เมนู'}</button>
         <div id={menuId} className={`top-bar-panel${menuOpen ? ' is-open' : ''}`}>
-          <nav className="top-bar-main" aria-label="งานหลัก">{links.map(navLink)}</nav>
+          <nav className="top-bar-main" aria-label="งานหลัก">{links.map(navLink)}
+            <a className="top-bar-link" href="https://script.google.com/macros/s/AKfycbxodmongrNvVdVwSGld4uwC6hiu7F6RYyCpr7HSEe9ZJDDCZjxS9feQSEqKuD1QRhFu/exec?page=dashboard" target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)} aria-label="รายงาน GAS (เปิดแท็บใหม่)">
+              <i className="fa-solid fa-chart-pie" aria-hidden="true" />รายงาน GAS ↗
+            </a>
+          </nav>
           {['staff','admin'].includes(user.role) && <nav className="top-bar-tools" aria-label="เครื่องมือเจ้าหน้าที่">
             {navLink(['/hosxp-review', 'ตรวจสอบก่อนส่ง HOSxP', 'fa-list-check'])}
             {user.role === 'admin' && navLink(['/admin', 'ผู้ดูแล', 'fa-users-gear'])}
