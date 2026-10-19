@@ -32,6 +32,7 @@ export default function HosxpReviewPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [data, setData] = useState(null);
+  const [listFailed, setListFailed] = useState(false);
   const [selected, setSelected] = useState([]);
   const [filters, setFilters] = useState({ moo: '', search: '', status: 'ready', page: 1 });
   const [searchDraft, setSearchDraft] = useState('');
@@ -55,12 +56,12 @@ export default function HosxpReviewPage() {
   useEffect(() => {
     if (!token || !allowed) return;
     let cancelled = false;
-    setBusy(true); setError(''); setSelected([]); setData(null);
+    setBusy(true); setListFailed(false); setError(''); setSelected([]); setData(null);
     supabase.rpc('hosxp_review_list', { p_token: token, p_moo: filters.moo, p_search: filters.search, p_status: filters.status, p_page: filters.page })
       .then(({ data: result, error: queryError }) => {
         if (cancelled) return;
-        if (queryError) handleError(queryError); else setData(result);
-      }).catch(err => { if (!cancelled) handleError(err); })
+        if (queryError) { setListFailed(true); handleError(queryError); } else setData(result);
+      }).catch(err => { if (!cancelled) { setListFailed(true); handleError(err); } })
       .finally(() => { if (!cancelled) setBusy(false); });
     return () => { cancelled = true; };
   }, [token, allowed, filters, refresh, handleError]);
@@ -109,7 +110,7 @@ export default function HosxpReviewPage() {
         <label htmlFor="review-password" className="form-label">รหัสผ่านเจ้าหน้าที่</label><input id="review-password" type="password" autoComplete="current-password" className="form-control" required value={password} onChange={e => setPassword(e.target.value)} disabled={opening} />
         <button type="submit" className="btn btn-primary mt-3" disabled={opening || !password}>{opening ? 'กำลังยืนยัน...' : 'เริ่มตรวจสอบ'}</button><p className="small text-muted mt-3 mb-0">สิทธิ์ตรวจสอบมีอายุ 30 นาที ระบบไม่เก็บรหัสผ่านในเบราว์เซอร์</p>
       </form> : <>
-        <div className="review-source-bar"><div><strong>ข้อมูลอ้างอิง HOSxP</strong><div className="small">{data?.snapshot ? `${data.snapshot.source_name} • อ่านเมื่อ ${formatTime(data.snapshot.captured_at)}` : busy ? 'กำลังโหลด...' : 'ยังไม่มีชุดข้อมูลอ้างอิง'}</div><div className="small text-muted">เปรียบเทียบกับชุดข้อมูล ณ เวลาที่ระบุ ไม่ใช่ข้อมูลสด • ต้องอ่านข้อมูลใหม่เมื่อเกิน 24 ชั่วโมง</div></div><button className="btn btn-outline-primary" disabled={busy || saving} onClick={() => setRefresh(v => v + 1)}>โหลดรายการใหม่</button></div>
+        <div className="review-source-bar"><div><strong>ข้อมูลอ้างอิง HOSxP</strong><div className="small">{data?.snapshot ? `${data.snapshot.source_name} • อ่านเมื่อ ${formatTime(data.snapshot.captured_at)}` : busy ? 'กำลังโหลด...' : listFailed ? 'โหลดข้อมูลอ้างอิงไม่สำเร็จ กรุณากดโหลดรายการใหม่' : data ? 'ยังไม่มีชุดข้อมูลอ้างอิง' : 'ยังไม่ได้โหลดข้อมูลอ้างอิง'}</div><div className="small text-muted">เปรียบเทียบกับชุดข้อมูล ณ เวลาที่ระบุ ไม่ใช่ข้อมูลสด • ต้องอ่านข้อมูลใหม่เมื่อเกิน 24 ชั่วโมง</div></div><button className="btn btn-outline-primary" disabled={busy || saving} onClick={() => setRefresh(v => v + 1)}>โหลดรายการใหม่</button></div>
         <p className="small text-muted">สิทธิ์ตรวจสอบถึง {formatTime(expires)} • การอนุมัติยังไม่ส่งข้อมูลเข้า HOSxP</p>
         <form className="card border-0 shadow-sm p-3 mb-3" onSubmit={event => { event.preventDefault(); changeFilters({ search: searchDraft.trim() }); }}>
           <div className="row g-3"><div className="col-12 col-md-3"><label htmlFor="review-moo" className="form-label">หมู่บ้าน</label><select id="review-moo" className="form-select" value={filters.moo} disabled={saving} onChange={e => changeFilters({ moo: e.target.value })}><option value="">ทุกหมู่</option>{(data?.villages || (filters.moo ? [filters.moo] : [])).map(m => <option key={m} value={m}>หมู่ {m}</option>)}</select></div>
