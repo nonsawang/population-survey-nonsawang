@@ -68,7 +68,7 @@ export default function ScreeningPage() {
       if(!validateCID(card.cid).valid){setCardMessage('เลขบัตรไม่ผ่านการตรวจสอบ กรุณาลองอ่านใหม่');return;}
       setSelected(null);setSaveMessage('');setSaveOk(false);
       setSearchMode('cid');setSearchTerm(card.cid);setAppliedTerm(card.cid);setPage(1);setRetry(n=>n+1);
-      setCardMessage('อ่านบัตรแล้ว — ค้นหาในกลุ่มเป้าหมายที่เลือก กรุณาตรวจรายชื่อก่อนบันทึกผล');
+      setCardMessage('อ่านบัตรแล้ว — ค้นหารายชื่อในฐานข้อมูล กรุณาตรวจรายชื่อก่อนบันทึกผล');
     }catch(error){if(token===cardRequest.current)setCardMessage(error instanceof SyntaxError?'ข้อมูลบัตรไม่สมบูรณ์ กรุณาลองใหม่':error.message);}
     finally{cardBusy.current=false;setReadingCard(false);}
   };
@@ -94,7 +94,7 @@ export default function ScreeningPage() {
         if(error) throw error;
         setCandidates((data.rows||[]).map(r=>({
           personId:r.person_id,cid:r.cid||'-',name:(r.title||'')+(r.fname||'')+' '+(r.lname||''),
-          age:calculateAge(r.birth_date),house:r.house,moo:r.moo,status:r.screen_result||'-',
+          eligible:r.eligible,age:calculateAge(r.birth_date),house:r.house,moo:r.moo,status:r.screen_result||'-',
           screenDate:r.screen_date||'-',hasResult:!['','-','รอผล'].includes(r.screen_result||'')
         })));
         setStats({total:data.total,done:data.done,pending:data.total-data.done,nonTarget:data.non_target_count||0});
@@ -170,7 +170,7 @@ export default function ScreeningPage() {
                       <div className="col-12 col-md-8"><label htmlFor="screening-search" className="form-label">คำค้น</label><input id="screening-search" type="search" enterKeyHint="search" autoCapitalize="none" spellCheck={false} inputMode={searchMode==='cid'?'numeric':'text'} autoComplete="off" className="form-control" placeholder={searchMode==='cid'?'เลขบัตร 4–13 หลัก':'ชื่อ นามสกุล เลขบัตร หรือบ้านเลขที่'} value={searchTerm} onChange={e=>{setSearchTerm(e.target.value);setPage(1);}} aria-describedby="screening-search-help" /></div>
                     </div>
                     <div className="d-flex gap-2 mt-2"><button className="btn btn-primary" type="submit" disabled={loadingCandidates}>ค้นหา</button><button className="btn btn-outline-secondary" type="button" disabled={!searchTerm} onClick={()=>{setSearchTerm('');setAppliedTerm('');setPage(1);}}>ล้างคำค้น</button></div>
-                    <p id="screening-search-help" className="small text-muted mt-2 mb-0">ชื่อค้นบางส่วนได้ รองรับเลขไทยและเลขบัตรที่มีขีดหรือช่องว่าง เลขบัตรครบ 13 หลักจะค้นตรงทั้งเลข • ค้นเฉพาะกลุ่มเป้าหมาย {KPI_INFO[currentKPI].name} ตามเกณฑ์เดิม</p>
+                    <p id="screening-search-help" className="small text-muted mt-2 mb-0">ชื่อค้นบางส่วนได้ รองรับเลขไทยและเลขบัตรที่มีขีดหรือช่องว่าง เลขบัตรครบ 13 หลักจะค้นตรงทั้งเลข • ค้นทุกคนที่บัญชีนี้มีสิทธิ์เข้าถึง พร้อมแจ้งผู้ที่ไม่ใช่กลุ่มเป้าหมาย {KPI_INFO[currentKPI].name}</p>
                   </form>
                   {loadingCandidates && <div className="text-center py-3" role="status"><span className="spinner-border text-primary"/> กำลังโหลดรายชื่อ...</div>}
                   {loadError && <div className="alert alert-danger" role="alert">{loadError} <button className="btn btn-outline-danger ms-2" onClick={()=>setRetry(n=>n+1)}>ลองใหม่</button></div>}
@@ -185,7 +185,7 @@ export default function ScreeningPage() {
                               <div className="card-body p-3">
                                 <div className="d-flex justify-content-between">
                                   <div>
-                                    <div className="fw-bold mb-1">{p.name}</div>
+                                    <div className="fw-bold mb-1">{p.name}</div>{p.eligible === false && <div className="text-warning-emphasis fw-bold small" role="status">ไม่ใช่กลุ่มเป้าหมายในการคัดกรอง</div>}
                                     <small className="text-muted">อายุ {p.age} | บ้าน {p.house} ม.{p.moo}</small>
                                     <div className="small text-muted mt-1">เลขบัตร {maskedScreeningCid(p.cid)}</div>
                                   </div>
@@ -212,7 +212,7 @@ export default function ScreeningPage() {
                       <div className="col-md-4"><label className="text-muted small">อายุ</label><div className="fw-bold">{selected.age} ปี</div></div>
                       <div className="col-md-4"><label className="text-muted small">ที่อยู่</label><div className="fw-bold">บ้าน {selected.house} ม.{selected.moo}</div></div>
                     </div>
-                    <p className="small mb-3">เลขบัตรประชาชน <strong>{selected.cid}</strong> • ตรวจสอบชื่อและเลขบัตรก่อนบันทึกผล</p>
+                    {selected.eligible === false && <div className="alert alert-warning" role="status">{selected.name} ไม่ใช่กลุ่มเป้าหมายในการคัดกรอง {KPI_INFO[currentKPI].name} ตามเกณฑ์อายุ เพศ หรือสถานะทะเบียน สามารถบันทึกผลการคัดกรองจริงได้</div>}<p className="small mb-3">เลขบัตรประชาชน <strong>{selected.cid}</strong> • ตรวจสอบชื่อและเลขบัตรก่อนบันทึกผล</p>
                     <div className="row g-3">
                       <div className="col-md-6">
                         <fieldset disabled={saving}><legend className="form-label fw-bold fs-6">ผลการคัดกรอง *</legend><div className="screening-result-options">{(currentKPI==='CHILD'?['สมวัย','ไม่สมวัย']:['ปกติ','ผิดปกติ']).map((value,index)=><label key={value} className={result===value?'screening-result-option is-selected':'screening-result-option'}><input type="radio" name="screening-result" value={value} checked={result===value} onChange={()=>{setResult(value);setSaveMessage('');setSaveOk(false);}}/><span>{index===0?'✓':'!'} {value}</span></label>)}</div></fieldset>
