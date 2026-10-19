@@ -142,6 +142,7 @@ const searchDataSilent = async () => {
         dischargeCode: populationStatus(r).dischargeCode,
         needsStatusReview: populationStatus(r).needsReview,
         legacyDischarge: populationStatus(r).legacyDischarge,
+        statusSchemaReady: Object.prototype.hasOwnProperty.call(r, 'status_model_version'),
         chronic: r.chronic||'-',
         vhv: r.vhv||'ไม่ระบุ',
         smokingStatus: r.smoking_status||'',
