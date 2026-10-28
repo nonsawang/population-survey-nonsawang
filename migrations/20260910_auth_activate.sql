@@ -31,7 +31,7 @@ CREATE POLICY logs_read ON public.activity_logs FOR SELECT TO anon,authenticated
 CREATE POLICY logs_insert ON public.activity_logs FOR INSERT TO anon,authenticated
  WITH CHECK (user_id::text=(SELECT public.app_current_user()->>'userId') AND username=(SELECT public.app_current_user()->>'username')
  AND (SELECT public.app_current_user()->>'role') IN ('admin','staff','vhv')
- AND action IN ('SCREENING_OV','RISK_BEHAVIOR','UPDATE_STATUS','CHANGE_VHV','MOVE_HOUSE','ADD_PERSON','UPDATE_PERSON'));
+ AND action IN ('SCREENING_OV','RISK_BEHAVIOR','UPDATE_STATUS','CHANGE_VHV','MOVE_HOUSE','MOVE_IN','ADD_PERSON','UPDATE_PERSON'));
 
 -- Retain the existing review workflow, but bind its reauthentication token to the app session.
 CREATE OR REPLACE FUNCTION public.hosxp_review_actor(p_token text) RETURNS text

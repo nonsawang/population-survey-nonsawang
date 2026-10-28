@@ -1,0 +1,20 @@
+const {PGlite}=require('@electric-sql/pglite'),fs=require('fs'),assert=require('node:assert/strict');
+(async()=>{const d=new PGlite();try{
+ await d.exec(`CREATE ROLE anon;CREATE ROLE authenticated;CREATE ROLE service_role;CREATE SCHEMA app_private;
+ CREATE FUNCTION public.app_current_user() RETURNS jsonb LANGUAGE sql AS $$SELECT '{"userId":"fixture","role":"vhv"}'::jsonb$$;
+ CREATE FUNCTION app_private.in_scope(text) RETURNS boolean LANGUAGE sql AS $$SELECT $1='1'$$;
+ CREATE TABLE population(moo text,house text,latitude double precision,longitude double precision,updated_at timestamptz);
+ INSERT INTO population(moo,house) VALUES('1','10');`);
+ await d.exec(fs.readFileSync('migrations/20261028_house_gps.sql','utf8'));
+ const call=(id,moo='1',acc=10)=>d.query('SELECT house_gps_request($1,$2,\'10\',16,103,$3)',[id,moo,acc]);
+ const id='11111111-1111-4111-8111-111111111111';
+ await assert.rejects(call(id),/GPS_SNAPSHOT_REQUIRED/);
+ await d.exec(`INSERT INTO house_gps_batches(id,completed_at) VALUES('${id}',now());INSERT INTO house_gps_snapshot VALUES('${id}','1','1','1','10',NULL,NULL);`);
+ await assert.rejects(call(id,'2'),/FORBIDDEN/);await assert.rejects(call(id,'1',101),/INVALID_GPS/);
+ await call(id);await call(id);
+ await assert.rejects(call('22222222-2222-4222-8222-222222222222'),/unique|duplicate/);
+ await d.query('SELECT house_gps_claim($1)',[id]);await assert.rejects(d.query('SELECT house_gps_claim($1)',[id]),/NOT_PENDING/);
+ await d.query("SELECT house_gps_finish($1,'sent')",[id]);await d.query("SELECT house_gps_finish($1,'sent')",[id]);
+ await d.exec('SET ROLE anon');await assert.rejects(d.query('SELECT house_gps_claim($1)',[id]),/permission denied/);
+ console.log('PASS GPS queue: scope, freshness, accuracy, idempotency, single claim, ack, service-only send');
+ }finally{await d.close();}})().catch(e=>{console.error(e.message);process.exitCode=1});

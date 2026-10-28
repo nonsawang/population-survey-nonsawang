@@ -45,3 +45,21 @@ node scripts/refresh-hosxp-review.cjs
 ฟีเจอร์นี้เป็นคิวอนุมัติ ยังไม่มีตัวส่งจริงเข้า HOSxP และยังไม่มีการเปลี่ยนข้อมูลใน HOSxP การสร้างตัวส่งภายหลังต้องตรวจ CID/person_id และค่าเดิมกับ HOSxP สดอีกครั้ง รวมทั้ง fingerprint กับข้อมูลสำรวจล่าสุด อย่านำ state='approved' เพียงอย่างเดียวไปส่ง เพราะข้อมูลอาจเปลี่ยนหลังอนุมัติ
 
 ฐานข้อมูลใหม่ปิดการอ่านตารางตรงของ anon/authenticated ให้ใช้ RPC ที่มี review token เท่านั้น ระบบล็อกอินเดิมของแอปยังเป็น custom login; ฟีเจอร์นี้ไม่ได้เปลี่ยนเป็น Supabase Auth ทั้งระบบ
+
+## ตัวส่งคิวรุ่นทดสอบ (2026-10-22)
+
+- Supabase: ติดตั้ง `20261022_hosxp_review_dispatch.sql` หลัง migration review เดิม
+- MySQL แยก: ติดตั้ง `scripts/hosxp-review-receipts.sql`; person และ receipt ต้องเป็น InnoDB
+- `send-hosxp-review.cjs <test-config-file> <approval-uuid>` ส่งทีละรายการที่อนุมัติแล้ว
+- ตั้ง HOSXP_REVIEW_ZONE=test, HOSXP_REVIEW_ENABLE=true, HOSXP_DB_HOST=127.0.0.1 และฐานชื่อ person_review_test_<ตัวเลข> ตัว CLI ปฏิเสธ production เสมอในรุ่นนี้
+- ใช้ Supabase ฐานทดสอบและ service role ฝั่ง LAN เท่านั้น ไม่ใช้รายการ production กับฐานจำลอง
+- ก่อนจองตรวจ fingerprint, ชุดอ้างอิงล่าสุด, อายุ snapshot และสถานะอนุมัติจากข้อมูลปัจจุบัน จองได้ครั้งเดียว
+- ก่อนเขียนล็อกแถว MySQL และตรวจ CID checksum/ความเป็นเอกลักษณ์, person_id, ประเภทอยู่อาศัย, สถานะจำหน่าย และ last_update ต้องตรงค่าเดิมทั้งหมด
+- เขียนเฉพาะ house_regist_type_id/person_discharge_id ที่อนุมัติ และ last_update พร้อม receipt ใน transaction เดียวกัน
+- ผลสำเร็จแจ้ง sent กลับ Supabase หากมีข้อผิดพลาดหลังจองให้คง reserved เพื่อ reconciliation ไม่มี retry อัตโนมัติ
+- ถ้ามี receipt ใช้คำสั่งเดิมเพิ่ม fingerprint เป็นอาร์กิวเมนต์สุดท้ายเพื่อแจ้งผลกลับเท่านั้น ไม่ UPDATE person ซ้ำ
+- ถ้าไม่มี receipt ต้องตรวจ transaction ที่อาจยังค้างและข้อมูลล่าสุดด้วยเจ้าหน้าที่ก่อนสรุป failed ห้ามลบ reservation แล้วส่งใหม่อัตโนมัติ
+- การจองและการเขียนอยู่คนละฐาน จึงไม่ใช่ distributed transaction; การแก้ข้อมูลสำรวจหลังจองไม่สามารถยกเลิก transaction ปลายทางที่เริ่มแล้วได้ ต้องตรวจนโยบาย freeze/ยกเลิกก่อน production
+
+ทดสอบ: `node tests/hosxp-review-dispatch.cjs` (PostgreSQL semantics ผ่าน PGlite) และ `node tests/hosxp-review-writer-mysql.cjs` (MariaDB 127.0.0.1:33317 fixture เท่านั้น)
+ยังไม่ติดตั้ง migration จริง ไม่เปิด Scheduled Task และไม่เขียน HOSxP จริง

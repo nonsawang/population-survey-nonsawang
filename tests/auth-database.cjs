@@ -48,6 +48,10 @@ await as('anon',tokens.manager); assert.equal((await q('SELECT * FROM population
 assert.equal((await q("UPDATE population SET house='bad' RETURNING person_id")).length,0);
 await as('anon',tokens.staff);assert.equal((await q('SELECT * FROM population')).length,3);
 await q("UPDATE population SET house='staff' WHERE person_id='p3'");
+for(const action of ['UPDATE_STATUS','CHANGE_VHV','MOVE_HOUSE','MOVE_IN','ADD_PERSON','UPDATE_PERSON']){
+ await q('INSERT INTO activity_logs(user_id,username,action,details,target_id) VALUES($1,$2,$3,$4,$5)',[users.staff,'staff',action,'test','p3']);
+}
+await assert.rejects(()=>q('INSERT INTO activity_logs(user_id,username,action,details,target_id) VALUES($1,$2,$3,$4,$5)',[users.staff,'staff','FORGED_ACTION','test','p3']),/row-level security/);
 console.log('PASS: VHV village scope, blank scope closed, manager read-only, staff access, privilege escalation denied');
 const review=await call('hosxp_review_open_session',['staff','test-password']);assert(review.token);
 await call('hosxp_review_list',[review.token,'','','all',1]);

@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS survey_house_gps_receipts (
+ id CHAR(36) PRIMARY KEY, house_id INT NOT NULL, payload_hash CHAR(64) NOT NULL,
+ recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;

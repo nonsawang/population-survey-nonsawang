@@ -175,6 +175,9 @@ body { background-color: var(--bg); font-family: 'Sarabun', sans-serif; }
 .action-LOGOUT { background: #f3e5f5; color: #6a1b9a; }
 .action-UPDATE_STATUS { background: #e3f2fd; color: #1565c0; }
 .action-ADD_PERSON { background: #fff8e1; color: #f57f17; }
+.action-MOVE_HOUSE, .action-MOVE_IN { background: #ede7f6; color: #4527a0; }
+.action-CHANGE_VHV { background: #fce4ec; color: #ad1457; }
+.action-UPDATE_PERSON { background: #e0f7fa; color: #006064; }
 .action-SCREENING { background: #e0f2f1; color: #00695c; }
 
 /* Survey workspace: clear actions, readable forms and mobile house cards. */

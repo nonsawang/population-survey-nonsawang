@@ -24,19 +24,30 @@ export default function MapComponent() {
       const { data, error } = await supabase
         .from('population')
         .select('house, moo, title, fname, lname, chronic, latitude, longitude')
-        .not('latitude', 'is', null);
+        .not('latitude', 'is', null).not('longitude', 'is', null);
+      const allData = [...(data || [])];
+      if (!error && data?.length === 1000) {
+        for (let offset = 1000; ; offset += 1000) {
+          const next = await supabase.from('population').select('house, moo, title, fname, lname, chronic, latitude, longitude').not('latitude', 'is', null).not('longitude', 'is', null).range(offset, offset + 999);
+          if (next.error || !next.data?.length) break;
+          allData.push(...next.data);
+          if (next.data.length < 1000) break;
+        }
+      }
       
       if (!error && data) {
         // จัดกลุ่มรวมกันตาม "บ้านเลขที่" และ "หมู่"
         const groupedHouses = {};
-        data.forEach(person => {
+        allData.forEach(person => {
+          const lat = Number(person.latitude), lng = Number(person.longitude);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
           const houseKey = `หมู่${person.moo}-${person.house}`;
           if (!groupedHouses[houseKey]) {
             groupedHouses[houseKey] = {
               moo: person.moo,
               house: person.house,
-              latitude: person.latitude,
-              longitude: person.longitude,
+              latitude: lat,
+              longitude: lng,
               members: []
             };
           }

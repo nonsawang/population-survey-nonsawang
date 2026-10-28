@@ -1,4 +1,5 @@
 'use client';
+import { queueHouseGps } from '@/lib/house-gps.mjs';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
@@ -64,6 +65,48 @@ export default function SurveyPage() {
     }
   }, [user]);
 
+  const mapPopulationRow = (r) => {
+    let fa = {}; try { if (r.fagerstrom_answers) fa = JSON.parse(r.fagerstrom_answers); } catch(e) {}
+    let aa = {}; try { if (r.assist_answers) aa = JSON.parse(r.assist_answers); } catch(e) {}
+
+    // 🎯 สิ่งที่เพิ่มเข้ามา: ดึงข้อมูล OV จากฐานข้อมูล (ถ้าเป็น null ให้แปลงเป็นค่าว่าง)
+    const ov = {
+      q1: r.ov_q1 || '',
+      q2: r.ov_q2 || '',
+      q3: r.ov_q3 || '',
+      q4: r.ov_q4 || '',
+      q5: r.ov_q5 || ''
+    };
+
+    const lat = r.latitude !== null && r.latitude !== undefined ? Number(r.latitude) : null;
+    const lng = r.longitude !== null && r.longitude !== undefined ? Number(r.longitude) : null;
+
+    return {
+      personId: r.person_id,
+      cid: r.cid||'-',
+      fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''),
+      age: calculateAge(r.birth_date),
+      relation: r.relation||'ไม่ระบุ',
+      residencyType: populationStatus(r).residencyType,
+      dischargeCode: populationStatus(r).dischargeCode,
+      needsStatusReview: populationStatus(r).needsReview,
+      legacyDischarge: populationStatus(r).legacyDischarge,
+      statusSchemaReady: Object.prototype.hasOwnProperty.call(r, 'status_model_version'),
+      chronic: r.chronic||'-',
+      vhv: r.vhv||'ไม่ระบุ',
+      latitude: Number.isFinite(lat) ? lat : null,
+      longitude: Number.isFinite(lng) ? lng : null,
+      smokingStatus: r.smoking_status||'',
+      alcoholStatus: r.alcohol_status||'',
+      fagerstromScore: r.fagerstrom_score,
+      assistScore: r.assist_score,
+      fagerstromAnswers: fa,
+      assistAnswers: aa,
+      // 🎯 สิ่งที่เพิ่มเข้ามา: ส่งข้อมูล OV ที่จัดแล้วเข้าไปใน prop ของ PersonCard
+      ovAnswers: ov
+    };
+  };
+
  const searchData = async (targetMoo = moo, targetHouse = house) => {
     if (!targetMoo || !targetHouse.trim()) { swal({icon:'warning',title:'กรุณาระบุข้อมูลให้ครบ'}); return; }
     if (allowedMoos && !allowedMoos.includes(targetMoo)) { swal({icon:'error',title:'ไม่มีสิทธิ์เข้าถึงหมู่ ' + targetMoo}); return; }
@@ -75,42 +118,7 @@ export default function SurveyPage() {
     closeLoading(); setSearching(false);
     if (error) { swal({icon:'error',title:'ค้นหาไม่สำเร็จ',text:surveyErrorMessage(error)}); return; }
 
-    const mapped = (data || []).map(r => {
-      let fa = {}; try { if (r.fagerstrom_answers) fa = JSON.parse(r.fagerstrom_answers); } catch(e) {}
-      let aa = {}; try { if (r.assist_answers) aa = JSON.parse(r.assist_answers); } catch(e) {}
-
-      // 🎯 สิ่งที่เพิ่มเข้ามา: ดึงข้อมูล OV จากฐานข้อมูล (ถ้าเป็น null ให้แปลงเป็นค่าว่าง)
-      const ov = {
-        q1: r.ov_q1 || '',
-        q2: r.ov_q2 || '',
-        q3: r.ov_q3 || '',
-        q4: r.ov_q4 || '',
-        q5: r.ov_q5 || ''
-      };
-
-      return {
-        personId: r.person_id,
-        cid: r.cid||'-',
-        fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''),
-        age: calculateAge(r.birth_date),
-        relation: r.relation||'ไม่ระบุ',
-        residencyType: populationStatus(r).residencyType,
-        dischargeCode: populationStatus(r).dischargeCode,
-        needsStatusReview: populationStatus(r).needsReview,
-        legacyDischarge: populationStatus(r).legacyDischarge,
-        statusSchemaReady: Object.prototype.hasOwnProperty.call(r, 'status_model_version'),
-        chronic: r.chronic||'-',
-        vhv: r.vhv||'ไม่ระบุ',
-        smokingStatus: r.smoking_status||'',
-        alcoholStatus: r.alcohol_status||'',
-        fagerstromScore: r.fagerstrom_score,
-        assistScore: r.assist_score,
-        fagerstromAnswers: fa,
-        assistAnswers: aa,
-        // 🎯 สิ่งที่เพิ่มเข้ามา: ส่งข้อมูล OV ที่จัดแล้วเข้าไปใน prop ของ PersonCard
-        ovAnswers: ov
-      };
-    });
+    const mapped = (data || []).map(mapPopulationRow);
     setResults(mapped);
     setShowGuide(false);
   };
@@ -119,41 +127,7 @@ const searchDataSilent = async () => {
     if (!moo || !house.trim()) return;
     const { data } = await supabase.from('population').select('*').eq('house', house.trim()).eq('moo', moo).order('fname');
 
-    const mapped = (data || []).map(r => {
-      let fa = {}; try { if (r.fagerstrom_answers) fa = JSON.parse(r.fagerstrom_answers); } catch(e) {}
-      let aa = {}; try { if (r.assist_answers) aa = JSON.parse(r.assist_answers); } catch(e) {}
-
-      // 🎯 เพิ่มดึงข้อมูล OV
-      const ov = {
-        q1: r.ov_q1 || '',
-        q2: r.ov_q2 || '',
-        q3: r.ov_q3 || '',
-        q4: r.ov_q4 || '',
-        q5: r.ov_q5 || ''
-      };
-
-      return {
-        personId: r.person_id,
-        cid: r.cid||'-',
-        fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''),
-        age: calculateAge(r.birth_date),
-        relation: r.relation||'ไม่ระบุ',
-        residencyType: populationStatus(r).residencyType,
-        dischargeCode: populationStatus(r).dischargeCode,
-        needsStatusReview: populationStatus(r).needsReview,
-        legacyDischarge: populationStatus(r).legacyDischarge,
-        statusSchemaReady: Object.prototype.hasOwnProperty.call(r, 'status_model_version'),
-        chronic: r.chronic||'-',
-        vhv: r.vhv||'ไม่ระบุ',
-        smokingStatus: r.smoking_status||'',
-        alcoholStatus: r.alcohol_status||'',
-        fagerstromScore: r.fagerstrom_score,
-        assistScore: r.assist_score,
-        fagerstromAnswers: fa,
-        assistAnswers: aa,
-        ovAnswers: ov // 🎯 ส่งเข้าไปที่ PersonCard
-      };
-    });
+    const mapped = (data || []).map(mapPopulationRow);
     setResults(mapped);
   };
 
@@ -215,14 +189,19 @@ const submitVhvChange = async () => {
   // ✅ ย้ายบ้าน
   const handleMove = async () => {
     if (!moveMoo || !moveHouse.trim()) { swal({icon:'warning',title:'ข้อมูลไม่ครบ',text:'กรุณาระบุหมู่และบ้านเลขที่ใหม่'}); return; }
+    if (allowedMoos && !allowedMoos.includes(String(moveMoo))) { swal({icon:'error',title:'ไม่มีสิทธิ์ย้ายไปหมู่ ' + moveMoo}); return; }
     showLoading('กำลังย้าย...');
-    const { data: targetRows } = await supabase.from('population').select('vhv').eq('house', moveHouse.trim()).eq('moo', moveMoo).limit(1);
-    const newVhv = (targetRows && targetRows[0]?.vhv) || 'ไม่ระบุ';
+    const { data: targetRows } = await supabase.from('population').select('vhv,latitude,longitude').eq('house', moveHouse.trim()).eq('moo', moveMoo).limit(20);
+    const vhvRow = (targetRows || []).find(r => r.vhv && r.vhv !== 'ไม่ระบุ' && r.vhv !== '-');
+    const newVhv = vhvRow?.vhv || (targetRows && targetRows[0]?.vhv) || 'ไม่ระบุ';
+    const coordRow = (targetRows || []).find(r => r.latitude !== null && r.latitude !== undefined && r.longitude !== null && r.longitude !== undefined && Number.isFinite(Number(r.latitude)) && Number.isFinite(Number(r.longitude)));
 
     const { error } = await supabase.from('population').update({
       house: moveHouse.trim(),
       moo: moveMoo,
       vhv: newVhv,
+      latitude: coordRow ? Number(coordRow.latitude) : null,
+      longitude: coordRow ? Number(coordRow.longitude) : null,
       updated_at: new Date().toISOString()
     }).eq('person_id', moveTarget.personId);
 
@@ -255,33 +234,16 @@ const submitVhvChange = async () => {
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const { latitude, longitude } = position.coords;
-
-        // อัปเดตพิกัดให้ "ทุกคน" ที่อยู่ในหมู่และบ้านเลขที่นี้พร้อมกัน (คอลัมน์ house และ moo)
-        const { error } = await supabase
-          .from('population')
-          .update({
-            latitude: latitude,
-            longitude: longitude,
-            updated_at: new Date().toISOString()
-          })
-          .eq('house', house.trim())
-          .eq('moo', moo);
-
         closeLoading();
-        setSavingGps(false);
+        try {
+          await queueHouseGps({supabase,swal,moo,house,coords:position.coords});
+          await searchDataSilent();
+        } catch(error) {
+          const detail=String(error?.message||'');
+          const text=detail.includes('GPS_ACCURACY')?'กรุณาลองในที่โล่ง พิกัดต้องคลาดเคลื่อนไม่เกิน 100 เมตร':detail.includes('GPS_SNAPSHOT_REQUIRED')?'ต้องอ่านข้อมูลอ้างอิงบ้านจาก HOSxP ใหม่ก่อน':detail.includes('HOUSE_NOT_UNIQUE')?'ไม่พบบ้านที่ตรงกันเพียงหลังเดียวใน HOSxP':detail.includes('house_gps_pending')?'บ้านนี้มีคิวรอส่งอยู่แล้ว':'กรุณาตรวจสิทธิ์ การติดตั้ง migration และคิวพิกัดบ้าน';
+          await swal({icon:'error',title:'บันทึกพิกัดไม่สำเร็จ',text});
+        } finally { setSavingGps(false); }
 
-        if (error) {
-          swal({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: surveyErrorMessage(error) });
-        } else {
-          swal({
-            icon: 'success',
-            title: 'พิกัดถูกบันทึกแล้ว!',
-            text: `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`,
-            timer: 2500,
-            showConfirmButton: false
-          });
-        }
       },
       (error) => {
         closeLoading();
@@ -339,12 +301,16 @@ const submitVhvChange = async () => {
       if (lookupError || !current || !populationStatus(current).active) { swal({ icon:'warning', title:'กรุณาตรวจสถานะบุคคลเดิมก่อนย้ายเข้า', text:'ต้องตรวจสอบสถานะจำหน่ายของบุคคลเดิมในหน้าบ้านเดิมก่อน' }); return; }
     }
 
+    const houseCoord = (results || []).find(p => p.latitude !== null && p.latitude !== undefined && p.longitude !== null && p.longitude !== undefined && Number.isFinite(Number(p.latitude)) && Number.isFinite(Number(p.longitude)));
+
     showLoading(isUpdate ? 'กำลังย้ายมาบ้านนี้...' : 'กำลังบันทึก...');
     const { error } = await supabase.from('population').upsert({
       person_id: recordId, cid: cleanCid, title: sanitizeInput(f.title) || 'นาย',
       fname: sanitizeInput(f.fname), lname: sanitizeInput(f.lname || ''),
       birth_date: birthISO, house: house.trim(), moo, relation: sanitizeInput(f.relation) || 'ผู้อาศัย',
       ...statusUpdate(f.type || '3', '9'), chronic: chronicVal || '-', vhv: sanitizeInput(f.vhv),
+      latitude: houseCoord ? Number(houseCoord.latitude) : null,
+      longitude: houseCoord ? Number(houseCoord.longitude) : null,
       updated_at: new Date().toISOString(), status: 'Active'
     });
 
@@ -352,8 +318,8 @@ const submitVhvChange = async () => {
     if (!error) setShowAddModal(false);
 
     if (!error) {
-      // 🎯 [เพิ่มใหม่] บันทึก Activity Log: ADD_PERSON
-      const actionType = isUpdate ? 'MOVE_IN' : 'ADD_PERSON';
+      // 🎯 [เพิ่มใหม่] บันทึก Activity Log: ADD_PERSON / MOVE_HOUSE
+      const actionType = isUpdate ? 'MOVE_HOUSE' : 'ADD_PERSON';
       const detailStr = isUpdate ? `ย้าย ${f.fname} เข้าบ้านเลขที่ ${house.trim()} ม.${moo}` : `เพิ่มผู้อาศัยใหม่ (${f.fname}) บ้านเลขที่ ${house.trim()} ม.${moo}`;
       await writeLog(user?.userId, user?.username, actionType, detailStr, recordId);
 
@@ -571,7 +537,7 @@ const submitVhvChange = async () => {
                     {savingGps ? (
                       <><span className="spinner-border spinner-border-sm me-2"/> กำลังหาพิกัด...</>
                     ) : (
-                      <><i className="fa-solid fa-location-crosshairs fa-lg me-2"/> บันทึกพิกัด GPS บ้านหลังนี้</>
+                      <><i className="fa-solid fa-location-crosshairs fa-lg me-2"/> บันทึกพิกัดบ้าน / เข้าคิว HOSxP</>
                     )}
                   </button>
                 </div>
@@ -596,7 +562,7 @@ const submitVhvChange = async () => {
 
                 <p>กำลังย้าย: <strong className="text-primary">{moveTarget.fullname}</strong></p>
                 <div className="row g-2">
-                  <div className="col-5"><label className="small fw-bold">ย้ายไปหมู่ที่</label><select className="form-select text-center" value={moveMoo} onChange={e => setMoveMoo(e.target.value)}><option value="" disabled>เลือก</option>{VALID_MOOS.map(m => <option key={m} value={m}>หมู่ {m}</option>)}</select></div>
+                  <div className="col-5"><label className="small fw-bold">ย้ายไปหมู่ที่</label><select className="form-select text-center" value={moveMoo} onChange={e => setMoveMoo(e.target.value)}><option value="" disabled>เลือก</option>{visibleMoos.map(m => <option key={m} value={m}>หมู่ {m}</option>)}</select></div>
                   <div className="col-7"><label className="small fw-bold">เลขที่บ้านใหม่</label><input type="text" className="form-control" value={moveHouse} onChange={e => setMoveHouse(e.target.value)} placeholder="บ้านเลขที่ใหม่" /></div>
                 </div>
 
