@@ -2,11 +2,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { VALID_MOOS } from '@/lib/utils';
-import { summarizeSurvey, vhvName } from '@/lib/survey-work';
+import { summarizeSurvey, filterSurveyHouses, vhvName } from '@/lib/survey-work';
 import StaffSurveyOverview from '@/components/StaffSurveyOverview';
 import { inSurveyScope } from '@/lib/population-status';
 
 const PAGE_SIZE = 20;
+const FETCH_LIMIT = 1000;
+const thCollator = new Intl.Collator('th');
 const labels = { notStarted: 'ยังไม่เริ่ม', partial: 'สำรวจบางส่วน', complete: 'สำรวจครบ' };
 
 export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse }) {
@@ -29,38 +31,64 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     async function load() {
       setBusy(true); setError(''); setRows([]); setLegacySchema(false);
       try {
         if (!user || !moos.length) return;
         const collected = [];
-        for (let offset = 0; ; offset += 1000) {
-          const baseColumns = 'person_id,moo,house,vhv,residency_type';
-          let response = await supabase.from('population').select(baseColumns + ',status_model_version,person_discharge_id,legacy_residency_type').in('moo', moos).order('person_id').range(offset, offset + 999);
-          if (cancelled) return;
-          if (response.error && ['42703', 'PGRST204'].includes(response.error.code)) {
-            setLegacySchema(true);
-            response = await supabase.from('population').select(baseColumns).in('moo', moos).order('person_id').range(offset, offset + 999);
+        const moosSet = new Set(moos);
+        const baseColumns = 'person_id,moo,house,vhv,residency_type';
+        let columns = baseColumns + ',status_model_version,person_discharge_id,legacy_residency_type';
+        let lastPersonId = null;
+
+        const queryPage = async (cols, afterId) => {
+          for (let attempt = 0; attempt < 3; attempt++) {
+            let q = supabase.from('population').select(cols).order('person_id', { ascending: true }).limit(FETCH_LIMIT);
+            if (scope !== null) q = q.in('moo', moos);
+            if (afterId !== null) q = q.gt('person_id', afterId);
+            if (typeof q.abortSignal === 'function') q = q.abortSignal(controller.signal);
+            const res = await q;
+            if (!res.error || ['42703', 'PGRST204'].includes(res.error.code) || cancelled) return res;
+            if (attempt < 2) await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
+            else return res;
           }
-          const { data, error: queryError } = response;
+        };
+
+        for (;;) {
+          let response = await queryPage(columns, lastPersonId);
+          if (cancelled) return;
+          if (response?.error && ['42703', 'PGRST204'].includes(response.error.code) && columns !== baseColumns) {
+            setLegacySchema(true);
+            columns = baseColumns;
+            response = await queryPage(columns, lastPersonId);
+          }
+          const { data, error: queryError } = response || {};
           if (cancelled) return;
           if (queryError) throw queryError;
-          collected.push(...(data || []));
-          if (!data || data.length < 1000) break;
+          const batch = data || [];
+          for (const row of batch) {
+            if (moosSet.has(String(row.moo ?? '').trim())) collected.push(row);
+          }
+          const nextId = batch.length ? String(batch[batch.length - 1].person_id || '') : '';
+          if (batch.length < FETCH_LIMIT || !nextId || nextId === lastPersonId) break;
+          lastPersonId = nextId;
         }
         if (!cancelled) setRows(collected);
       } catch {
-        if (!cancelled) setError('โหลดรายการงานไม่สำเร็จ กรุณาลองอีกครั้ง');
+        if (!cancelled && !controller.signal.aborted) setError('โหลดรายการงานไม่สำเร็จ กรุณาลองอีกครั้ง');
       } finally { if (!cancelled) setBusy(false); }
     }
     load();
-    return () => { cancelled = true; };
-  }, [user, moos, refreshKey, retry]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [user, moos, scope, refreshKey, retry]);
 
   const selectedMoo = moos.includes(moo) ? moo : '';
-  const owners = useMemo(() => [...new Set(rows.filter(r => (!selectedMoo || String(r.moo).trim() === selectedMoo) && inSurveyScope(r)).map(r => vhvName(r.vhv)))].sort((a, b) => a.localeCompare(b, 'th')), [rows, selectedMoo]);
+  const owners = useMemo(() => [...new Set(rows.filter(r => (!selectedMoo || String(r.moo).trim() === selectedMoo) && inSurveyScope(r)).map(r => vhvName(r.vhv)))].sort(thCollator.compare), [rows, selectedMoo]);
   const selectedVhv = owners.includes(vhv) ? vhv : '';
-  const { houses, totals } = useMemo(() => summarizeSurvey(rows, selectedMoo, selectedVhv, status), [rows, selectedMoo, selectedVhv, status]);
+  const baseSummary = useMemo(() => summarizeSurvey(rows, selectedMoo, selectedVhv, 'all'), [rows, selectedMoo, selectedVhv]);
+  const totals = baseSummary.totals;
+  const houses = useMemo(() => filterSurveyHouses(baseSummary.houses, status), [baseSummary.houses, status]);
   const pages = Math.max(1, Math.ceil(houses.length / PAGE_SIZE));
   const currentPage = Math.min(page, pages);
   useEffect(() => { setPage(1); }, [moo, vhv, status, refreshKey, scope]);
