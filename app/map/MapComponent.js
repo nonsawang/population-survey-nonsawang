@@ -1,6 +1,6 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline } from 'react-leaflet';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { supabase } from '@/lib/supabase';
@@ -67,7 +67,22 @@ function houseMatchesFilter(house, filterMode) {
   }
 }
 
+function Viewport({onBounds}) {
+  const map=useMap();
+  useEffect(()=>{
+    const update=()=>onBounds(map.getBounds().pad(0.1));
+    update();
+    map.on('moveend resize',update);
+    return ()=>map.off('moveend resize',update);
+  },[map,onBounds]);
+  return null;
+}
+
 export default function MapComponent() {
+  const [bounds,setBounds]=useState(null);
+  const [preview,setPreview]=useState([]);
+  const [missingOpen,setMissingOpen]=useState(false);
+  const fullReady=useRef(false);
   const [houses, setHouses] = useState([]);
   const [selectedMoo, setSelectedMoo] = useState('ALL');
   const [selectedFilter, setSelectedFilter] = useState('ALL');
@@ -97,7 +112,7 @@ export default function MapComponent() {
     const controller = new AbortController();
 
     const fetchMapData = async () => {
-      setLoadState('loading');
+      fullReady.current=false;setPreview([]);setLoadState('loading');
       const allData = [];
       let lastPersonId = null;
 
@@ -146,7 +161,7 @@ export default function MapComponent() {
       });
 
       if (!cancelled) {
-        setHouses(Object.values(groupedHouses));setLoadState('ready');
+        fullReady.current=true;setPreview([]);setHouses(Object.values(groupedHouses));setLoadState('ready');
       }
     };
 
@@ -156,6 +171,29 @@ export default function MapComponent() {
       controller.abort();
     };
   }, [reload]);
+
+  // Fetch only pin positions in view while the full household records are loading.
+  useEffect(()=>{
+    if(!bounds || loadState!=='loading' || layer!=='village' || selectedFilter!=='ALL' || selectedVhv!=='ALL') return;
+    const controller=new AbortController();
+    let query=supabase.from('population')
+      .select('moo,house,latitude,longitude,residency_type,person_discharge_id,status_model_version')
+      .gte('latitude',bounds.getSouth()).lte('latitude',bounds.getNorth())
+      .gte('longitude',bounds.getWest()).lte('longitude',bounds.getEast()).limit(FETCH_LIMIT);
+    if(selectedMoo!=='ALL') query=query.eq('moo',selectedMoo);
+    if(selectedHouse) query=query.eq('house',selectedHouse);
+    query.abortSignal(controller.signal).then(({data,error})=>{
+      if(controller.signal.aborted || fullReady.current || error) return;
+      const pins=new Map();
+      for(const row of data || []){
+        const r=normalizePersonRecord(row);
+        if(!r.active || !r.hasGps || !r.moo || !r.house) continue;
+        pins.set(JSON.stringify([r.moo,r.house]),r);
+      }
+      setPreview([...pins.values()]);
+    }).catch(()=>{});
+    return ()=>controller.abort();
+  },[bounds,loadState,layer,selectedMoo,selectedFilter,selectedVhv,selectedHouse]);
 
   const mooOptions = useMemo(() => {
     const s = new Set(houses.map(h => h.moo).filter(Boolean));
@@ -172,6 +210,7 @@ export default function MapComponent() {
   }, [houses, selectedMoo, selectedVhv, selectedHouse, selectedFilter]);
 
   const visibleHouses=filteredHouses.filter(h=>h.latitude!==null && (layer!=='pending'||houseMatchesFilter(h,'vhv_pending')));
+  const onScreen=useMemo(()=>bounds ? visibleHouses.filter(h=>bounds.contains([h.latitude,h.longitude])) : [],[visibleHouses,bounds]);
   const missing=filteredHouses.filter(h=>h.latitude===null);
   const vhvs=useMemo(()=>Array.from(new Set(houses.flatMap(h=>h.members.map(m=>m.norm.vhv)).filter(Boolean))).sort(compareThaiNumeric),[houses]);
   const nearby=layer==='radius'&&focus ? houses.filter(h=>h.latitude!==null && h.key!==focus.key && distanceMeters(h,focus)<=100) : [];
@@ -204,7 +243,7 @@ export default function MapComponent() {
               <option value="village">แยกสีตามหมู่บ้าน</option><option value="severity">โรคเรื้อรัง / ความรุนแรง</option>
               <option value="pending">บ้านค้างคัดกรอง</option><option value="radius">สำรวจรัศมี 100 เมตร</option></select></label>
             <label>อสม. <select value={selectedVhv} onChange={e=>setSelectedVhv(e.target.value)}><option value="ALL">ทุกคน</option>{vhvs.map(v=><option key={v}>{v}</option>)}</select></label></div>
-          {loadState==='loading' && <p role="status">กำลังโหลดทะเบียนบ้าน…</p>}
+          {loadState==='loading' && <p role="status">กำลังโหลดรายละเอียดบ้านและงานคัดกรอง…</p>}
           {loadState==='error' && <p role="alert">โหลดทะเบียนบ้านไม่สำเร็จ <button onClick={()=>setReload(n=>n+1)}>ลองใหม่</button></p>}
           {layer==='severity' && <small>แดง ติดเตียงหรือมีโรคเรื้อรังตั้งแต่ 2 โรค • ส้ม เบาหวาน/ความดัน • เทา โรคอื่น • เขียว ไม่มีโรคเรื้อรังที่บันทึก</small>}
           {layer==='village' && <div className="small">{mooOptions.map((m,i)=><span key={m} className="me-2"><b style={{color:villageColors[i%villageColors.length]}}>●</b> หมู่ {m}</span>)}</div>}
@@ -257,8 +296,8 @@ export default function MapComponent() {
               </a>
             </div>
           </div>
-          <details className="mt-2"><summary>บ้านขาดพิกัด ({missing.length} หลัง)</summary>
-            {pin ? <SmartPin key={pin.key} house={pin} icon={icon('blue')} onClose={()=>setPin(null)} onSaved={()=>{setPin(null);setReload(n=>n+1);}}/> :
+          <details className="mt-2" onToggle={e=>setMissingOpen(e.currentTarget.open)}><summary>บ้านขาดพิกัด ({missing.length} หลัง)</summary>
+            {!missingOpen ? null : pin ? <SmartPin key={pin.key} house={pin} icon={icon('blue')} onClose={()=>setPin(null)} onSaved={()=>{setPin(null);setReload(n=>n+1);}}/> :
             <div style={{maxHeight:180,overflow:'auto'}}>{missing.map(h=><div key={h.key}>หมู่ {h.moo} บ้าน {h.house} • {h.vhv || 'ยังไม่มอบหมาย'} <button onClick={()=>setPin(h)}>ปักหมุด</button></div>)}</div>}
           </details>
           {route.length>0 && <details open><summary>เส้นทางเยี่ยมบ้าน {route.length}/10 หลัง</summary><small>เริ่มจากบ้านแรกที่เลือก แล้วเรียงบ้านใกล้สุดตามระยะเส้นตรง</small><ol>{route.map(h=><li key={h.key}>บ้าน {h.house} หมู่ {h.moo} <button onClick={()=>setVisits(v=>v.filter(x=>x.key!==h.key))}>เอาออก</button></li>)}</ol></details>}
@@ -275,11 +314,14 @@ export default function MapComponent() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           />
+          <Viewport onBounds={setBounds}/>
+          {loadState==='loading' && !houses.length && layer==='village' && selectedFilter==='ALL' && selectedVhv==='ALL' && preview.filter(r=>bounds?.contains([r.latitude,r.longitude]) && (selectedMoo==='ALL'||r.moo===selectedMoo) && (!selectedHouse||r.house===selectedHouse)).map(r=>
+            <Marker key={JSON.stringify([r.moo,r.house])} position={[r.latitude,r.longitude]} icon={icon('#557998')}><Popup>บ้าน {r.house} หมู่ {r.moo} • กำลังโหลดรายละเอียด</Popup></Marker>)}
           <VillageBoundaries />
 
           {layer==='radius'&&focus && <Circle center={[focus.latitude,focus.longitude]} radius={100}/>}
           {route.length>1 && <Polyline positions={route.map(h=>[h.latitude,h.longitude])} pathOptions={{dashArray:'6 6'}}/>}
-          {visibleHouses.map((h) => (
+          {onScreen.map((h) => (
             <Marker key={h.key} position={[h.latitude, h.longitude]} icon={layer==='severity'?icon(severity(h.members),severity(h.members)==='red'):layer==='village'?icon(villageColors[mooOptions.indexOf(h.moo)%villageColors.length]):icon(layer==='pending'?'orange':'#376b92')}>
               <Popup>
                 <div style={{ fontSize: '0.9rem', minWidth: '240px', maxHeight: '280px', overflowY: 'auto' }}>
