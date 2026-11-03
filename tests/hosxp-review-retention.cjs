@@ -1,0 +1,31 @@
+const {PGlite}=require('@electric-sql/pglite');const fs=require('fs'),assert=require('node:assert/strict');
+(async()=>{const db=new PGlite();try{
+await db.exec(`CREATE ROLE anon;CREATE ROLE authenticated;CREATE ROLE service_role;
+CREATE TABLE hosxp_review_batches(id text PRIMARY KEY,source_name text NOT NULL,captured_at timestamptz NOT NULL,expected_count int,completed_at timestamptz);
+CREATE TABLE hosxp_review_snapshot(batch_id text REFERENCES hosxp_review_batches(id),hosxp_person_id text,cid text,residency_type text,discharge_code text,source_updated_at text,PRIMARY KEY(batch_id,hosxp_person_id));
+CREATE TABLE hosxp_review_approvals(id int PRIMARY KEY,batch_id text REFERENCES hosxp_review_batches(id),target_person_id text);
+GRANT ALL ON hosxp_review_batches,hosxp_review_snapshot TO service_role;`);
+await db.exec(fs.readFileSync('migrations/20261029_hosxp_review_retention.sql','utf8'));
+const rows=[{hosxp_person_id:'1',cid:'fixture',residency_type:'1',discharge_code:'9',source_updated_at:null}];
+const refresh=async r=>(await db.query("SELECT hosxp_review_refresh_v2('fixture',now(),$1::jsonb) r",[JSON.stringify(r)])).rows[0].r;
+assert.equal((await refresh(rows)).status,'created');assert.equal((await refresh(rows)).status,'unchanged');
+assert.equal((await db.query('SELECT count(*)::int n FROM hosxp_review_batches')).rows[0].n,1);
+await assert.rejects(refresh([...rows,...rows]),/DUPLICATE/);
+assert.equal((await refresh([{...rows[0],residency_type:'2'}])).status,'created');
+await db.exec(`INSERT INTO hosxp_review_batches VALUES('old','fixture',now()-interval '20 days',2,now(),now()-interval '20 days');
+INSERT INTO hosxp_review_snapshot VALUES('old','a','x','1','9',null),('old','b','y','1','9',null);
+INSERT INTO hosxp_review_approvals VALUES(1,'old','a');`);
+await db.query('SELECT hosxp_review_maintain()');
+assert.deepEqual((await db.query("SELECT hosxp_person_id FROM hosxp_review_snapshot WHERE batch_id='old'")).rows,[{hosxp_person_id:'a'}]);
+await assert.rejects(db.exec("INSERT INTO hosxp_review_approvals VALUES(2,'old','b')"),/foreign key/);
+assert.equal((await db.query('SELECT count(*)::int n FROM hosxp_review_storage_daily')).rows[0].n,1);
+await db.query('SELECT hosxp_review_maintain()');assert.equal((await db.query('SELECT count(*)::int n FROM hosxp_review_storage_daily')).rows[0].n,1);
+await assert.rejects(db.query("SELECT hosxp_review_refresh_v2('different',now(),$1::jsonb)",[JSON.stringify(rows)]),/SOURCE_CHANGED/);
+await db.exec("UPDATE hosxp_review_batches SET captured_at=now()-interval '10 days' WHERE id<>'old'");
+const last=(await db.query('SELECT id FROM hosxp_review_batches WHERE completed_at IS NOT NULL ORDER BY captured_at DESC,id DESC LIMIT 1')).rows[0].id;
+await db.query('SELECT hosxp_review_maintain()');
+assert.equal((await db.query('SELECT count(*)::int n FROM hosxp_review_snapshot WHERE batch_id=$1',[last])).rows[0].n,1);
+for(const role of ['anon','authenticated']){await db.exec('SET ROLE '+role);await assert.rejects(refresh(rows),/permission denied/);await assert.rejects(db.query('SELECT hosxp_review_maintain()'),/permission denied/);await db.exec('RESET ROLE');}
+await db.exec('SET ROLE service_role');await assert.rejects(db.exec("DELETE FROM hosxp_review_snapshot"),/permission denied/);await db.exec('RESET ROLE');
+console.log('PASS: atomic refresh, exact no-change comparison, changed data, duplicate rejection, targeted evidence retention/FK, daily metrics, browser denial, legacy uploader fenced');
+}finally{await db.close();}})().catch(e=>{console.error(e.message);process.exitCode=1});

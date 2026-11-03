@@ -17,7 +17,10 @@ async function run(){
  for(let i=0;i<rows.length;i+=500)await checked(client.from('house_gps_snapshot').insert(rows.slice(i,i+500).map(r=>({...r,house_id:String(r.house_id),village_id:String(r.village_id),batch_id:batch}))));
  const count=await client.from('house_gps_snapshot').select('house_id',{head:true,count:'exact'}).eq('batch_id',batch);
  if(count.error||count.count!==rows.length)throw Error('SNAPSHOT_INCOMPLETE');
- await checked(client.from('house_gps_batches').update({completed_at:new Date().toISOString()}).eq('id',batch));console.log('SNAPSHOT_READY '+rows.length);return;
+ await checked(client.from('house_gps_batches').update({completed_at:new Date().toISOString()}).eq('id',batch));
+ await client.from('house_gps_snapshot').delete().neq('batch_id',batch);
+ await client.from('house_gps_batches').delete().neq('id',batch);
+ console.log('SNAPSHOT_READY '+rows.length);return;
  }
  if(!/^[0-9a-f-]{36}$/i.test(id||''))throw Error('JOB_ID_REQUIRED');
  if(mode==='recover'){

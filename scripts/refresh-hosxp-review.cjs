@@ -4,7 +4,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const mysql = require('mysql2/promise');
 const { createClient } = require('@supabase/supabase-js');
-const {requireServiceKey}=require('./lan-service-key.cjs');
+const {requireServiceKey,isAllowedSourceUrl}=require('./lan-service-key.cjs');
 
 function readConfig(file) {
   const config = { ...process.env };
@@ -18,11 +18,13 @@ function readConfig(file) {
   return config;
 }
 async function refresh(config) {
+  // Enable only after installing 20261029_hosxp_review_retention.sql.
+  if(config.HOSXP_REVIEW_RETENTION_V2==='true')return require('./refresh-hosxp-review-v2.cjs').refresh(config);
   requireServiceKey(config.SUPABASE_SERVICE_ROLE_KEY);
   for (const name of ['HOSXP_DB_HOST','HOSXP_DB_USER','HOSXP_DB_NAME','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY']) {
     if (!config[name]) throw new Error(`Missing ${name} in .env.sync`);
   }
-  if (new URL(config.SUPABASE_URL).protocol !== 'https:') throw new Error('SUPABASE_URL must use HTTPS');
+  if (!isAllowedSourceUrl(config.SUPABASE_URL)) throw new Error('SUPABASE_URL must use HTTPS or local loopback (127.0.0.1/localhost)');
   const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession:false, autoRefreshToken:false } });
   const check = await supabase.from('hosxp_review_batches').select('id').limit(1);
   if (check.error) throw new Error('Supabase access failed. Check migration and SUPABASE_SERVICE_ROLE_KEY in .env.sync.');
@@ -63,4 +65,4 @@ if (require.main===module) refresh(readConfig(path.resolve(__dirname,'../.env.sy
   const safe=error.code ? `Connection failed (${error.code}). Check LAN/database settings.` : error.message;
   console.error(safe); process.exitCode=1;
 });
-module.exports={readConfig,refresh};
+module.exports={readConfig,refresh,retentionVersion:'20261029-v2'};

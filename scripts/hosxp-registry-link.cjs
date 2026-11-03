@@ -25,7 +25,7 @@ async function run({source,db,apply=false}){
 if(require.main===module)(async()=>{
  const c=require('./refresh-hosxp-review.cjs').readConfig(require('node:path').resolve(__dirname,'../.env.sync'));
  require('./lan-service-key.cjs').requireServiceKey(c.SUPABASE_SERVICE_ROLE_KEY);
- if(new URL(c.SUPABASE_URL).protocol!=='https:')throw Error('HTTPS_REQUIRED');
+ if(!require('./lan-service-key.cjs').isAllowedSourceUrl(c.SUPABASE_URL))throw Error('HTTPS_REQUIRED');
  const source=require('@supabase/supabase-js').createClient(c.SUPABASE_URL,c.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
  const db=await require('mysql2/promise').createConnection({host:c.HOSXP_DB_HOST,port:Number(c.HOSXP_DB_PORT||3306),user:c.HOSXP_DB_USER,password:c.HOSXP_DB_PASSWORD,database:c.HOSXP_DB_NAME,dateStrings:true,connectTimeout:10000});
  try{await db.query('START TRANSACTION READ ONLY');console.log(JSON.stringify(await run({source,db,apply:process.argv.includes('--apply')})));}finally{await db.rollback();await db.end();}

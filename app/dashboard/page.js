@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { dashboardStats } from '@/lib/dashboard-summary.mjs';
 
 import TopBar from '@/components/TopBar';
+import LocalAiAssistant from '@/components/LocalAiAssistant';
 
 
 // ─── Chart wrapper ───
@@ -110,6 +111,8 @@ export default function DashboardPage() {
           <div className="row mb-4 justify-content-center"><div className="col-12 col-md-6"><div className="d-flex gap-2"><a href="/" className="btn btn-outline-primary flex-fill rounded-pill"><i className="fa-solid fa-magnifying-glass me-1"/>สำรวจ</a><button onClick={loadDashboard} className="btn flex-fill rounded-pill text-white" style={{background:'var(--primary)'}} disabled={dashLoading}>{dashLoading?<><span className="spinner-border spinner-border-sm me-1"/>โหลด...</>:<><i className="fa-solid fa-chart-pie me-1"/>รีเฟรช</>}</button></div></div></div>
 
           {loadError&&<div className="alert alert-danger" role="alert">{loadError}{data&&' • กำลังแสดงสถิติจากการโหลดครั้งก่อน'}</div>}
+          {/* Local AI Assistant */}
+          {d && <LocalAiAssistant dashboard={d} defaultFocus="overview" />}
           {/* Insight */}
           <div className="row g-2 g-md-3 mb-4">
             {[{l:'วัยเด็ก (0-14)',v:d?.insight?.children,i:'child',b:'bg-gradient-primary'},{l:'วัยทำงาน',v:d?.insight?.working,i:'briefcase',b:'bg-gradient-success'},{l:'สูงอายุ (60+)',v:d?.insight?.elderly,i:'person-cane',b:'bg-gradient-warning'},{l:'อัตราพึ่งพิง',v:d?d.insight.dependencyRatio+'%':'-',i:'scale-unbalanced',b:'bg-gradient-danger'}].map(({l,v,i,b})=><div className="col-6 col-md-3" key={l}><div className={`card card-insight ${b} p-3 h-100`}><div className="d-flex justify-content-between"><div><div className="small text-white-50">{l}</div><div className="h3 fw-bold mb-0">{v??<span className="num-spin"/>}</div></div><i className={`fa-solid fa-${i} fa-2x text-white-50`}/></div></div></div>)}

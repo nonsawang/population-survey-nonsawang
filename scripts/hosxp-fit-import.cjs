@@ -4,7 +4,7 @@ const path=require('node:path');
 const mysql=require('mysql2/promise');
 const {createClient}=require('@supabase/supabase-js');
 const {readConfig}=require('./refresh-hosxp-review.cjs');
-const {requireServiceKey}=require('./lan-service-key.cjs');
+const {requireServiceKey,isAllowedSourceUrl}=require('./lan-service-key.cjs');
 const {inspect}=require('./hosxp-fit-preflight.cjs');
 const {validateSource,snapshotStatus,targetCheck}=require('./validate-hosxp-fit-queue.cjs');
 const {POLICY,stamp,readBack,claimChecks,writeVisit,payloadHash}=require('./hosxp-fit-writer.cjs');
@@ -56,7 +56,7 @@ async function acknowledge(source,db,ledger){
 }
 async function main(config,args=process.argv){
  requireServiceKey(config.SUPABASE_SERVICE_ROLE_KEY);
- if(!config.SUPABASE_URL||new URL(config.SUPABASE_URL).protocol!=='https:')throw new Error('HTTPS_SOURCE_REQUIRED');
+ if(!config.SUPABASE_URL||!isAllowedSourceUrl(config.SUPABASE_URL))throw new Error('HTTPS_SOURCE_REQUIRED');
  const id=args.find(x=>x.startsWith('--job='))?.slice(6);
  if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id||''))throw new Error('EXPLICIT_PREPARATION_ID_REQUIRED');
  if(args.includes('--write')&&!writeEnabled(config,args))throw new Error('WRITE_NOT_ENABLED');

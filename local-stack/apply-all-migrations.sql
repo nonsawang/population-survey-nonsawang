@@ -1,0 +1,34 @@
+-- Run from project root with:
+-- psql -h 127.0.0.1 -U postgres -d nonsawang -v ON_ERROR_STOP=1 -f local-stack/apply-all-migrations.sql
+\i local-stack/init-roles.sql
+\i migrations/20260907_population_status.sql
+\i migrations/20260907_hosxp_review.sql
+\i migrations/20260910_auth_prepare.sql
+\i migrations/20260910_auth_activate.sql
+\i migrations/20260911_population_read_scope_per_statement.sql
+\i migrations/20260911_screening_search.sql
+\i migrations/20260911_screening_workflow.sql
+\i migrations/20260914_fix_review_reauthentication.sql
+\i migrations/20260914_fit_preparation.sql
+\i migrations/20260914_review_fit_baseline.sql
+\i migrations/20260917_fit_import_results.sql
+\i migrations/20260922_fit_billing_preview.sql
+\i migrations/20260923_authen_report.sql
+\i migrations/20260924_authen_fit_source.sql
+\i migrations/20260925_person_identity.sql
+\i migrations/20260930_hosxp_registry_sync.sql
+\i migrations/20261001_registry_identity_link.sql
+\i migrations/20261002_dashboard_summary.sql
+\i migrations/20261006_screening_non_target.sql
+\i migrations/20261006_screening_register_person.sql
+\i migrations/20261006_screening_registration_followup.sql
+\i migrations/20261007_nhso_close_ledger.sql
+\i migrations/20261009_fit_auth_writeback_queue.sql
+\i migrations/20261009_nhso_close_permissions.sql
+\i migrations/20261012_fit_close_intents.sql
+\i migrations/20261012_fit_close_reservation.sql
+\i migrations/20261015_screening_all_candidates.sql
+\i migrations/20261019_hosxp_review_snapshot_join.sql
+\i migrations/20261022_hosxp_review_dispatch.sql
+\i migrations/20261028_house_gps.sql
+\i migrations/20261029_hosxp_review_retention.sql

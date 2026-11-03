@@ -8,4 +8,12 @@ function requireServiceKey(key){
  }catch{}
  throw new Error('SUPABASE_SERVICE_KEY_REQUIRED');
 }
-module.exports={requireServiceKey};
+function isAllowedSourceUrl(rawUrl){
+ try{
+  const parsed=new URL(rawUrl);
+  if(parsed.protocol==='https:')return true;
+  if(parsed.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(parsed.hostname))return true;
+ }catch{}
+ return false;
+}
+module.exports={requireServiceKey,isAllowedSourceUrl};

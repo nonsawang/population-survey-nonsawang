@@ -2,8 +2,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { VALID_MOOS } from '@/lib/utils';
-import { summarizeSurvey, filterSurveyHouses, vhvName } from '@/lib/survey-work';
+import { summarizeSurvey, summarizeStaffSurvey, filterSurveyHouses, vhvName } from '@/lib/survey-work';
 import StaffSurveyOverview from '@/components/StaffSurveyOverview';
+import LocalAiAssistant from '@/components/LocalAiAssistant';
 import { inSurveyScope } from '@/lib/population-status';
 
 const PAGE_SIZE = 20;
@@ -89,6 +90,13 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
   const baseSummary = useMemo(() => summarizeSurvey(rows, selectedMoo, selectedVhv, 'all'), [rows, selectedMoo, selectedVhv]);
   const totals = baseSummary.totals;
   const houses = useMemo(() => filterSurveyHouses(baseSummary.houses, status), [baseSummary.houses, status]);
+  const staffSummary = useMemo(() => isStaffView ? summarizeStaffSurvey(rows) : null, [rows, isStaffView]);
+  const aiTrackingContext = useMemo(() => ({
+    selectedMoo: selectedMoo || 'ทุกหมู่',
+    totals,
+    topVillages: (staffSummary?.villages || []).filter(v => v.incomplete > 0).slice(0, 5),
+    topOwners: (staffSummary?.owners || []).filter(o => o.pendingPeople > 0).slice(0, 5),
+  }), [selectedMoo, totals, staffSummary]);
   const pages = Math.max(1, Math.ceil(houses.length / PAGE_SIZE));
   const currentPage = Math.min(page, pages);
   useEffect(() => { setPage(1); }, [moo, vhv, status, refreshKey, scope]);
@@ -101,6 +109,7 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
       </div>
       <p className="small text-muted">งานคงค้างนับผู้ที่ยังไม่จำหน่ายและยังไม่ระบุประเภทอยู่อาศัย Type 0–3 ไม่นับบุคคลนอกเขต (Type 4) ผู้เสียชีวิต หรือผู้จำหน่าย ไม่รวมความครบถ้วนของการคัดกรองสุขภาพ</p>
       {legacySchema && <p className="alert alert-warning small">กำลังอ่านสถานะแบบเดิม ต้องรัน migration ใน Supabase ก่อนบันทึกสถานะตาม HOSxP</p>}
+      {!busy && !error && rows.length > 0 && <LocalAiAssistant tracking={aiTrackingContext} defaultFocus="tracking" title="ผู้ช่วย Local AI จัดลำดับคิวติดตามสำรวจรายหมู่บ้านและ อสม." />}
       {!busy && !error && isStaffView && <StaffSurveyOverview rows={rows} moo={selectedMoo} vhv={selectedVhv} onSelect={(m, owner, nextStatus, showHouses) => { setMoo(m); setVhv(owner); setStatus(nextStatus); setPage(1); setScrollTarget(showHouses ? 'staff-house-list-title' : 'staff-owners-title'); }} />}
       <div id="staff-house-list-title" className="staff-house-list-heading"><h3 className="h5 fw-bold mb-1">{isStaffView ? '3. บ้านที่ต้องติดตาม' : 'รายการบ้าน'}</h3><p className="small text-muted mb-3">{selectedMoo ? 'หมู่ ' + selectedMoo : 'ทุกหมู่ที่มีสิทธิ์'}{selectedVhv ? ' • ' + selectedVhv : ' • อสม. ทุกคน'} • เลือกสถานะเพื่อดูบ้านที่ยังไม่เริ่มหรือสำรวจบางส่วน</p></div>
       <div className="row g-2 mb-3">
