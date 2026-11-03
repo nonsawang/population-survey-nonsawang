@@ -782,7 +782,7 @@ export default function DashboardPage() {
                               <i className="fa-solid fa-list-check me-1" />ใบงาน
                             </button>
                             <a
-                              href={`/map?moo=${v.moos[0] || 'all'}&vhv=${encodeURIComponent(v.name)}`}
+                              href={`/map?moo=${encodeURIComponent(vhvMooFilter)}&vhv=${encodeURIComponent(v.name)}`}
                               className="btn btn-sm btn-outline-success rounded-pill py-0 px-2"
                               title={`ดูหลังคาเรือนของ อสม. ${v.name} บนแผนที่`}
                             >
@@ -850,13 +850,13 @@ export default function DashboardPage() {
               <div className="modal-body p-3 p-md-4">
                 <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                   <div className="d-flex flex-wrap gap-2 align-items-center">
-                    <a
+                    {drilldown.filterKey === 'missing_gps' ? <span className="small text-muted">บ้านกลุ่มนี้ยังไม่มีพิกัดสำหรับแสดงบนแผนที่</span> : <a
                       href={`/map?moo=${drilldown.moo || 'all'}&filter=${drilldown.filterKey}${drilldown.vhv ? `&vhv=${encodeURIComponent(drilldown.vhv)}` : ''}`}
                       className="btn btn-success btn-sm rounded-pill fw-bold px-3"
                     >
                       <i className="fa-solid fa-map-location-dot me-1" />
                       เปิดดูเฉพาะกลุ่มนี้บนแผนที่ GIS
-                    </a>
+                    </a>}
                     <select
                       className="form-select form-select-sm rounded-pill w-auto"
                       value={drilldown.moo || 'all'}
@@ -940,14 +940,8 @@ export default function DashboardPage() {
                                   </a>
                                   <a
                                     href={`/screening?kpi=${
-                                      drilldown.filterKey === 'fobt_pending'
-                                        ? 'FOBT'
-                                        : drilldown.filterKey === 'hpv_pending'
-                                        ? 'HPV'
-                                        : drilldown.filterKey === 'child_pending'
-                                        ? 'CHILD'
-                                        : 'HEP'
-                                    }&q=${encodeURIComponent((item.fname || item.fullname || '').trim())}`}
+                                      ({fobt_pending:'FOBT', hpv_pending:'HPV', child_pending:'CHILD', hep_pending:'HEP'})[drilldown.filterKey] || ''
+                                    }&q=${encodeURIComponent([item.fname,item.lname].filter(Boolean).join(' ') || item.fullname || '')}`}
                                     className="btn btn-sm btn-outline-teal rounded-pill py-0 px-2"
                                     style={{ borderColor: '#0d9488', color: '#0f766e' }}
                                     title="ไปหน้าบันทึกคัดกรอง KPI"

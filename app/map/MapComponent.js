@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { supabase } from '@/lib/supabase';
-import { normalizePersonRecord, compareThaiNumeric } from '@/lib/proactive-dashboard.mjs';
+import { normalizePersonRecord, compareThaiNumeric, isBedriddenElder, isHomeboundElder } from '@/lib/proactive-dashboard.mjs';
 import VillageBoundaries from './VillageBoundaries';
 
 const FETCH_LIMIT = 1000;
@@ -12,8 +12,8 @@ const ICON_CACHE = {};
 
 const FILTER_LABELS = {
   ALL: 'ทุกหลังคาเรือนที่มีพิกัด',
-  bedridden: 'ผู้สูงอายุ/ผู้ป่วยติดเตียง (ADL 0–4)',
-  homebound: 'ผู้สูงอายุ/ผู้ป่วยติดบ้าน (ADL 5–11)',
+  bedridden: 'ผู้สูงอายุติดเตียง (ADL 0–4)',
+  homebound: 'ผู้สูงอายุติดบ้าน (ADL 5–11)',
   living_alone: 'ผู้สูงอายุ 60+ ปี อาศัยอยู่คนเดียว',
   child_pending: 'เด็กเล็ก 0–5 ปี ค้างตรวจพัฒนาการ',
   hep_pending: 'ค้างตรวจไวรัสตับอักเสบ B/C (เกิดก่อน 2535)',
@@ -74,9 +74,9 @@ function houseMatchesFilter(house, filterMode) {
   const norms = house.members.map(m => m.norm).filter(Boolean);
   switch (filterMode) {
     case 'bedridden':
-      return norms.some(r => (r.adlScore !== null && r.adlScore >= 0 && r.adlScore <= 4) || r.chronicRaw.includes('ติดเตียง'));
+      return norms.some(isBedriddenElder);
     case 'homebound':
-      return norms.some(r => r.adlScore !== null && r.adlScore >= 5 && r.adlScore <= 11);
+      return norms.some(isHomeboundElder);
     case 'living_alone': {
       const residing = norms.filter(r => r.active && (r.typ === '1' || r.typ === '3'));
       return residing.length === 1 && residing[0].typ === '1' && residing[0].years !== null && residing[0].years >= 60;
@@ -118,7 +118,7 @@ export default function MapComponent() {
       const filterParam = params.get('filter');
       const vhvParam = params.get('vhv');
       const houseParam = params.get('house');
-      if (mooParam) setSelectedMoo(mooParam);
+      if (mooParam) setSelectedMoo(mooParam.toLowerCase() === 'all' ? 'ALL' : mooParam);
       if (filterParam && FILTER_LABELS[filterParam]) setSelectedFilter(filterParam);
       if (vhvParam) setSelectedVhv(vhvParam);
       if (houseParam) setSelectedHouse(houseParam);
@@ -137,8 +137,6 @@ export default function MapComponent() {
         let query = supabase
           .from('population')
           .select('person_id, house, moo, vhv, title, fname, lname, birth_date, residency_type, person_discharge_id, status_model_version, chronic, adl_score, hep_screen, fobt_screen, hpv_screen, child_dev, latitude, longitude')
-          .not('latitude', 'is', null)
-          .not('longitude', 'is', null)
           .order('person_id', { ascending: true })
           .limit(FETCH_LIMIT);
         if (lastPersonId !== null) query = query.gt('person_id', lastPersonId);
@@ -156,8 +154,6 @@ export default function MapComponent() {
       const now = new Date();
       const groupedHouses = {};
       allData.forEach(person => {
-        const lat = Number(person.latitude), lng = Number(person.longitude);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return;
         const norm = normalizePersonRecord(person, now);
         if (!norm.active) return;
         const houseKey = `หมู่${norm.moo}-${norm.house}`;
@@ -167,16 +163,20 @@ export default function MapComponent() {
             moo: norm.moo,
             house: norm.house,
             vhv: norm.vhv,
-            latitude: lat,
-            longitude: lng,
+            latitude: null,
+            longitude: null,
             members: []
           };
+        }
+        if (norm.hasGps && groupedHouses[houseKey].latitude === null) {
+          groupedHouses[houseKey].latitude = norm.latitude;
+          groupedHouses[houseKey].longitude = norm.longitude;
         }
         const isSick = Boolean(person.chronic && person.chronic !== '-' && !person.chronic.includes('ปกติ'));
         groupedHouses[houseKey].members.push({ ...person, isSick, norm });
       });
 
-      const preparedHouses = Object.values(groupedHouses).map(h => ({
+      const preparedHouses = Object.values(groupedHouses).filter(h => h.latitude !== null).map(h => ({
         ...h,
         markerColor: getHouseMarkerColor(h.members)
       }));

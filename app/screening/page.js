@@ -52,6 +52,18 @@ export default function ScreeningPage() {
   const search = useMemo(() => searchScreeningPeople([], appliedTerm, searchMode), [appliedTerm, searchMode]);
   const searching = searchTerm !== appliedTerm;
   const filtered = candidates;
+  const worksheetName = useRef('');
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const kpi = params.get('kpi');
+    const name = (params.get('q') || '').trim();
+    if (Object.hasOwn(KPI_INFO, kpi)) setCurrentKPI(kpi);
+    else worksheetName.current = name;
+    if (name) {
+      setSearchTerm(name);
+      setAppliedTerm(name);
+    }
+  }, []);
   const doSearch = () => { setAppliedTerm(searchTerm); setPage(1); setRetry(n=>n+1); };
   useEffect(() => { const timer=setTimeout(()=>setAppliedTerm(searchTerm),300);return ()=>clearTimeout(timer); },[searchTerm]);
   useEffect(() => { if (!loading && !user) router.push('/login'); }, [user, loading, router]);
@@ -76,7 +88,9 @@ export default function ScreeningPage() {
     if(!canLeave())return;
     cardRequest.current++; setCardMessage('');
     requestId.current += 1;
-    setCurrentKPI(type); setSelected(null); setSearchTerm(''); setAppliedTerm('');
+    const name = worksheetName.current;
+    worksheetName.current = '';
+    setCurrentKPI(type); setSelected(null); setSearchTerm(name); setAppliedTerm(name);
     setPage(1); setCandidates([]); setStats(null); setLoadError('');
   };
   useEffect(() => {
