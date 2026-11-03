@@ -1,10 +1,12 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { supabase } from '@/lib/supabase';
 import { normalizePersonRecord, compareThaiNumeric, isBedriddenElder, isHomeboundElder } from '@/lib/proactive-dashboard.mjs';
+import SmartPin from './SmartPin';
+import {severity,distanceMeters,visitOrder} from '@/lib/health-gis.mjs';
 import VillageBoundaries from './VillageBoundaries';
 
 const FETCH_LIMIT = 1000;
@@ -24,50 +26,11 @@ const FILTER_LABELS = {
 };
 
 // 🟢 ฟังก์ชันสร้างไอคอนหมุดตามสี (แคชไว้ตามสีเพื่อไม่ให้สร้าง L.Icon ใหม่ทุกครั้งที่ render)
-const createIcon = (color) => ICON_CACHE[color] || (ICON_CACHE[color] = new L.Icon({
-  iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-}));
-
-// 🟢 ฟังก์ชันคำนวณสีหมุดของบ้าน (จัดลำดับความสำคัญของโรคและภาวะพึ่งพิงในบ้าน)
-const getHouseMarkerColor = (members) => {
-  let isBedridden = false;
-  let isPsych = false;
-  let isSevereNCD = false;
-  let hasHTDM = false;
-  let hasDM = false;
-  let hasHT = false;
-  let hasDLP = false;
-  let hasOther = false;
-
-  members.forEach(p => {
-    const c = p.chronic || '';
-    const adl = p.norm?.adlScore;
-    if (c.includes('ผู้ป่วยติดเตียง') || (adl !== null && adl !== undefined && adl <= 4)) isBedridden = true;
-    else if (c.includes('จิตเวช')) isPsych = true;
-    else if (c.includes('มะเร็ง') || c.includes('หลอดเลือดสมอง') || c.includes('หัวใจ') || c.includes('ไตเรื้อรัง') || c.includes('ถุงลมโป่งพอง')) isSevereNCD = true;
-    else if (c.includes('ความดัน+เบาหวาน') || (c.includes('HT') && c.includes('DM'))) hasHTDM = true;
-    else if (c.includes('เบาหวาน')) hasDM = true;
-    else if (c.includes('ความดันโลหิตสูง')) hasHT = true;
-    else if (c.includes('ไขมันในเลือดสูง')) hasDLP = true;
-    else if (c !== '-' && c !== '' && !c.includes('ปกติ')) hasOther = true;
-  });
-
-  if (isBedridden) return 'black';
-  if (isPsych) return 'grey';
-  if (isSevereNCD) return 'red';
-  if (hasHTDM) return 'violet';
-  if (hasDM) return 'orange';
-  if (hasHT) return 'blue';
-  if (hasDLP) return 'gold';
-  if (hasOther) return 'yellow';
-
-  return 'green';
-};
+const villageColors=['#2453ae','#79319d','#008275','#b24611','#a52d65','#475d20','#516cb0','#8f4b36'];
+function icon(color,pulse=false){
+  const key=color+String(pulse);
+  return ICON_CACHE[key] ||= L.divIcon({className:'',iconSize:[18,18],iconAnchor:[9,9],html:'<span class="health-gis-pin '+(pulse?'health-gis-pulse':'')+'" style="background:'+color+'"></span>'});
+}
 
 function houseMatchesFilter(house, filterMode) {
   if (!filterMode || filterMode === 'ALL') return true;
@@ -111,6 +74,10 @@ export default function MapComponent() {
   const [selectedVhv, setSelectedVhv] = useState('ALL');
   const [selectedHouse, setSelectedHouse] = useState('');
 
+  const [layer,setLayer]=useState('village'), [focus,setFocus]=useState(null);
+  const [visits,setVisits]=useState([]), [pin,setPin]=useState(null), [reload,setReload]=useState(0);
+  const [loadState,setLoadState]=useState('loading');
+  const route=useMemo(()=>visitOrder(visits),[visits]);
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -130,6 +97,7 @@ export default function MapComponent() {
     const controller = new AbortController();
 
     const fetchMapData = async () => {
+      setLoadState('loading');
       const allData = [];
       let lastPersonId = null;
 
@@ -143,7 +111,8 @@ export default function MapComponent() {
         if (typeof query.abortSignal === 'function') query = query.abortSignal(controller.signal);
 
         const { data, error } = await query;
-        if (cancelled || error) return;
+        if(cancelled)return;
+        if(error)throw error;
         const batch = data || [];
         allData.push(...batch);
         const nextId = batch.length ? String(batch[batch.length - 1].person_id || '') : '';
@@ -155,7 +124,7 @@ export default function MapComponent() {
       const groupedHouses = {};
       allData.forEach(person => {
         const norm = normalizePersonRecord(person, now);
-        if (!norm.active) return;
+        if (!norm.active || !norm.moo || !norm.house) return;
         const houseKey = `หมู่${norm.moo}-${norm.house}`;
         if (!groupedHouses[houseKey]) {
           groupedHouses[houseKey] = {
@@ -176,27 +145,24 @@ export default function MapComponent() {
         groupedHouses[houseKey].members.push({ ...person, isSick, norm });
       });
 
-      const preparedHouses = Object.values(groupedHouses).filter(h => h.latitude !== null).map(h => ({
-        ...h,
-        markerColor: getHouseMarkerColor(h.members)
-      }));
-
-      if (!cancelled) setHouses(preparedHouses);
+      if (!cancelled) {
+        setHouses(Object.values(groupedHouses));setLoadState('ready');
+      }
     };
 
-    fetchMapData();
+    fetchMapData().catch(()=>{if(!cancelled)setLoadState('error');});
     return () => {
       cancelled = true;
       controller.abort();
     };
-  }, []);
+  }, [reload]);
 
   const mooOptions = useMemo(() => {
     const s = new Set(houses.map(h => h.moo).filter(Boolean));
     return Array.from(s).sort(compareThaiNumeric);
   }, [houses]);
 
-  const visibleHouses = useMemo(() => {
+  const filteredHouses = useMemo(() => {
     return houses.filter(h => {
       if (selectedMoo !== 'ALL' && String(h.moo) !== String(selectedMoo)) return false;
       if (selectedVhv !== 'ALL' && !h.members.some(m => m.norm?.vhv === selectedVhv)) return false;
@@ -205,6 +171,10 @@ export default function MapComponent() {
     });
   }, [houses, selectedMoo, selectedVhv, selectedHouse, selectedFilter]);
 
+  const visibleHouses=filteredHouses.filter(h=>h.latitude!==null && (layer!=='pending'||houseMatchesFilter(h,'vhv_pending')));
+  const missing=filteredHouses.filter(h=>h.latitude===null);
+  const vhvs=useMemo(()=>Array.from(new Set(houses.flatMap(h=>h.members.map(m=>m.norm.vhv)).filter(Boolean))).sort(compareThaiNumeric),[houses]);
+  const nearby=layer==='radius'&&focus ? houses.filter(h=>h.latitude!==null && h.key!==focus.key && distanceMeters(h,focus)<=100) : [];
   const clearFilters = () => {
     setSelectedMoo('ALL');
     setSelectedFilter('ALL');
@@ -224,11 +194,22 @@ export default function MapComponent() {
             right: '15px',
             zIndex: 1000,
             background: 'rgba(255,255,255,0.96)',
-            padding: '10px 14px',
+            padding: '10px 14px', maxHeight:'44%', overflowY:'auto',
             borderRadius: '12px',
             boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
           }}
         >
+          <div className="d-flex flex-wrap gap-2 mb-2">
+            <label>มุมมอง <select value={layer} onChange={e=>{setLayer(e.target.value);setFocus(null);}}>
+              <option value="village">แยกสีตามหมู่บ้าน</option><option value="severity">โรคเรื้อรัง / ความรุนแรง</option>
+              <option value="pending">บ้านค้างคัดกรอง</option><option value="radius">สำรวจรัศมี 100 เมตร</option></select></label>
+            <label>อสม. <select value={selectedVhv} onChange={e=>setSelectedVhv(e.target.value)}><option value="ALL">ทุกคน</option>{vhvs.map(v=><option key={v}>{v}</option>)}</select></label></div>
+          {loadState==='loading' && <p role="status">กำลังโหลดทะเบียนบ้าน…</p>}
+          {loadState==='error' && <p role="alert">โหลดทะเบียนบ้านไม่สำเร็จ <button onClick={()=>setReload(n=>n+1)}>ลองใหม่</button></p>}
+          {layer==='severity' && <small>แดง ติดเตียงหรือมีโรคเรื้อรังตั้งแต่ 2 โรค • ส้ม เบาหวาน/ความดัน • เทา โรคอื่น • เขียว ไม่มีโรคเรื้อรังที่บันทึก</small>}
+          {layer==='village' && <div className="small">{mooOptions.map((m,i)=><span key={m} className="me-2"><b style={{color:villageColors[i%villageColors.length]}}>●</b> หมู่ {m}</span>)}</div>}
+          {layer==='pending' && <small>ค้าง HEP, FIT, HPV หรือพัฒนาการเด็ก ตามกลุ่มเป้าหมาย</small>}
+          {layer==='radius' && <p>เลือกบ้านบนแผนที่ แล้วกด “ตีวง 100 เมตร” {focus && <>รอบบ้าน {focus.house} หมู่ {focus.moo} พบ {nearby.length} หลัง <details><summary>ดูรายชื่อบ้านในวง</summary>{nearby.map(h=><div key={h.key}>หมู่ {h.moo} บ้าน {h.house}</div>)}</details></>}</p>}
           <div className="row g-2 align-items-center">
             <div className="col-6 col-md-2">
               <select
@@ -276,6 +257,11 @@ export default function MapComponent() {
               </a>
             </div>
           </div>
+          <details className="mt-2"><summary>บ้านขาดพิกัด ({missing.length} หลัง)</summary>
+            {pin ? <SmartPin key={pin.key} house={pin} icon={icon('blue')} onClose={()=>setPin(null)} onSaved={()=>{setPin(null);setReload(n=>n+1);}}/> :
+            <div style={{maxHeight:180,overflow:'auto'}}>{missing.map(h=><div key={h.key}>หมู่ {h.moo} บ้าน {h.house} • {h.vhv || 'ยังไม่มอบหมาย'} <button onClick={()=>setPin(h)}>ปักหมุด</button></div>)}</div>}
+          </details>
+          {route.length>0 && <details open><summary>เส้นทางเยี่ยมบ้าน {route.length}/10 หลัง</summary><small>เริ่มจากบ้านแรกที่เลือก แล้วเรียงบ้านใกล้สุดตามระยะเส้นตรง</small><ol>{route.map(h=><li key={h.key}>บ้าน {h.house} หมู่ {h.moo} <button onClick={()=>setVisits(v=>v.filter(x=>x.key!==h.key))}>เอาออก</button></li>)}</ol></details>}
           {selectedVhv !== 'ALL' && (
             <div className="small text-primary mt-1">
               <i className="fa-solid fa-user-nurse me-1" />
@@ -291,8 +277,10 @@ export default function MapComponent() {
           />
           <VillageBoundaries />
 
+          {layer==='radius'&&focus && <Circle center={[focus.latitude,focus.longitude]} radius={100}/>}
+          {route.length>1 && <Polyline positions={route.map(h=>[h.latitude,h.longitude])} pathOptions={{dashArray:'6 6'}}/>}
           {visibleHouses.map((h) => (
-            <Marker key={h.key} position={[h.latitude, h.longitude]} icon={createIcon(h.markerColor)}>
+            <Marker key={h.key} position={[h.latitude, h.longitude]} icon={layer==='severity'?icon(severity(h.members),severity(h.members)==='red'):layer==='village'?icon(villageColors[mooOptions.indexOf(h.moo)%villageColors.length]):icon(layer==='pending'?'orange':'#376b92')}>
               <Popup>
                 <div style={{ fontSize: '0.9rem', minWidth: '240px', maxHeight: '280px', overflowY: 'auto' }}>
                   <div className="fw-bold text-primary mb-2 border-bottom pb-1" style={{ position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>
@@ -302,6 +290,10 @@ export default function MapComponent() {
                     </div>
                   </div>
 
+                  <div className="d-flex gap-1 my-2">
+                    {layer==='radius' && <button onClick={()=>setFocus(h)}>ตีวง 100 เมตร</button>}
+                    <button disabled={visits.length>=10||visits.some(v=>v.key===h.key)} onClick={()=>setVisits(v=>v.length<10&&!v.some(x=>x.key===h.key)?[...v,h]:v)}>เลือกเยี่ยมบ้าน</button>
+                  </div>
                   {h.members.map((m, i) => {
                     const n = m.norm;
                     const pendingTags = [];
@@ -353,18 +345,7 @@ export default function MapComponent() {
         </MapContainer>
       </div>
 
-      {/* 🟢 กล่องคำอธิบายสัญลักษณ์ (Legend) */}
-      <div style={{ position: 'absolute', bottom: '20px', left: '20px', zIndex: 1000, background: 'white', padding: '10px 15px', borderRadius: '8px', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
-        <div className="small fw-bold mb-2 border-bottom pb-1">ระดับความรุนแรงของบ้าน</div>
-        <div className="small mb-1"><i className="fa-solid fa-location-dot text-dark me-2"/> ผู้ป่วยติดเตียง (ADL 0–4)</div>
-        <div className="small mb-1"><i className="fa-solid fa-location-dot text-secondary me-2"/> จิตเวช+ยาเสพติด</div>
-        <div className="small mb-1"><i className="fa-solid fa-location-dot text-danger me-2"/> สโตรก/หัวใจ/ไต/มะเร็ง</div>
-        <div className="small mb-1"><i className="fa-solid fa-location-dot me-2" style={{color: 'violet'}}/> ความดัน+เบาหวาน</div>
-        <div className="small mb-1"><i className="fa-solid fa-location-dot me-2" style={{color: 'orange'}}/> เบาหวาน (DM)</div>
-        <div className="small mb-1"><i className="fa-solid fa-location-dot text-primary me-2"/> ความดันโลหิตสูง (HT)</div>
-        <div className="small mb-1"><i className="fa-solid fa-location-dot me-2" style={{color: '#ffd700'}}/> ไขมันในเลือดสูง (DLP)</div>
-        <div className="small"><i className="fa-solid fa-location-dot text-success me-2"/> ปกติ (ไม่มีโรคทั้งบ้าน)</div>
-      </div>
+      <style jsx global>{`.health-gis-pin{display:block;width:18px;height:18px;border:2px solid white;border-radius:50%;box-shadow:0 0 3px #222}.health-gis-pulse{animation:gisPulse 1.7s infinite}@keyframes gisPulse{50%{box-shadow:0 0 0 6px #ef444455}}@media(prefers-reduced-motion:reduce){.health-gis-pulse{animation:none}}`}</style>
     </>
   );
 }
