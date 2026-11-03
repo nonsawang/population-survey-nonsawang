@@ -45,6 +45,7 @@ export default function SurveyPage() {
 
   // 🟢 เพิ่ม State สำหรับสถานะปุ่มดึงพิกัด GPS
   const [savingGps, setSavingGps] = useState(false);
+  const autoSearchedRef = useRef(false);
 
   // ✅ จำกัดหมู่สำหรับ vhv
   const allowedMoos = user?.role === 'vhv' ? String(user.moo || '').split(',').map(m => m.trim()).filter(Boolean) : null;
@@ -62,6 +63,16 @@ export default function SurveyPage() {
       });
       // ✅ Auto-select first moo for vhv role
       if (allowedMoos && allowedMoos[0]) setMoo(allowedMoos[0]);
+      // ✅ รองรับการเปิดหน้าสำรวจจากลิงก์ Drill-down ใน Dashboard / แผนที่ (?moo=...&house=...)
+      if (!autoSearchedRef.current && typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const qMoo = (params.get('moo') || '').trim();
+        const qHouse = (params.get('house') || '').trim();
+        if (qMoo && qHouse) {
+          autoSearchedRef.current = true;
+          setTimeout(() => { searchData(qMoo, qHouse); }, 100);
+        }
+      }
     }
   }, [user]);
 
