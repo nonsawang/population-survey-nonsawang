@@ -502,6 +502,7 @@ export default function DashboardPage() {
                       <th className="text-center">ติดเตียง / ติดบ้าน</th>
                       <th className="text-center">สูงอายุอยู่คนเดียว</th>
                       <th className="text-center">บ้านไร้พิกัด GPS</th>
+                      <th className="text-center">โรคเรื้อรังซับซ้อน</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -603,6 +604,13 @@ export default function DashboardPage() {
                             title={`บ้านยังไม่มีพิกัด GPS หมู่ ${row.moo}`}
                           >
                             {row.missingGps > 0 ? `ขาด ${row.missingGps} หลัง` : 'ครบ 100%'}
+                          </button>
+                        </td>
+                        <td className="text-center">
+                          <button type="button" className="btn btn-sm btn-outline-danger rounded-pill"
+                            onClick={() => openDrilldown('multi_chronic', row.moo)}
+                            aria-label={`ดูรายชื่อโรคเรื้อรังซับซ้อน หมู่ ${row.moo} จำนวน ${row.multiChronic} คน`}>
+                            {row.multiChronic} คน
                           </button>
                         </td>
                       </tr>

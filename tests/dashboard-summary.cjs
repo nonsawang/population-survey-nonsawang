@@ -13,7 +13,9 @@ await db.exec(fs.readFileSync('migrations/20261002_dashboard_summary.sql','utf8'
 for(const actor of ['','vhv','staff']){
  await db.query("SELECT set_config('test.actor',$1,false)",[actor]);const payload=(await db.query('SELECT dashboard_summary() AS d')).rows[0].d;
  const expected=computeStats(actor==='staff'?rows:actor==='vhv'?rows.filter(r=>r.moo==='1'):[]),actual=dashboardStats(payload);
- actual.risk.byMoo.sort((a,b)=>a.moo.localeCompare(b.moo));expected.risk.byMoo.sort((a,b)=>a.moo.localeCompare(b.moo));
+ const riskOrder=['-','','1','2'];
+ expected.risk.byMoo.sort((a,b)=>riskOrder.indexOf(a.moo)-riskOrder.indexOf(b.moo));
+ assert.deepEqual(dashboardStats({...payload,groups:[...payload.groups].reverse()}).risk.byMoo,actual.risk.byMoo);
  for(const k of ['total','unsurveyed','discharged','deceased','outside','type0','type1','type2','type3','totalHouses','chronicCount','population','kpi','risk','byMoo','pyramid','insight'])assert.deepEqual(actual[k],expected[k],actor+':'+k);
  const sort=a=>[...a].sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));assert.deepEqual(sort(actual.kpiByMoo),sort(expected.kpiByMoo));assert.deepEqual(sort(actual.vhvList),sort(expected.vhvList));assert(!JSON.stringify(payload).includes('private-'));
  console.log('PASS '+(actor||'anonymous')+' parity and no patient identifiers; summary bytes '+Buffer.byteLength(JSON.stringify(payload)));

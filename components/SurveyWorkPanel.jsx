@@ -39,7 +39,7 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
         if (!user || !moos.length) return;
         const collected = [];
         const moosSet = new Set(moos);
-        const baseColumns = 'person_id,moo,house,vhv,residency_type';
+        const baseColumns = 'person_id,moo,house,vhv,residency_type,latitude,longitude';
         let columns = baseColumns + ',status_model_version,person_discharge_id,legacy_residency_type';
         let lastPersonId = null;
 
@@ -89,6 +89,33 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
   const selectedVhv = owners.includes(vhv) ? vhv : '';
   const baseSummary = useMemo(() => summarizeSurvey(rows, selectedMoo, selectedVhv, 'all'), [rows, selectedMoo, selectedVhv]);
   const totals = baseSummary.totals;
+  const fieldWork = useMemo(() => {
+    const pinned = new Set();
+    for (const r of rows) {
+      const lat = Number(r.latitude), lon = Number(r.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lon) && lat !== 0 && lon !== 0 && Math.abs(lat) <= 90 && Math.abs(lon) <= 180)
+        pinned.add(JSON.stringify([String(r.moo ?? '').trim(), String(r.house ?? '').trim()]));
+    }
+    return baseSummary.houses.filter(h => h.house && h.house !== '-' && (h.pending || !pinned.has(h.key)))
+      .map(h => [h.moo, h.house, h.owners.join(', '), h.pending ? labels[h.status] + ' (ค้าง ' + h.pending + ' คน)' : 'ครบแล้ว', pinned.has(h.key) ? 'มีพิกัด' : 'ต้องปักหมุด', '']);
+  }, [rows, baseSummary]);
+  function printFieldWork() {
+    const w = window.open('', '_blank');
+    if (!w) { window.alert('กรุณาอนุญาตหน้าต่างใหม่เพื่อพิมพ์ใบงาน'); return; }
+    w.opener = null;
+    const d = w.document;
+    d.documentElement.lang = 'th';
+    d.title = 'ใบงาน อสม. ติดตามบ้าน';
+    const add = (parent, tag, value) => { const el = d.createElement(tag); el.textContent = value; parent.appendChild(el); return el; };
+    add(d.head, 'style', '@page{size:A4;margin:12mm}body{font:14px sans-serif;color:#111}table{border-collapse:collapse;width:100%}td,th{border:1px solid #888;padding:5px}td:last-child{width:22%}tr{break-inside:avoid}thead{display:table-header-group}@media print{button{display:none}}');
+    add(d.body,'h1','ใบงาน อสม. ติดตามบ้านค้างสำรวจหรือปักหมุด');
+    add(d.body,'p', (selectedMoo ? 'หมู่ '+selectedMoo : 'ทุกหมู่ที่มีสิทธิ์')+' • '+(selectedVhv || 'อสม. ทุกคน')+' • '+fieldWork.length+' หลัง • '+new Date().toLocaleDateString('th-TH'));
+    const table = add(d.body,'table',''), header = table.createTHead().insertRow(), body = table.createTBody();
+    for (const label of ['หมู่','บ้านเลขที่','อสม.','งานสำรวจ','งานพิกัด','วันที่ / ผลติดตาม']) add(header,'th',label);
+    for (const values of fieldWork) { const row = body.insertRow(); for (const v of values) row.insertCell().textContent = v; }
+    add(d.body,'button','พิมพ์อีกครั้ง').onclick = () => w.print();
+    w.focus(); w.print();
+  }
   const houses = useMemo(() => filterSurveyHouses(baseSummary.houses, status), [baseSummary.houses, status]);
   const staffSummary = useMemo(() => isStaffView ? summarizeStaffSurvey(rows) : null, [rows, isStaffView]);
   const aiTrackingContext = useMemo(() => ({
@@ -112,6 +139,7 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
       {!busy && !error && rows.length > 0 && <LocalAiAssistant tracking={aiTrackingContext} defaultFocus="tracking" title="ผู้ช่วย Local AI จัดลำดับคิวติดตามสำรวจรายหมู่บ้านและ อสม." />}
       {!busy && !error && isStaffView && <StaffSurveyOverview rows={rows} moo={selectedMoo} vhv={selectedVhv} onSelect={(m, owner, nextStatus, showHouses) => { setMoo(m); setVhv(owner); setStatus(nextStatus); setPage(1); setScrollTarget(showHouses ? 'staff-house-list-title' : 'staff-owners-title'); }} />}
       <div id="staff-house-list-title" className="staff-house-list-heading"><h3 className="h5 fw-bold mb-1">{isStaffView ? '3. บ้านที่ต้องติดตาม' : 'รายการบ้าน'}</h3><p className="small text-muted mb-3">{selectedMoo ? 'หมู่ ' + selectedMoo : 'ทุกหมู่ที่มีสิทธิ์'}{selectedVhv ? ' • ' + selectedVhv : ' • อสม. ทุกคน'} • เลือกสถานะเพื่อดูบ้านที่ยังไม่เริ่มหรือสำรวจบางส่วน</p></div>
+      {!busy && !error && <div className="mb-3"><button type="button" className="btn btn-outline-primary" disabled={!fieldWork.length} onClick={printFieldWork}>พิมพ์ใบงาน อสม. ({fieldWork.length} หลัง)</button><small className="d-block text-muted">รวมบ้านค้างสำรวจหรือขาดพิกัดทุกหน้า ตามหมู่และ อสม. ที่เลือก</small></div>}
       <div className="row g-2 mb-3">
         <div className="col-12 col-md-4"><label htmlFor="work-moo" className="form-label">หมู่บ้าน</label><select id="work-moo" className="form-select" value={selectedMoo} onChange={e => { setMoo(e.target.value); setVhv(''); }}><option value="">ทุกหมู่ที่มีสิทธิ์</option>{moos.map(m => <option key={m} value={m}>หมู่ {m}</option>)}</select></div>
         <div className="col-12 col-md-4"><label htmlFor="work-vhv" className="form-label">อสม.</label><select id="work-vhv" className="form-select" value={selectedVhv} onChange={e => setVhv(e.target.value)}><option value="">ทุกคน</option>{owners.map(name => <option key={name} value={name}>{name}</option>)}</select></div>

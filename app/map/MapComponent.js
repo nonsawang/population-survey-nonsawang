@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { supabase } from '@/lib/supabase';
-import { normalizePersonRecord, compareThaiNumeric, isBedriddenElder, isHomeboundElder } from '@/lib/proactive-dashboard.mjs';
+import { normalizePersonRecord, compareThaiNumeric, isBedriddenElder, isHomeboundElder, isMultiChronicResident } from '@/lib/proactive-dashboard.mjs';
 import SmartPin from './SmartPin';
 import {severity,distanceMeters,visitOrder} from '@/lib/health-gis.mjs';
 import VillageBoundaries from './VillageBoundaries';
@@ -53,7 +53,7 @@ function houseMatchesFilter(house, filterMode) {
     case 'hpv_pending':
       return norms.some(r => r.hpvEligible && !r.hpvDone);
     case 'multi_chronic':
-      return norms.some(r => r.chronicList.length >= 2);
+      return norms.some(isMultiChronicResident);
     case 'vhv_pending':
       return norms.some(
         r =>
