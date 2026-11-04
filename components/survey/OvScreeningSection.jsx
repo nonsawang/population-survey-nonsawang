@@ -12,14 +12,11 @@ const QUESTIONS = [
 export default function OvScreeningSection({ person }) {
   const answers = person.ovAnswers || {};
   const hasData = QUESTIONS.some(([key]) => !!answers[key]);
-  return <section className="border rounded p-3 mt-3" aria-label="คัดกรองพยาธิใบไม้ตับ ปี 2569">
-    <div className="fw-bold">คัดกรองพยาธิใบไม้ตับ (ปี 69) — ปิดใช้งาน</div>
+  return <details key={person.person_id ?? person.personId} className="border rounded p-3 mt-3">
+    <summary className="fw-bold">ดูผลคัดกรองพยาธิใบไม้ตับและความเสี่ยงมะเร็งท่อน้ำดี (ปี 2569)</summary>
     <p className="small text-muted mb-0">ไม่เปิดรับการบันทึกคัดกรองปี 2569 ข้อมูลเดิมยังเก็บไว้</p>
-    {hasData && <details className="small mt-2">
-      <summary>ดูคำตอบเดิม</summary>
-      <dl className="mb-0 mt-2">{QUESTIONS.map(([key, label]) => <div key={key}>
+    {hasData ? <dl className="small mb-0 mt-2">{QUESTIONS.map(([key, label]) => <div key={key}>
         <dt>{label}</dt><dd>{answers[key] || 'ยังไม่มีข้อมูล'}</dd>
-      </div>)}</dl>
-    </details>}
-  </section>;
+      </div>)}</dl> : <p className="small mb-0 mt-2">ยังไม่มีผลคัดกรอง</p>}
+  </details>;
 }
