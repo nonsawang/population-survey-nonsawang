@@ -5,6 +5,17 @@ import { useAuth } from '@/lib/auth';
 import liff from '@line/liff';
 import ProfileAvatar from '@/components/ProfileAvatar';
 
+let lineInitialization;
+function prepareLine() {
+  if (!lineInitialization) {
+    lineInitialization = liff.init({ liffId: process.env.NEXT_PUBLIC_LIFF_ID }).catch(error => {
+      lineInitialization = undefined;
+      throw error;
+    });
+  }
+  return lineInitialization;
+}
+
 export default function LoginPage() {
   const { user, loading, authError, login, loginWithLine } = useAuth();
   const router = useRouter();
@@ -20,12 +31,15 @@ export default function LoginPage() {
     if (!loading && user) router.replace(['admin','manager'].includes(user.role) ? '/dashboard' : '/');
   }, [user, loading, router]);
   useEffect(() => {
+    if (!user && process.env.NEXT_PUBLIC_LIFF_ID) prepareLine().catch(() => {});
+  }, [user]);
+  useEffect(() => {
     if (loading || user || !process.env.NEXT_PUBLIC_LIFF_ID) return;
     let cancelled = false;
     (async () => {
       setBusy(true);
       try {
-        await liff.init({ liffId: process.env.NEXT_PUBLIC_LIFF_ID });
+        await prepareLine();
         if (cancelled) return;
         setLineReady(true);
         if (liff.isLoggedIn() && !sessionStorage.getItem('authManualLogout')) {
