@@ -23,6 +23,7 @@ const FILTER_LABELS = {
   hpv_pending: 'ค้างตรวจมะเร็งปากมดลูก HPV DNA (สตรี 30–60 ปี)',
   multi_chronic: 'ผู้ป่วยโรคเรื้อรังซับซ้อน (ตั้งแต่ 2 โรคขึ้นไป)',
   vhv_pending: 'บ้านในใบงานที่ค้างคัดกรอง 4 KPI',
+  missing_gps: 'บ้านยังไม่มีพิกัด GPS (รอปักหมุด)',
 };
 
 // 🟢 ฟังก์ชันสร้างไอคอนหมุดตามสี (แคชไว้ตามสีเพื่อไม่ให้สร้าง L.Icon ใหม่ทุกครั้งที่ render)
@@ -101,7 +102,10 @@ export default function MapComponent() {
       const vhvParam = params.get('vhv');
       const houseParam = params.get('house');
       if (mooParam) setSelectedMoo(mooParam.toLowerCase() === 'all' ? 'ALL' : mooParam);
-      if (filterParam && FILTER_LABELS[filterParam]) setSelectedFilter(filterParam);
+      if (filterParam && FILTER_LABELS[filterParam]) {
+        setSelectedFilter(filterParam);
+        if (filterParam === 'missing_gps') setMissingOpen(true);
+      }
       if (vhvParam) setSelectedVhv(vhvParam);
       if (houseParam) setSelectedHouse(houseParam);
     }
@@ -238,17 +242,17 @@ export default function MapComponent() {
             boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
           }}
         >
-          <div className="d-flex flex-wrap gap-2 mb-2">
-            <label>มุมมอง <select value={layer} onChange={e=>{setLayer(e.target.value);setFocus(null);}}>
+          <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <label className="small fw-bold d-inline-flex align-items-center gap-1">มุมมอง <select className="form-select form-select-sm w-auto" value={layer} onChange={e=>{setLayer(e.target.value);setFocus(null);}}>
               <option value="village">แยกสีตามหมู่บ้าน</option><option value="severity">โรคเรื้อรัง / ความรุนแรง</option>
               <option value="pending">บ้านค้างคัดกรอง</option><option value="radius">สำรวจรัศมี 100 เมตร</option></select></label>
-            <label>อสม. <select value={selectedVhv} onChange={e=>setSelectedVhv(e.target.value)}><option value="ALL">ทุกคน</option>{vhvs.map(v=><option key={v}>{v}</option>)}</select></label></div>
-          {loadState==='loading' && <p role="status">กำลังโหลดรายละเอียดบ้านและงานคัดกรอง…</p>}
-          {loadState==='error' && <p role="alert">โหลดทะเบียนบ้านไม่สำเร็จ <button onClick={()=>setReload(n=>n+1)}>ลองใหม่</button></p>}
-          {layer==='severity' && <small>แดง ติดเตียงหรือมีโรคเรื้อรังตั้งแต่ 2 โรค • ส้ม เบาหวาน/ความดัน • เทา โรคอื่น • เขียว ไม่มีโรคเรื้อรังที่บันทึก</small>}
-          {layer==='village' && <div className="small">{mooOptions.map((m,i)=><span key={m} className="me-2"><b style={{color:villageColors[i%villageColors.length]}}>●</b> หมู่ {m}</span>)}</div>}
-          {layer==='pending' && <small>ค้าง HEP, FIT, HPV หรือพัฒนาการเด็ก ตามกลุ่มเป้าหมาย</small>}
-          {layer==='radius' && <p>เลือกบ้านบนแผนที่ แล้วกด “ตีวง 100 เมตร” {focus && <>รอบบ้าน {focus.house} หมู่ {focus.moo} พบ {nearby.length} หลัง <details><summary>ดูรายชื่อบ้านในวง</summary>{nearby.map(h=><div key={h.key}>หมู่ {h.moo} บ้าน {h.house}</div>)}</details></>}</p>}
+            <label className="small fw-bold d-inline-flex align-items-center gap-1">อสม. <select className="form-select form-select-sm w-auto" value={selectedVhv} onChange={e=>setSelectedVhv(e.target.value)}><option value="ALL">ทุกคน</option>{vhvs.map(v=><option key={v}>{v}</option>)}</select></label></div>
+          {loadState==='loading' && <p role="status" className="small text-muted mb-1">กำลังโหลดรายละเอียดบ้านและงานคัดกรอง…</p>}
+          {loadState==='error' && <p role="alert" className="small text-danger mb-1">โหลดทะเบียนบ้านไม่สำเร็จ <button className="btn btn-sm btn-outline-danger py-0" onClick={()=>setReload(n=>n+1)}>ลองใหม่</button></p>}
+          {layer==='severity' && <small className="d-block mb-1 text-secondary">แดง ติดเตียงหรือมีโรคเรื้อรังตั้งแต่ 2 โรค • ส้ม เบาหวาน/ความดัน • เทา โรคอื่น • เขียว ไม่มีโรคเรื้อรังที่บันทึก</small>}
+          {layer==='village' && <div className="small mb-1">{mooOptions.map((m,i)=><span key={m} className="me-2"><b style={{color:villageColors[i%villageColors.length]}}>●</b> หมู่ {m}</span>)}</div>}
+          {layer==='pending' && <small className="d-block mb-1 text-secondary">ค้าง HEP, FIT, HPV หรือพัฒนาการเด็ก ตามกลุ่มเป้าหมาย</small>}
+          {layer==='radius' && <p className="small mb-1">เลือกบ้านบนแผนที่ แล้วกด “ตีวง 100 เมตร” {focus && <>รอบบ้าน {focus.house} หมู่ {focus.moo} พบ {nearby.length} หลัง <details><summary>ดูรายชื่อบ้านในวง</summary>{nearby.map(h=><div key={h.key}>หมู่ {h.moo} บ้าน {h.house}</div>)}</details></>}</p>}
           <div className="row g-2 align-items-center">
             <div className="col-6 col-md-2">
               <select
@@ -266,7 +270,11 @@ export default function MapComponent() {
               <select
                 className="form-select form-select-sm"
                 value={selectedFilter}
-                onChange={e => setSelectedFilter(e.target.value)}
+                onChange={e => {
+                  const val = e.target.value;
+                  setSelectedFilter(val);
+                  if (val === 'missing_gps') setMissingOpen(true);
+                }}
               >
                 {Object.entries(FILTER_LABELS).map(([k, label]) => (
                   <option key={k} value={k}>{label}</option>
@@ -296,11 +304,11 @@ export default function MapComponent() {
               </a>
             </div>
           </div>
-          <details className="mt-2" onToggle={e=>setMissingOpen(e.currentTarget.open)}><summary>บ้านขาดพิกัด ({missing.length} หลัง)</summary>
+          <details className="mt-2" open={missingOpen} onToggle={e=>setMissingOpen(e.currentTarget.open)}><summary className="small fw-bold text-secondary" style={{cursor:'pointer'}}>บ้านขาดพิกัด ({missing.length} หลัง)</summary>
             {!missingOpen ? null : pin ? <SmartPin key={pin.key} house={pin} icon={icon('blue')} onClose={()=>setPin(null)} onSaved={()=>{setPin(null);setReload(n=>n+1);}}/> :
-            <div style={{maxHeight:180,overflow:'auto'}}>{missing.map(h=><div key={h.key}>หมู่ {h.moo} บ้าน {h.house} • {h.vhv || 'ยังไม่มอบหมาย'} <button onClick={()=>setPin(h)}>ปักหมุด</button></div>)}</div>}
+            <div className="mt-1" style={{maxHeight:180,overflow:'auto'}}>{missing.map(h=><div key={h.key} className="d-flex justify-content-between align-items-center py-1 border-bottom small"><span>หมู่ {h.moo} บ้าน {h.house} • {h.vhv || 'ยังไม่มอบหมาย'}</span> <button className="btn btn-sm btn-outline-primary py-0 px-2 rounded-pill" onClick={()=>setPin(h)}>ปักหมุด</button></div>)}</div>}
           </details>
-          {route.length>0 && <details open><summary>เส้นทางเยี่ยมบ้าน {route.length}/10 หลัง</summary><small>เริ่มจากบ้านแรกที่เลือก แล้วเรียงบ้านใกล้สุดตามระยะเส้นตรง</small><ol>{route.map(h=><li key={h.key}>บ้าน {h.house} หมู่ {h.moo} <button onClick={()=>setVisits(v=>v.filter(x=>x.key!==h.key))}>เอาออก</button></li>)}</ol></details>}
+          {route.length>0 && <details open className="mt-2"><summary className="small fw-bold text-success">เส้นทางเยี่ยมบ้าน {route.length}/10 หลัง</summary><small className="d-block text-muted">เริ่มจากบ้านแรกที่เลือก แล้วเรียงบ้านใกล้สุดตามระยะเส้นตรง</small><ol className="small mb-0 ps-3">{route.map(h=><li key={h.key} className="py-1">บ้าน {h.house} หมู่ {h.moo} <button className="btn btn-sm btn-outline-danger py-0 px-2 ms-1 rounded-pill" onClick={()=>setVisits(v=>v.filter(x=>x.key!==h.key))}>เอาออก</button></li>)}</ol></details>}
           {selectedVhv !== 'ALL' && (
             <div className="small text-primary mt-1">
               <i className="fa-solid fa-user-nurse me-1" />
@@ -333,8 +341,8 @@ export default function MapComponent() {
                   </div>
 
                   <div className="d-flex gap-1 my-2">
-                    {layer==='radius' && <button onClick={()=>setFocus(h)}>ตีวง 100 เมตร</button>}
-                    <button disabled={visits.length>=10||visits.some(v=>v.key===h.key)} onClick={()=>setVisits(v=>v.length<10&&!v.some(x=>x.key===h.key)?[...v,h]:v)}>เลือกเยี่ยมบ้าน</button>
+                    {layer==='radius' && <button className="btn btn-sm btn-outline-danger flex-fill" onClick={()=>setFocus(h)}>ตีวง 100 เมตร</button>}
+                    <button className="btn btn-sm btn-outline-primary flex-fill" disabled={visits.length>=10||visits.some(v=>v.key===h.key)} onClick={()=>setVisits(v=>v.length<10&&!v.some(x=>x.key===h.key)?[...v,h]:v)}>เลือกเยี่ยมบ้าน</button>
                   </div>
                   {h.members.map((m, i) => {
                     const n = m.norm;

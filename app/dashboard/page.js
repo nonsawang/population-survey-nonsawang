@@ -216,7 +216,9 @@ export default function DashboardPage() {
   const pct = (n, d) => (d > 0 ? ((n / d) * 100).toFixed(1) : '0.0');
   if (loading || !user) return <div className="text-center py-5"><span className="spinner-border text-primary"/></div>;
   const d = data;
-  const mooList = proactive?.mooList || (d ? Object.keys(d.byMoo).sort((a, b) => Number(a) - Number(b)) : []);
+  const allowedMoos = user?.role === 'vhv' ? String(user.moo || '').split(',').map(m => m.trim()).filter(Boolean) : null;
+  const rawMooList = proactive?.mooList || (d ? Object.keys(d.byMoo).sort((a, b) => Number(a) - Number(b)) : []);
+  const mooList = allowedMoos?.length ? rawMooList.filter(m => allowedMoos.includes(String(m))) : rawMooList;
 
   return (
     <>

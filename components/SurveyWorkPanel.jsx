@@ -9,7 +9,7 @@ import { inSurveyScope } from '@/lib/population-status';
 
 const PAGE_SIZE = 20;
 const FETCH_LIMIT = 1000;
-const thCollator = new Intl.Collator('th');
+const thCollator = new Intl.Collator('th', { numeric: true });
 const labels = { notStarted: 'ยังไม่เริ่ม', partial: 'สำรวจบางส่วน', complete: 'สำรวจครบ' };
 
 export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse }) {
@@ -96,7 +96,10 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
       if (Number.isFinite(lat) && Number.isFinite(lon) && lat !== 0 && lon !== 0 && Math.abs(lat) <= 90 && Math.abs(lon) <= 180)
         pinned.add(JSON.stringify([String(r.moo ?? '').trim(), String(r.house ?? '').trim()]));
     }
-    return baseSummary.houses.filter(h => h.house && h.house !== '-' && (h.pending || !pinned.has(h.key)))
+    return baseSummary.houses
+      .filter(h => h.house && h.house !== '-' && (h.pending || !pinned.has(h.key)))
+      .slice()
+      .sort((a, b) => thCollator.compare(String(a.moo ?? ''), String(b.moo ?? '')) || thCollator.compare(String(a.house ?? ''), String(b.house ?? '')))
       .map(h => [h.moo, h.house, h.owners.join(', '), h.pending ? labels[h.status] + ' (ค้าง ' + h.pending + ' คน)' : 'ครบแล้ว', pinned.has(h.key) ? 'มีพิกัด' : 'ต้องปักหมุด', '']);
   }, [rows, baseSummary]);
   function printFieldWork() {
