@@ -147,6 +147,9 @@ export default function VillageBoundaries({ baseMap = 'street', villageStats = {
     L.DomEvent.disableScrollPropagation(el);
     return ()=>L.DomEvent.off(el);
   },[]);
+  const byMoo=new Map(published.features.map(f=>[f.properties.moo,{feature:f,local:false}]));
+  for(const f of local.features)byMoo.set(f.properties.moo,{feature:f,local:true});
+  const features=[...byMoo.values()];
   useEffect(()=>{
     const el=legendRef.current;if(!el)return;
     L.DomEvent.disableClickPropagation(el);
@@ -157,9 +160,6 @@ export default function VillageBoundaries({ baseMap = 'street', villageStats = {
     try {localStorage.setItem(storageKey,JSON.stringify(next));setDrafts(next);setError('');return true;}
     catch {setError('บันทึกไม่ได้ พื้นที่เก็บข้อมูลเบราว์เซอร์อาจเต็ม กรุณาส่งออกร่างเดิมก่อน');return false;}
   }
-  const byMoo=new Map(published.features.map(f=>[f.properties.moo,{feature:f,local:false}]));
-  for(const f of local.features)byMoo.set(f.properties.moo,{feature:f,local:true});
-  const features=[...byMoo.values()];
   function save() {
     try {
       const feature=makeBoundary(moo,name||villageCenter(moo)?.name||`หมู่ ${moo}`,source,points,VALID_MOOS);
