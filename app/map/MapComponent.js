@@ -113,13 +113,13 @@ function VillageClusterMarkers({ clusters }) {
   const map = useMap();
   return clusters.map(c => {
     const bubbleHtml = `
-      <div class="health-gis-cluster ${c.hasRed ? 'health-gis-pulse' : ''}" style="border-color:${c.color};">
+      <div class="health-gis-cluster ${c.hasRed ? 'health-gis-pulse' : ''}" style="border-color:${c.color};width:max-content;">
         <div class="health-gis-cluster-title" style="background:${c.color};">
-          ม.${c.moo}${c.villageName ? ` ${c.villageName}` : ''} (${c.houseCount} หลัง)
+          ม.${c.moo} • ${c.houseCount} หลัง
         </div>
         <div class="health-gis-cluster-sub">
           <span>เปราะบาง <b>${c.vulnerableCount}</b></span>
-          ${c.pendingCount > 0 ? `<span>• ค้างตรวจ <b>${c.pendingCount}</b></span>` : ''}
+          ${c.pendingCount > 0 ? `<span>• ค้าง <b>${c.pendingCount}</b></span>` : ''}
         </div>
       </div>
     `;
@@ -705,10 +705,10 @@ export default function MapComponent() {
           .gis-mobile-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
         }
         .health-gis-pin{display:block;width:18px;height:18px;border:2px solid white;border-radius:50%;box-shadow:0 0 3px #222}
-        .health-gis-cluster{transform:translate(-50%,-50%);background:rgba(255,255,255,0.96);border:2.5px solid #2453ae;border-radius:14px;box-shadow:0 4px 12px rgba(15,23,42,0.28);overflow:hidden;white-space:nowrap;cursor:pointer;transition:transform .15s ease}
-        .health-gis-cluster:hover{transform:translate(-50%,-50%) scale(1.06)}
-        .health-gis-cluster-title{color:#fff;font:700 12px/1.2 'Sarabun',sans-serif;padding:4px 10px;text-align:center}
-        .health-gis-cluster-sub{color:#1e293b;font:600 11px/1.2 'Sarabun',sans-serif;padding:4px 10px;text-align:center;background:#f8fafc}
+        .health-gis-cluster{display:block;width:max-content;transform:translate(-50%,14px);background:rgba(255,255,255,0.96);border:2px solid #2453ae;border-radius:10px;box-shadow:0 3px 10px rgba(15,23,42,0.28);overflow:hidden;white-space:nowrap;cursor:pointer;transition:transform .15s ease}
+        .health-gis-cluster:hover{transform:translate(-50%,14px) scale(1.06)}
+        .health-gis-cluster-title{color:#fff;font:700 11px/1.2 'Sarabun',sans-serif;padding:3px 8px;text-align:center}
+        .health-gis-cluster-sub{color:#1e293b;font:600 10px/1.2 'Sarabun',sans-serif;padding:3px 8px;text-align:center;background:#f8fafc}
         .health-gis-pulse{animation:gisPulse 1.7s infinite}
         @keyframes gisPulse{50%{box-shadow:0 0 0 6px #ef444455}}
         @media(prefers-reduced-motion:reduce){.health-gis-pulse{animation:none}}
