@@ -12,8 +12,97 @@ function Drawing({active,onPoint}) {
   useMapEvents({click:event=>{if(active)onPoint(event.latlng)}});
   return null;
 }
-export default function VillageBoundaries() {
+
+export function resolveChoroplethStyle(moo, stats, choroplethMode = 'auto', activeLayer = 'village') {
+  const idx = Math.max(0, VALID_MOOS.indexOf(String(moo)));
+  const fallbackColor = BOUNDARY_COLORS[idx % BOUNDARY_COLORS.length];
+  const effectiveMode =
+    choroplethMode === 'auto'
+      ? activeLayer === 'severity'
+        ? 'vulnerable'
+        : activeLayer === 'pending'
+        ? 'kpi'
+        : 'coverage'
+      : choroplethMode;
+
+  if (effectiveMode === 'village' || !stats || !stats.totalHouses) {
+    return {
+      mode: 'village',
+      tier: 'village',
+      color: fallbackColor,
+      fillColor: fallbackColor,
+      badge: 'สีประจำหมู่บ้าน',
+    };
+  }
+
+  if (effectiveMode === 'vulnerable') {
+    if (stats.vulnerablePct >= 25 || stats.redHouses >= 5) {
+      return {
+        mode: effectiveMode,
+        tier: 'red',
+        color: '#b91c1c',
+        fillColor: '#ef4444',
+        badge: '🔴 เคสเปราะบางหนาแน่น (เร่งด่วน)',
+      };
+    }
+    if (stats.vulnerablePct >= 10 || stats.vulnerableHouses >= 3) {
+      return {
+        mode: effectiveMode,
+        tier: 'amber',
+        color: '#b45309',
+        fillColor: '#f59e0b',
+        badge: '🟠 มีเคสเปราะบางเฝ้าระวังปานกลาง',
+      };
+    }
+    return {
+      mode: effectiveMode,
+      tier: 'green',
+      color: '#15803d',
+      fillColor: '#16a34a',
+      badge: '🟢 ความชุกกลุ่มเปราะบางต่ำ / ดูแลทั่วถึง',
+    };
+  }
+
+  const metricPct =
+    effectiveMode === 'gps'
+      ? stats.gpsPct
+      : effectiveMode === 'kpi'
+      ? stats.kpiPct
+      : stats.overallCoveragePct;
+  const denseVulnerable = effectiveMode === 'coverage' && stats.vulnerablePct >= 30;
+
+  if (metricPct < 50 || denseVulnerable) {
+    return {
+      mode: effectiveMode,
+      tier: 'red',
+      color: '#b91c1c',
+      fillColor: '#ef4444',
+      badge: denseVulnerable
+        ? `🔴 ต้องเร่งรัด (เปราะบางหนาแน่น ${stats.vulnerablePct}%)`
+        : `🔴 ต้องเร่งรัด (<50% • ปัจจุบัน ${metricPct}%)`,
+    };
+  }
+  if (metricPct <= 80) {
+    return {
+      mode: effectiveMode,
+      tier: 'amber',
+      color: '#b45309',
+      fillColor: '#f59e0b',
+      badge: `🟠 ความครอบคลุมปานกลาง 50–80% (${metricPct}%)`,
+    };
+  }
+  return {
+    mode: effectiveMode,
+    tier: 'green',
+    color: '#15803d',
+    fillColor: '#16a34a',
+    badge: `🟢 ความครอบคลุมดีเยี่ยม >80% (${metricPct}%)`,
+  };
+}
+
+export default function VillageBoundaries({ baseMap = 'street', villageStats = {}, layer = 'village' }) {
   const map=useMap(); const {user}=useAuth();
+  const isSatellite = baseMap === 'satellite' || baseMap === 'hybrid';
   const canEdit=['staff','admin'].includes(user?.role);
   const identity=user?.userId || user?.username || '';
   const storageKey=identity?`village-boundaries-draft-v1:${identity}`:null;
@@ -21,12 +110,13 @@ export default function VillageBoundaries() {
   const [drafts,setDrafts]=useState(emptyBoundaries);
   const [loadedKey,setLoadedKey]=useState(null);
   const [open,setOpen]=useState(false),[visible,setVisible]=useState(true);
+  const [choroplethMode,setChoroplethMode]=useState('auto');
   const [showCenters,setShowCenters]=useState(true),[showOtherVillages,setShowOtherVillages]=useState(false);
   const [referenceMoo,setReferenceMoo]=useState(VALID_MOOS[0]);
   const [moo,setMoo]=useState(VALID_MOOS[0]),[name,setName]=useState(''),[source,setSource]=useState('');
   const [drawing,setDrawing]=useState(false),[points,setPoints]=useState([]);
   const [error,setError]=useState(''),[notice,setNotice]=useState(''),[baseError,setBaseError]=useState('');
-  const panel=useRef(null),fileInput=useRef(null);
+  const panel=useRef(null),legendRef=useRef(null),fileInput=useRef(null);
   const currentKey=useRef(storageKey);currentKey.current=storageKey;
   const local=canEdit && storageKey===loadedKey?drafts:emptyBoundaries();
   const referencePoints=VILLAGE_CENTERS.filter(v=>showOtherVillages || VALID_MOOS.includes(v.moo));
@@ -57,6 +147,12 @@ export default function VillageBoundaries() {
     L.DomEvent.disableScrollPropagation(el);
     return ()=>L.DomEvent.off(el);
   },[]);
+  useEffect(()=>{
+    const el=legendRef.current;if(!el)return;
+    L.DomEvent.disableClickPropagation(el);
+    L.DomEvent.disableScrollPropagation(el);
+    return ()=>L.DomEvent.off(el);
+  },[visible,features.length]);
   function persist(next) {
     try {localStorage.setItem(storageKey,JSON.stringify(next));setDrafts(next);setError('');return true;}
     catch {setError('บันทึกไม่ได้ พื้นที่เก็บข้อมูลเบราว์เซอร์อาจเต็ม กรุณาส่งออกร่างเดิมก่อน');return false;}
@@ -107,10 +203,70 @@ export default function VillageBoundaries() {
       <Tooltip pane="tooltipPane" permanent direction="center" className={styles.pointLabel}>{v.moo}</Tooltip>
       {!drawing && <Popup pane="popupPane"><strong>หมู่ {v.moo} {v.name}</strong><br/>ตำบล{v.tambon}<br/>{VALID_MOOS.includes(v.moo)?'หมู่ในพื้นที่รับผิดชอบของระบบ':'หมู่อื่นในตำบล'}<br/>{v.lat}, {v.lng}<br/>จุดอ้างอิงหมู่บ้าน ไม่ใช่เส้นอาณาเขต<br/><small>{v.source}</small></Popup>}
     </CircleMarker>)}</Pane>
-    {visible && features.map(({feature,local:isLocal})=><Polygon key={`${feature.properties.moo}-${isLocal}`} positions={leafletPositions(feature.geometry)} pathOptions={{color:BOUNDARY_COLORS[VALID_MOOS.indexOf(feature.properties.moo)%BOUNDARY_COLORS.length],weight:3,fillOpacity:.12,dashArray:isLocal?'7 5':undefined}} interactive={!drawing}>
-      <Tooltip sticky>หมู่ {feature.properties.moo} • {feature.properties.name}<br/>{isLocal?'ร่างบนเครื่องนี้':'แนวเขตส่วนกลาง'}<br/>ที่มา: {feature.properties.source}</Tooltip>
-    </Polygon>)}
+    {visible && features.map(({feature,local:isLocal})=>{
+      const mooKey = String(feature.properties.moo);
+      const stats = villageStats?.[mooKey];
+      const polyStyle = resolveChoroplethStyle(mooKey, stats, choroplethMode, layer);
+      const isHeatmap = polyStyle.tier !== 'village';
+      return (
+        <Polygon
+          key={`${mooKey}-${isLocal}`}
+          positions={leafletPositions(feature.geometry)}
+          pathOptions={{
+            color: polyStyle.color,
+            fillColor: polyStyle.fillColor,
+            weight: baseMap === 'hybrid' ? 4 : 3,
+            fillOpacity: isHeatmap ? (isSatellite ? 0.34 : 0.24) : (isSatellite ? 0.18 : 0.12),
+            dashArray: isLocal ? '7 5' : undefined,
+          }}
+          interactive={!drawing}
+        >
+          <Tooltip sticky>
+            <strong>หมู่ {mooKey} • {feature.properties.name}</strong>
+            <br />
+            <span>{polyStyle.badge}</span>
+            {stats && stats.totalHouses > 0 && (
+              <>
+                <br />
+                📍 พิกัด GPS: {stats.gpsHouses}/{stats.totalHouses} หลัง ({stats.gpsPct}%)
+                <br />
+                🩺 คัดกรอง 4 KPI: {stats.kpiDone}/{stats.kpiTarget} รายการ ({stats.kpiPct}%)
+                <br />
+                ❤️ กลุ่มเปราะบาง: {stats.vulnerableHouses} หลัง ({stats.vulnerablePct}%)
+              </>
+            )}
+            <br />
+            <small>{isLocal ? 'ร่างบนเครื่องนี้' : 'แนวเขตส่วนกลาง'} • ที่มา: {feature.properties.source}</small>
+          </Tooltip>
+        </Polygon>
+      );
+    })}
     {drawing && points.length>0 && <><Polyline positions={points.map(p=>[p.lat,p.lng])} pathOptions={{color:'#e11d48',dashArray:'6 4'}} interactive={false}/>{points.map((p,i)=><CircleMarker key={i} center={[p.lat,p.lng]} radius={5} pathOptions={{color:'#e11d48'}} interactive={false}/>)}</>}
+    {visible && features.length>0 && (
+      <div className={styles.legendBar} ref={legendRef} aria-label="คำอธิบายสีพื้นที่แนวเขตหมู่บ้าน (Choropleth Heatmap)">
+        <strong>สีพื้นที่หมู่บ้าน:</strong>
+        <select
+          className={styles.legendSelect}
+          value={choroplethMode}
+          onChange={e => setChoroplethMode(e.target.value)}
+          aria-label="ตัวชี้วัดระบายสีแนวเขตหมู่บ้าน"
+        >
+          <option value="auto">อัตโนมัติ (ตามมุมมองแผนที่)</option>
+          <option value="coverage">ความครอบคลุมรวม (GPS + 4 KPI)</option>
+          <option value="gps">ความครอบคลุมพิกัดบ้าน (GPS)</option>
+          <option value="kpi">ความครอบคลุมคัดกรอง 4 KPI</option>
+          <option value="vulnerable">ความชุกเคสเปราะบาง</option>
+          <option value="village">สีประจำหมู่บ้าน (คงที่)</option>
+        </select>
+        {choroplethMode !== 'village' && (
+          <>
+            <span><i className={styles.legendDot} style={{background:'#16a34a'}}/>&gt;80% (ดีเยี่ยม)</span>
+            <span><i className={styles.legendDot} style={{background:'#f59e0b'}}/>50–80% (ปานกลาง)</span>
+            <span><i className={styles.legendDot} style={{background:'#ef4444'}}/>&lt;50% / เปราะบางสูง (เร่งรัด)</span>
+          </>
+        )}
+      </div>
+    )}
     <div className={styles.tools} ref={panel}>
       <button className={styles.toggle} aria-expanded={open} onClick={e=>{e.stopPropagation();setOpen(!open)}}>อาณาเขตหมู่บ้าน {open?'▴':'▾'}</button>
       {open && <section className={styles.panel} aria-label="เครื่องมืออาณาเขตหมู่บ้าน">
@@ -124,7 +280,21 @@ export default function VillageBoundaries() {
         <div className={styles.actions}><button disabled={drawing} onClick={()=>focusCenter(referenceMoo)}>ไปยังจุดอ้างอิง</button><button disabled={drawing} onClick={()=>{setShowCenters(true);map.fitBounds(referencePoints.map(v=>[v.lat,v.lng]),{padding:[40,40],maxZoom:14});}}>ดูจุดอ้างอิงทั้งหมด</button></div>
         <hr/>
         <label><input type="checkbox" checked={visible} onChange={e=>setVisible(e.target.checked)}/> แสดงชั้นอาณาเขต</label>
-        {features.length>0 && <div className={styles.villages}>{features.map(({feature,local:isLocal})=><button key={feature.properties.moo} onClick={()=>focus(feature)}><span style={{color:BOUNDARY_COLORS[VALID_MOOS.indexOf(feature.properties.moo)%BOUNDARY_COLORS.length]}}>●</span> หมู่ {feature.properties.moo}{isLocal?' (ร่าง)':''}</button>)}</div>}
+        <label>ระบายสีพื้นที่ตามตัวชี้วัด (Choropleth)
+          <select value={choroplethMode} onChange={e=>setChoroplethMode(e.target.value)}>
+            <option value="auto">อัตโนมัติ (ตามมุมมองแผนที่)</option>
+            <option value="coverage">ความครอบคลุมรวม (GPS + 4 KPI)</option>
+            <option value="gps">ความครอบคลุมพิกัดบ้าน (GPS)</option>
+            <option value="kpi">ความครอบคลุมคัดกรอง 4 KPI</option>
+            <option value="vulnerable">ความชุกเคสเปราะบาง</option>
+            <option value="village">สีประจำหมู่บ้าน (คงที่)</option>
+          </select>
+        </label>
+        {features.length>0 && <div className={styles.villages}>{features.map(({feature,local:isLocal})=>{
+          const mKey = String(feature.properties.moo);
+          const pStyle = resolveChoroplethStyle(mKey, villageStats?.[mKey], choroplethMode, layer);
+          return <button key={mKey} onClick={()=>focus(feature)}><span style={{color:pStyle.color}}>●</span> หมู่ {mKey}{isLocal?' (ร่าง)':''}</button>;
+        })}</div>}
         {canEdit && <>
           <hr/><p className={styles.draftNote}>ร่างเก็บเฉพาะบัญชีนี้ในเบราว์เซอร์เครื่องนี้ ยังไม่เผยแพร่ให้ผู้ใช้อื่น และอาจหายเมื่อล้างข้อมูลเบราว์เซอร์ ควรส่งออกไฟล์เก็บไว้</p>
           <label>หมู่บ้าน<select value={moo} disabled={drawing} onChange={e=>{setMoo(e.target.value);setName('')}}>{VALID_MOOS.map(m=><option key={m} value={m}>หมู่ {m} {villageCenter(m)?.name}</option>)}</select></label>

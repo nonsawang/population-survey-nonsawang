@@ -13,14 +13,18 @@ export default function TopBar() {
   const menuId = useId();
   useEffect(() => setMenuOpen(false), [pathname]);
   const mainLinks = [
-    ['/', 'สำรวจครัวเรือน', 'fa-house-user'],
+    ...(user?.role === 'vhv' ? [['/my-houses', 'บ้านของฉัน', 'fa-house']] : []),
+    [user?.role === 'vhv' ? '/?survey=1' : '/', 'สำรวจครัวเรือน', 'fa-house-user'],
     ['/tracking', 'ติดตามงานสำรวจ', 'fa-list-check'],
     ['/screening', 'คัดกรองรายบุคคล', 'fa-heart-pulse'],
     ['/map', 'แผนที่', 'fa-map-location-dot'],
     ['/dashboard', 'ภาพรวม', 'fa-chart-pie'],
   ];
   const links = user?.role === 'manager' ? [...mainLinks.filter(link => link[0] === '/dashboard'), ...mainLinks.filter(link => link[0] !== '/dashboard')] : mainLinks;
-  const navLink = ([href, label, icon]) => <Link key={href} href={href} onClick={() => setMenuOpen(false)} className={`top-bar-link${pathname === href ? ' is-active' : ''}`} aria-current={pathname === href ? 'page' : undefined}><i className={`fa-solid ${icon}`} aria-hidden="true" />{label}</Link>;
+  const navLink = ([href, label, icon]) => {
+    const active = pathname === href.split('?')[0];
+    return <Link key={href} href={href} onClick={() => setMenuOpen(false)} className={`top-bar-link${active ? ' is-active' : ''}`} aria-current={active ? 'page' : undefined}><i className={`fa-solid ${icon}`} aria-hidden="true" />{label}</Link>;
+  };
 
 
   const handleLogout = () => {

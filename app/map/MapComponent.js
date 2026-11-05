@@ -7,9 +7,11 @@ import { supabase } from '@/lib/supabase';
 import { normalizePersonRecord, compareThaiNumeric, isBedriddenElder, isHomeboundElder, isMultiChronicResident } from '@/lib/proactive-dashboard.mjs';
 import SmartPin from './SmartPin';
 import {severity,distanceMeters,visitOrder} from '@/lib/health-gis.mjs';
+import { villageCenter } from '@/lib/village-centers';
 import VillageBoundaries from './VillageBoundaries';
 
 const FETCH_LIMIT = 1000;
+const FETCH_CONCURRENCY = 4;
 const ICON_CACHE = {};
 
 const FILTER_LABELS = {
@@ -24,6 +26,32 @@ const FILTER_LABELS = {
   multi_chronic: 'ผู้ป่วยโรคเรื้อรังซับซ้อน (ตั้งแต่ 2 โรคขึ้นไป)',
   vhv_pending: 'บ้านในใบงานที่ค้างคัดกรอง 4 KPI',
   missing_gps: 'บ้านยังไม่มีพิกัด GPS (รอปักหมุด)',
+};
+
+const BASE_MAPS = {
+  street: {
+    label: 'แผนที่ถนน (OSM)',
+    shortLabel: 'แผนที่ถนน',
+    icon: 'fa-map',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  },
+  satellite: {
+    label: 'ภาพถ่ายดาวเทียม (Esri)',
+    shortLabel: 'ดาวเทียม',
+    icon: 'fa-satellite',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+  },
+  hybrid: {
+    label: 'ไฮบริด (ดาวเทียม + ถนน/ขอบเขต)',
+    shortLabel: 'ไฮบริด',
+    icon: 'fa-layer-group',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    roadsUrl: 'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+    labelsUrl: 'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Imagery &amp; Labels &copy; Esri and contributors',
+  },
 };
 
 // 🟢 ฟังก์ชันสร้างไอคอนหมุดตามสี (แคชไว้ตามสีเพื่อไม่ให้สร้าง L.Icon ใหม่ทุกครั้งที่ render)
@@ -68,21 +96,92 @@ function houseMatchesFilter(house, filterMode) {
   }
 }
 
-function Viewport({onBounds}) {
+function Viewport({onBounds, onZoom, onDrawerClose}) {
   const map=useMap();
   useEffect(()=>{
-    const update=()=>onBounds(map.getBounds().pad(0.1));
+    const update=()=>{onBounds(map.getBounds().pad(0.1));onZoom(map.getZoom());};
     update();
     map.on('moveend resize',update);
-    return ()=>map.off('moveend resize',update);
-  },[map,onBounds]);
+    const close = () => onDrawerClose(false);
+    map.on('click', close);
+    return ()=>{map.off('moveend resize',update);map.off('click',close);};
+  },[map,onBounds,onZoom,onDrawerClose]);
   return null;
 }
 
+function VillageClusterMarkers({ clusters }) {
+  const map = useMap();
+  return clusters.map(c => {
+    const bubbleHtml = `
+      <div class="health-gis-cluster ${c.hasRed ? 'health-gis-pulse' : ''}" style="border-color:${c.color};">
+        <div class="health-gis-cluster-title" style="background:${c.color};">
+          ม.${c.moo}${c.villageName ? ` ${c.villageName}` : ''} (${c.houseCount} หลัง)
+        </div>
+        <div class="health-gis-cluster-sub">
+          <span>เปราะบาง <b>${c.vulnerableCount}</b></span>
+          ${c.pendingCount > 0 ? `<span>• ค้างตรวจ <b>${c.pendingCount}</b></span>` : ''}
+        </div>
+      </div>
+    `;
+    const clusterIcon = L.divIcon({
+      className: '',
+      html: bubbleHtml,
+      iconSize: [0, 0],
+      iconAnchor: [0, 0],
+    });
+    return (
+      <Marker
+        key={`cluster-moo-${c.moo}`}
+        position={[c.lat, c.lng]}
+        icon={clusterIcon}
+        title={`คลิกเพื่อซูมดูหมู่ ${c.moo} (${c.houseCount} หลัง | เปราะบาง ${c.vulnerableCount})`}
+        eventHandlers={{
+          click: () => {
+            map.flyTo([c.lat, c.lng], 16, { duration: 0.75 });
+          },
+        }}
+      />
+    );
+  });
+}
+
 export default function MapComponent() {
+  const [zoom, setZoom] = useState(13);
+  const labelIcons = useRef(new WeakMap());
+  function houseIcon(house, color) {
+    if (zoom < 17) return icon(color, layer === 'severity' && color === 'red');
+    let cached = labelIcons.current.get(house);
+    if (!cached) { cached = new Map(); labelIcons.current.set(house, cached); }
+    if (cached.has(color)) return cached.get(color);
+    const badges = [];
+    const descriptions = [];
+    if (houseMatchesFilter(house, 'bedridden') || houseMatchesFilter(house, 'homebound')) {
+      badges.push('🛏️'); descriptions.push('มีผู้สูงอายุติดเตียงหรือติดบ้าน');
+    }
+    if (houseMatchesFilter(house, 'living_alone')) {
+      badges.push('👴'); descriptions.push('ผู้สูงอายุอยู่คนเดียว');
+    }
+    if (houseMatchesFilter(house, 'vhv_pending')) {
+      badges.push('📋'); descriptions.push('ค้างคัดกรอง');
+    }
+    const label = document.createElement('span');
+    label.style.cssText = 'display:block;width:max-content;white-space:nowrap;background:white;color:#172554;border:2px solid;border-radius:7px;padding:3px 7px;font:bold 13px sans-serif;box-shadow:0 1px 4px #555;transform:translate(-50%,-50%);';
+    label.style.borderColor = color;
+    label.textContent = [house.house, ...badges].join(' ');
+    label.title = ['บ้าน ' + house.house + ' หมู่ ' + house.moo, ...descriptions].join(' • ');
+    label.setAttribute('aria-label', label.title);
+    const result = L.divIcon({className:'', html:label, iconSize:[0,0], iconAnchor:[0,0], popupAnchor:[0,-15]});
+    cached.set(color, result);
+    return result;
+  }
   const [bounds,setBounds]=useState(null);
   const [preview,setPreview]=useState([]);
   const [missingOpen,setMissingOpen]=useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const missingSection = useRef(null);
+  useEffect(() => {
+    if (drawerOpen && missingOpen) missingSection.current?.scrollIntoView({block:'nearest'});
+  }, [drawerOpen, missingOpen]);
   const fullReady=useRef(false);
   const [houses, setHouses] = useState([]);
   const [selectedMoo, setSelectedMoo] = useState('ALL');
@@ -91,8 +190,10 @@ export default function MapComponent() {
   const [selectedHouse, setSelectedHouse] = useState('');
 
   const [layer,setLayer]=useState('village'), [focus,setFocus]=useState(null);
+  const [baseMap, setBaseMap] = useState('street');
   const [visits,setVisits]=useState([]), [pin,setPin]=useState(null), [reload,setReload]=useState(0);
   const [loadState,setLoadState]=useState('loading');
+  const [loadedPeople, setLoadedPeople] = useState(0);
   const route=useMemo(()=>visitOrder(visits),[visits]);
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -101,42 +202,59 @@ export default function MapComponent() {
       const filterParam = params.get('filter');
       const vhvParam = params.get('vhv');
       const houseParam = params.get('house');
+      const baseMapParam = params.get('basemap');
       if (mooParam) setSelectedMoo(mooParam.toLowerCase() === 'all' ? 'ALL' : mooParam);
       if (filterParam && FILTER_LABELS[filterParam]) {
         setSelectedFilter(filterParam);
-        if (filterParam === 'missing_gps') setMissingOpen(true);
+        if (filterParam === 'missing_gps') {setMissingOpen(true);setDrawerOpen(true);}
       }
       if (vhvParam) setSelectedVhv(vhvParam);
       if (houseParam) setSelectedHouse(houseParam);
+      if (baseMapParam && BASE_MAPS[baseMapParam]) {
+        setBaseMap(baseMapParam);
+      } else {
+        try {
+          const savedBase = window.localStorage.getItem('health-gis-basemap');
+          if (savedBase && BASE_MAPS[savedBase]) setBaseMap(savedBase);
+        } catch {}
+      }
     }
   }, []);
+
+  const selectBaseMap = (nextMode) => {
+    if (!BASE_MAPS[nextMode]) return;
+    setBaseMap(nextMode);
+    if (typeof window !== 'undefined') {
+      try { window.localStorage.setItem('health-gis-basemap', nextMode); } catch {}
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
 
     const fetchMapData = async () => {
-      fullReady.current=false;setPreview([]);setLoadState('loading');
+      fullReady.current=false;setPreview([]);setHouses([]);setLoadedPeople(0);setLoadState('loading');
       const allData = [];
-      let lastPersonId = null;
-
-      for (;;) {
+      const fetchPage = async (offset) => {
         let query = supabase
           .from('population')
           .select('person_id, house, moo, vhv, title, fname, lname, birth_date, residency_type, person_discharge_id, status_model_version, chronic, adl_score, hep_screen, fobt_screen, hpv_screen, child_dev, latitude, longitude')
           .order('person_id', { ascending: true })
-          .limit(FETCH_LIMIT);
-        if (lastPersonId !== null) query = query.gt('person_id', lastPersonId);
+          .range(offset, offset + FETCH_LIMIT - 1);
         if (typeof query.abortSignal === 'function') query = query.abortSignal(controller.signal);
 
         const { data, error } = await query;
-        if(cancelled)return;
         if(error)throw error;
-        const batch = data || [];
-        allData.push(...batch);
-        const nextId = batch.length ? String(batch[batch.length - 1].person_id || '') : '';
-        if (batch.length < FETCH_LIMIT || !nextId || nextId === lastPersonId) break;
-        lastPersonId = nextId;
+        return data || [];
+      };
+      for (let offset = 0; ; offset += FETCH_LIMIT * FETCH_CONCURRENCY) {
+        const pages = await Promise.all(Array.from({ length: FETCH_CONCURRENCY },
+          (_, index) => fetchPage(offset + index * FETCH_LIMIT)));
+        if (cancelled) return;
+        for (const page of pages) allData.push(...page);
+        setLoadedPeople(allData.length);
+        if (pages.some(page => page.length < FETCH_LIMIT)) break;
       }
 
       const now = new Date();
@@ -165,11 +283,15 @@ export default function MapComponent() {
       });
 
       if (!cancelled) {
-        fullReady.current=true;setPreview([]);setHouses(Object.values(groupedHouses));setLoadState('ready');
+        const completedHouses = Object.values(groupedHouses).map(house => ({
+          ...house,
+          severityColor: severity(house.members),
+        }));
+        fullReady.current=true;setPreview([]);setHouses(completedHouses);setLoadState('ready');
       }
     };
 
-    fetchMapData().catch(()=>{if(!cancelled)setLoadState('error');});
+    fetchMapData().catch(()=>{controller.abort();if(!cancelled)setLoadState('error');});
     return () => {
       cancelled = true;
       controller.abort();
@@ -204,6 +326,66 @@ export default function MapComponent() {
     return Array.from(s).sort(compareThaiNumeric);
   }, [houses]);
 
+  const villageStatsByMoo = useMemo(() => {
+    const stats = {};
+    for (const h of houses) {
+      if (!h.moo) continue;
+      const key = String(h.moo);
+      if (!stats[key]) {
+        stats[key] = {
+          moo: key,
+          totalHouses: 0,
+          gpsHouses: 0,
+          kpiTarget: 0,
+          kpiDone: 0,
+          pendingHouses: 0,
+          vulnerableHouses: 0,
+          redHouses: 0,
+        };
+      }
+      const s = stats[key];
+      s.totalHouses += 1;
+      if (h.latitude !== null) s.gpsHouses += 1;
+      if (houseMatchesFilter(h, 'vhv_pending')) s.pendingHouses += 1;
+      if (
+        houseMatchesFilter(h, 'bedridden') ||
+        houseMatchesFilter(h, 'homebound') ||
+        houseMatchesFilter(h, 'living_alone') ||
+        houseMatchesFilter(h, 'multi_chronic')
+      ) {
+        s.vulnerableHouses += 1;
+      }
+      if (h.severityColor === 'red') s.redHouses += 1;
+      for (const m of h.members) {
+        const n = m.norm;
+        if (!n) continue;
+        if (n.hepEligible) {
+          s.kpiTarget += 1;
+          if (n.hepDone) s.kpiDone += 1;
+        }
+        if (n.fobtEligible) {
+          s.kpiTarget += 1;
+          if (n.fobtDone) s.kpiDone += 1;
+        }
+        if (n.hpvEligible) {
+          s.kpiTarget += 1;
+          if (n.hpvDone) s.kpiDone += 1;
+        }
+        if (n.childEligible) {
+          s.kpiTarget += 1;
+          if (n.childDone) s.kpiDone += 1;
+        }
+      }
+    }
+    for (const s of Object.values(stats)) {
+      s.gpsPct = s.totalHouses > 0 ? Number(((s.gpsHouses / s.totalHouses) * 100).toFixed(1)) : 0;
+      s.kpiPct = s.kpiTarget > 0 ? Number(((s.kpiDone / s.kpiTarget) * 100).toFixed(1)) : 100;
+      s.overallCoveragePct = Number(((s.gpsPct + s.kpiPct) / 2).toFixed(1));
+      s.vulnerablePct = s.totalHouses > 0 ? Number(((s.vulnerableHouses / s.totalHouses) * 100).toFixed(1)) : 0;
+    }
+    return stats;
+  }, [houses]);
+
   const filteredHouses = useMemo(() => {
     return houses.filter(h => {
       if (selectedMoo !== 'ALL' && String(h.moo) !== String(selectedMoo)) return false;
@@ -214,6 +396,68 @@ export default function MapComponent() {
   }, [houses, selectedMoo, selectedVhv, selectedHouse, selectedFilter]);
 
   const visibleHouses=filteredHouses.filter(h=>h.latitude!==null && (layer!=='pending'||houseMatchesFilter(h,'vhv_pending')));
+  const isClusterMode = zoom <= 14 && selectedMoo === 'ALL' && !selectedHouse && layer !== 'radius';
+  const villageClusters = useMemo(() => {
+    if (!isClusterMode) return [];
+    const byMoo = new Map();
+    for (const h of visibleHouses) {
+      let group = byMoo.get(h.moo);
+      if (!group) {
+        group = {
+          moo: h.moo,
+          houseCount: 0,
+          vulnerableCount: 0,
+          pendingCount: 0,
+          hasRed: false,
+          latSum: 0,
+          lngSum: 0,
+        };
+        byMoo.set(h.moo, group);
+      }
+      group.houseCount += 1;
+      group.latSum += h.latitude;
+      group.lngSum += h.longitude;
+      if (
+        houseMatchesFilter(h, 'bedridden') ||
+        houseMatchesFilter(h, 'homebound') ||
+        houseMatchesFilter(h, 'living_alone') ||
+        houseMatchesFilter(h, 'multi_chronic')
+      ) {
+        group.vulnerableCount += 1;
+      }
+      if (houseMatchesFilter(h, 'vhv_pending')) {
+        group.pendingCount += 1;
+      }
+      if (h.severityColor === 'red') {
+        group.hasRed = true;
+      }
+    }
+    return Array.from(byMoo.values())
+      .sort((a, b) => compareThaiNumeric(a.moo, b.moo))
+      .map(g => {
+        const refCenter = villageCenter(g.moo);
+        const avgLat = g.latSum / g.houseCount;
+        const avgLng = g.lngSum / g.houseCount;
+        const colorIdx = Math.max(0, mooOptions.indexOf(g.moo));
+        const baseColor =
+          layer === 'severity'
+            ? g.hasRed
+              ? '#dc2626'
+              : g.vulnerableCount > 0
+              ? '#ea580c'
+              : '#16a34a'
+            : layer === 'pending'
+            ? '#d97706'
+            : villageColors[colorIdx % villageColors.length];
+        return {
+          ...g,
+          villageName: refCenter?.name || '',
+          lat: refCenter ? refCenter.lat : avgLat,
+          lng: refCenter ? refCenter.lng : avgLng,
+          color: baseColor,
+        };
+      });
+  }, [isClusterMode, visibleHouses, mooOptions, layer]);
   const onScreen=useMemo(()=>bounds ? visibleHouses.filter(h=>bounds.contains([h.latitude,h.longitude])) : [],[visibleHouses,bounds]);
   const missing=filteredHouses.filter(h=>h.latitude===null);
   const vhvs=useMemo(()=>Array.from(new Set(houses.flatMap(h=>h.members.map(m=>m.norm.vhv)).filter(Boolean))).sort(compareThaiNumeric),[houses]);
@@ -229,7 +473,15 @@ export default function MapComponent() {
     <>
       <div className="container-fluid p-0" style={{ height: 'calc(100vh - 60px)', width: '100%', position: 'relative' }}>
         {/* 🟢 แถบควบคุมตัวกรองใบงานบนแผนที่ (เชื่อมกับ Dashboard Drill-down) */}
+        <div className="gis-mobile-summary">
+          <span>{selectedMoo === 'ALL' ? 'ทุกหมู่' : 'ม.' + selectedMoo} • {selectedFilter === 'ALL' ? 'ทุกกลุ่ม' : FILTER_LABELS[selectedFilter]} • {loadState === 'ready' ? visibleHouses.length + ' หลัง' : 'กำลังโหลด'}</span>
+          <button type="button" aria-controls="gis-drawer" aria-expanded={drawerOpen} onClick={()=>{setMissingOpen(false);setDrawerOpen(v=>!v);}}>ตัวกรอง ▾</button>
+          <button type="button" aria-controls="gis-drawer" onClick={()=>{setMissingOpen(true);setDrawerOpen(true);}}>ขาดพิกัด {loadState === 'ready' ? missing.length : '…'}</button>
+        </div>
         <div
+          id="gis-drawer"
+          className={'gis-drawer' + (drawerOpen ? ' is-open' : '')}
+          onKeyDown={e=>{if(e.key==='Escape')setDrawerOpen(false);}}
           style={{
             position: 'absolute',
             top: '12px',
@@ -242,17 +494,42 @@ export default function MapComponent() {
             boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
           }}
         >
-          <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-            <label className="small fw-bold d-inline-flex align-items-center gap-1">มุมมอง <select className="form-select form-select-sm w-auto" value={layer} onChange={e=>{setLayer(e.target.value);setFocus(null);}}>
-              <option value="village">แยกสีตามหมู่บ้าน</option><option value="severity">โรคเรื้อรัง / ความรุนแรง</option>
-              <option value="pending">บ้านค้างคัดกรอง</option><option value="radius">สำรวจรัศมี 100 เมตร</option></select></label>
-            <label className="small fw-bold d-inline-flex align-items-center gap-1">อสม. <select className="form-select form-select-sm w-auto" value={selectedVhv} onChange={e=>setSelectedVhv(e.target.value)}><option value="ALL">ทุกคน</option>{vhvs.map(v=><option key={v}>{v}</option>)}</select></label></div>
-          {loadState==='loading' && <p role="status" className="small text-muted mb-1">กำลังโหลดรายละเอียดบ้านและงานคัดกรอง…</p>}
+          <div className="gis-mobile-heading"><strong>ตัวกรองและรายการบ้าน</strong><button type="button" className="btn btn-sm btn-outline-secondary" onClick={()=>setDrawerOpen(false)}>พับเก็บ ✕</button></div>
+          <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <div className="d-flex flex-wrap align-items-center gap-2">
+              <label className="small fw-bold d-inline-flex align-items-center gap-1">มุมมอง <select className="form-select form-select-sm w-auto" value={layer} onChange={e=>{setLayer(e.target.value);setFocus(null);}}>
+                <option value="village">แยกสีตามหมู่บ้าน</option><option value="severity">โรคเรื้อรัง / ความรุนแรง</option>
+                <option value="pending">บ้านค้างคัดกรอง</option><option value="radius">สำรวจรัศมี 100 เมตร</option></select></label>
+              <label className="small fw-bold d-inline-flex align-items-center gap-1">อสม. <select className="form-select form-select-sm w-auto" value={selectedVhv} onChange={e=>setSelectedVhv(e.target.value)}><option value="ALL">ทุกคน</option>{vhvs.map(v=><option key={v}>{v}</option>)}</select></label>
+            </div>
+            <div className="btn-group btn-group-sm" role="group" aria-label="สลับพื้นหลังแผนที่">
+              {Object.entries(BASE_MAPS).map(([mode, cfg]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => selectBaseMap(mode)}
+                  aria-pressed={baseMap === mode}
+                  title={cfg.label}
+                  className={`btn ${baseMap === mode ? 'btn-primary fw-bold' : 'btn-outline-secondary'}`}
+                >
+                  <i className={`fa-solid ${cfg.icon} me-1`} />
+                  {cfg.shortLabel}
+                </button>
+              ))}
+            </div>
+          </div>
+          {loadState==='loading' && <p role="status" className="small text-muted mb-1">กำลังโหลดรายละเอียดบ้านและงานคัดกรอง… {loadedPeople.toLocaleString()} คน</p>}
           {loadState==='error' && <p role="alert" className="small text-danger mb-1">โหลดทะเบียนบ้านไม่สำเร็จ <button className="btn btn-sm btn-outline-danger py-0" onClick={()=>setReload(n=>n+1)}>ลองใหม่</button></p>}
           {layer==='severity' && <small className="d-block mb-1 text-secondary">แดง ติดเตียงหรือมีโรคเรื้อรังตั้งแต่ 2 โรค • ส้ม เบาหวาน/ความดัน • เทา โรคอื่น • เขียว ไม่มีโรคเรื้อรังที่บันทึก</small>}
           {layer==='village' && <div className="small mb-1">{mooOptions.map((m,i)=><span key={m} className="me-2"><b style={{color:villageColors[i%villageColors.length]}}>●</b> หมู่ {m}</span>)}</div>}
           {layer==='pending' && <small className="d-block mb-1 text-secondary">ค้าง HEP, FIT, HPV หรือพัฒนาการเด็ก ตามกลุ่มเป้าหมาย</small>}
           {layer==='radius' && <p className="small mb-1">เลือกบ้านบนแผนที่ แล้วกด “ตีวง 100 เมตร” {focus && <>รอบบ้าน {focus.house} หมู่ {focus.moo} พบ {nearby.length} หลัง <details><summary>ดูรายชื่อบ้านในวง</summary>{nearby.map(h=><div key={h.key}>หมู่ {h.moo} บ้าน {h.house}</div>)}</details></>}</p>}
+          {isClusterMode && villageClusters.length > 0 && (
+            <div className="small text-primary fw-semibold mb-1">
+              <i className="fa-solid fa-circle-nodes me-1" />
+              โหมดสรุปรายหมู่บ้าน ({villageClusters.length} หมู่) • คลิกที่ป้ายหมู่บ้านบนแผนที่เพื่อซูมกางหมุดรายบ้านทันที
+            </div>
+          )}
           <div className="row g-2 align-items-center">
             <div className="col-6 col-md-2">
               <select
@@ -304,7 +581,7 @@ export default function MapComponent() {
               </a>
             </div>
           </div>
-          <details className="mt-2" open={missingOpen} onToggle={e=>setMissingOpen(e.currentTarget.open)}><summary className="small fw-bold text-secondary" style={{cursor:'pointer'}}>บ้านขาดพิกัด ({missing.length} หลัง)</summary>
+          <details ref={missingSection} className="mt-2" open={missingOpen} onToggle={e=>setMissingOpen(e.currentTarget.open)}><summary className="small fw-bold text-secondary" style={{cursor:'pointer'}}>บ้านขาดพิกัด ({missing.length} หลัง)</summary>
             {!missingOpen ? null : pin ? <SmartPin key={pin.key} house={pin} icon={icon('blue')} onClose={()=>setPin(null)} onSaved={()=>{setPin(null);setReload(n=>n+1);}}/> :
             <div className="mt-1" style={{maxHeight:180,overflow:'auto'}}>{missing.map(h=><div key={h.key} className="d-flex justify-content-between align-items-center py-1 border-bottom small"><span>หมู่ {h.moo} บ้าน {h.house} • {h.vhv || 'ยังไม่มอบหมาย'}</span> <button className="btn btn-sm btn-outline-primary py-0 px-2 rounded-pill" onClick={()=>setPin(h)}>ปักหมุด</button></div>)}</div>}
           </details>
@@ -317,20 +594,41 @@ export default function MapComponent() {
           )}
         </div>
 
-        <MapContainer center={[16.102000, 103.678235]} zoom={15} style={{ height: '100%', width: '100%', zIndex: 0 }}>
+        <MapContainer center={[16.102000, 103.678235]} zoom={15} maxZoom={19} style={{ height: '100%', width: '100%', zIndex: 0 }}>
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            key={`base-${baseMap}`}
+            url={BASE_MAPS[baseMap].url}
+            attribution={BASE_MAPS[baseMap].attribution}
+            maxZoom={19}
           />
-          <Viewport onBounds={setBounds}/>
+          {baseMap === 'hybrid' && (
+            <>
+              <TileLayer
+                key="hybrid-roads"
+                url={BASE_MAPS.hybrid.roadsUrl}
+                maxZoom={19}
+                opacity={0.85}
+              />
+              <TileLayer
+                key="hybrid-labels"
+                url={BASE_MAPS.hybrid.labelsUrl}
+                maxZoom={19}
+                opacity={0.95}
+              />
+            </>
+          )}
+          <Viewport onBounds={setBounds} onZoom={setZoom} onDrawerClose={setDrawerOpen}/>
           {loadState==='loading' && !houses.length && layer==='village' && selectedFilter==='ALL' && selectedVhv==='ALL' && preview.filter(r=>bounds?.contains([r.latitude,r.longitude]) && (selectedMoo==='ALL'||r.moo===selectedMoo) && (!selectedHouse||r.house===selectedHouse)).map(r=>
             <Marker key={JSON.stringify([r.moo,r.house])} position={[r.latitude,r.longitude]} icon={icon('#557998')}><Popup>บ้าน {r.house} หมู่ {r.moo} • กำลังโหลดรายละเอียด</Popup></Marker>)}
-          <VillageBoundaries />
+          <VillageBoundaries baseMap={baseMap} villageStats={villageStatsByMoo} layer={layer} />
 
           {layer==='radius'&&focus && <Circle center={[focus.latitude,focus.longitude]} radius={100}/>}
           {route.length>1 && <Polyline positions={route.map(h=>[h.latitude,h.longitude])} pathOptions={{dashArray:'6 6'}}/>}
-          {onScreen.map((h) => (
-            <Marker key={h.key} position={[h.latitude, h.longitude]} icon={layer==='severity'?icon(severity(h.members),severity(h.members)==='red'):layer==='village'?icon(villageColors[mooOptions.indexOf(h.moo)%villageColors.length]):icon(layer==='pending'?'orange':'#376b92')}>
+          {isClusterMode ? (
+            <VillageClusterMarkers clusters={villageClusters} />
+          ) : (
+          onScreen.map((h) => (
+            <Marker key={h.key} position={[h.latitude, h.longitude]} title={`บ้าน ${h.house} หมู่ ${h.moo}`} icon={houseIcon(h, layer==='severity'?h.severityColor:layer==='village'?villageColors[mooOptions.indexOf(h.moo)%villageColors.length]:layer==='pending'?'orange':'#376b92')}>
               <Popup>
                 <div style={{ fontSize: '0.9rem', minWidth: '240px', maxHeight: '280px', overflowY: 'auto' }}>
                   <div className="fw-bold text-primary mb-2 border-bottom pb-1" style={{ position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>
@@ -391,11 +689,30 @@ export default function MapComponent() {
                 </div>
               </Popup>
             </Marker>
-          ))}
+          ))
+          )}
         </MapContainer>
       </div>
 
-      <style jsx global>{`.health-gis-pin{display:block;width:18px;height:18px;border:2px solid white;border-radius:50%;box-shadow:0 0 3px #222}.health-gis-pulse{animation:gisPulse 1.7s infinite}@keyframes gisPulse{50%{box-shadow:0 0 0 6px #ef444455}}@media(prefers-reduced-motion:reduce){.health-gis-pulse{animation:none}}`}</style>
+      <style jsx global>{`
+        .gis-mobile-summary,.gis-mobile-heading{display:none}
+        @media(max-width:767px){
+          .gis-mobile-summary{display:flex;align-items:center;gap:4px;position:absolute;top:10px;left:50px;right:8px;z-index:1000;background:white;border-radius:10px;padding:4px;box-shadow:0 2px 8px #0003;font-size:12px}
+          .gis-mobile-summary span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+          .gis-mobile-summary button{flex-shrink:0;min-height:40px;border:1px solid #dbe3ef;border-radius:7px;background:#f8fafc;color:#17356b;padding:4px}
+          .gis-drawer{display:none;top:auto!important;bottom:0;left:0!important;right:0!important;max-height:65%!important;border-radius:16px 16px 0 0!important;padding-bottom:calc(12px + env(safe-area-inset-bottom))!important;overscroll-behavior:contain}
+          .gis-drawer.is-open{display:block}
+          .gis-mobile-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+        }
+        .health-gis-pin{display:block;width:18px;height:18px;border:2px solid white;border-radius:50%;box-shadow:0 0 3px #222}
+        .health-gis-cluster{transform:translate(-50%,-50%);background:rgba(255,255,255,0.96);border:2.5px solid #2453ae;border-radius:14px;box-shadow:0 4px 12px rgba(15,23,42,0.28);overflow:hidden;white-space:nowrap;cursor:pointer;transition:transform .15s ease}
+        .health-gis-cluster:hover{transform:translate(-50%,-50%) scale(1.06)}
+        .health-gis-cluster-title{color:#fff;font:700 12px/1.2 'Sarabun',sans-serif;padding:4px 10px;text-align:center}
+        .health-gis-cluster-sub{color:#1e293b;font:600 11px/1.2 'Sarabun',sans-serif;padding:4px 10px;text-align:center;background:#f8fafc}
+        .health-gis-pulse{animation:gisPulse 1.7s infinite}
+        @keyframes gisPulse{50%{box-shadow:0 0 0 6px #ef444455}}
+        @media(prefers-reduced-motion:reduce){.health-gis-pulse{animation:none}}
+      `}</style>
     </>
   );
 }

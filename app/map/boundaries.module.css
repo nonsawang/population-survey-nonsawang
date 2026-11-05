@@ -13,5 +13,8 @@
 .draftNote { background:#fff3cd;padding:10px;border-radius:8px;color:#664d03; }
 .error { color:#b42318;background:#fff1f0;padding:8px; }
 .pointLabel { background:transparent;border:0;box-shadow:none;color:#0f172a;font-size:12px;font-weight:700;padding:0;pointer-events:none; }
+.legendBar { position:absolute;bottom:14px;left:12px;z-index:999;background:rgba(255,255,255,0.95);border:1px solid #cbd5e1;border-radius:10px;padding:7px 11px;box-shadow:0 2px 10px #0002;font-family:'Sarabun',sans-serif;font-size:12px;color:#1e293b;display:flex;flex-wrap:wrap;align-items:center;gap:8px;max-width:calc(100% - 24px); }
+.legendSelect { border:1px solid #cbd5e1;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:600;background:#f8fafc;color:#0f172a; }
+.legendDot { display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:middle; }
 .tools :is(button,input,select):focus-visible { outline:3px solid #d99b00;outline-offset:2px; }
-@media(max-width:767px) { .tools { top:8px;right:8px;max-width:calc(100% - 60px); } .panel { width:290px;max-height:45dvh;padding:12px; } }
+@media(max-width:767px) { .tools { top:8px;right:8px;max-width:calc(100% - 60px); } .panel { width:290px;max-height:45dvh;padding:12px; } .legendBar { bottom:8px;left:8px;padding:5px 8px;font-size:11px;gap:6px; } }

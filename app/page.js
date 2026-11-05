@@ -52,6 +52,9 @@ export default function SurveyPage() {
   const visibleMoos = allowedMoos ? VALID_MOOS.filter(m => allowedMoos.includes(m)) : VALID_MOOS;
 
   useEffect(() => { if (!loading && !user) router.push('/login'); }, [user, loading, router]);
+  useEffect(() => {
+    if (!loading && user?.role === 'vhv' && !window.location.search) router.replace('/my-houses');
+  }, [user, loading, router]);
 
   useEffect(() => {
     if (user) {

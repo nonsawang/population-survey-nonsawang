@@ -12,7 +12,7 @@ const FETCH_LIMIT = 1000;
 const thCollator = new Intl.Collator('th', { numeric: true });
 const labels = { notStarted: 'ยังไม่เริ่ม', partial: 'สำรวจบางส่วน', complete: 'สำรวจครบ' };
 
-export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse }) {
+export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse, personal = false }) {
   const [rows, setRows] = useState([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -69,6 +69,11 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
           if (queryError) throw queryError;
           const batch = data || [];
           for (const row of batch) {
+            if (personal) {
+              const owner = String(row.vhv || '').trim().replace(/\s+/g, ' ');
+              const name = String(user.displayName || '').trim().replace(/\s+/g, ' ');
+              if (!name || owner !== name) continue;
+            }
             if (moosSet.has(String(row.moo ?? '').trim())) collected.push(row);
           }
           const nextId = batch.length ? String(batch[batch.length - 1].person_id || '') : '';
@@ -82,13 +87,20 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
     }
     load();
     return () => { cancelled = true; controller.abort(); };
-  }, [user, moos, scope, refreshKey, retry]);
+  }, [user, moos, scope, refreshKey, retry, personal]);
 
   const selectedMoo = moos.includes(moo) ? moo : '';
   const owners = useMemo(() => [...new Set(rows.filter(r => (!selectedMoo || String(r.moo).trim() === selectedMoo) && inSurveyScope(r)).map(r => vhvName(r.vhv)))].sort(thCollator.compare), [rows, selectedMoo]);
   const selectedVhv = owners.includes(vhv) ? vhv : '';
   const baseSummary = useMemo(() => summarizeSurvey(rows, selectedMoo, selectedVhv, 'all'), [rows, selectedMoo, selectedVhv]);
   const totals = baseSummary.totals;
+  const houseStatusCounts = useMemo(() => {
+    const counts = { complete: 0, partial: 0, notStarted: 0 };
+    for (const house of baseSummary.houses) {
+      if (house.house && house.house !== '-') counts[house.status]++;
+    }
+    return counts;
+  }, [baseSummary]);
   const fieldWork = useMemo(() => {
     const pinned = new Set();
     for (const r of rows) {
@@ -139,6 +151,7 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
       </div>
       <p className="small text-muted">งานคงค้างนับผู้ที่ยังไม่จำหน่ายและยังไม่ระบุประเภทอยู่อาศัย Type 0–3 ไม่นับบุคคลนอกเขต (Type 4) ผู้เสียชีวิต หรือผู้จำหน่าย ไม่รวมความครบถ้วนของการคัดกรองสุขภาพ</p>
       {legacySchema && <p className="alert alert-warning small">กำลังอ่านสถานะแบบเดิม ต้องรัน migration ใน Supabase ก่อนบันทึกสถานะตาม HOSxP</p>}
+      {personal && !busy && !error && !rows.length && <p className="alert alert-info">ยังไม่พบบ้านที่ผูกชื่อผู้รับผิดชอบตรงกับชื่อบัญชีของคุณ กรุณาให้เจ้าหน้าที่ตรวจชื่อ อสม. และหมู่บ้านที่รับผิดชอบ</p>}
       {!busy && !error && rows.length > 0 && <LocalAiAssistant tracking={aiTrackingContext} defaultFocus="tracking" title="ผู้ช่วย Local AI จัดลำดับคิวติดตามสำรวจรายหมู่บ้านและ อสม." />}
       {!busy && !error && isStaffView && <StaffSurveyOverview rows={rows} moo={selectedMoo} vhv={selectedVhv} onSelect={(m, owner, nextStatus, showHouses) => { setMoo(m); setVhv(owner); setStatus(nextStatus); setPage(1); setScrollTarget(showHouses ? 'staff-house-list-title' : 'staff-owners-title'); }} />}
       <div id="staff-house-list-title" className="staff-house-list-heading"><h3 className="h5 fw-bold mb-1">{isStaffView ? '3. บ้านที่ต้องติดตาม' : 'รายการบ้าน'}</h3><p className="small text-muted mb-3">{selectedMoo ? 'หมู่ ' + selectedMoo : 'ทุกหมู่ที่มีสิทธิ์'}{selectedVhv ? ' • ' + selectedVhv : ' • อสม. ทุกคน'} • เลือกสถานะเพื่อดูบ้านที่ยังไม่เริ่มหรือสำรวจบางส่วน</p></div>
@@ -151,6 +164,14 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
       {busy ? <p role="status">กำลังโหลดงานสำรวจ...</p> : error ? <div role="alert" className="alert alert-danger">{error} <button className="btn btn-sm btn-outline-danger" onClick={() => setRetry(v => v + 1)}>ลองอีกครั้ง</button></div> : !moos.length ? <p role="status">ยังไม่มีหมู่บ้านที่ได้รับสิทธิ์ กรุณาติดต่อผู้ดูแล</p> : <>
         <div className="row g-2 mb-3" aria-live="polite">
           {[['ประชากร', totals.people, 'คน'], ['บ้านทั้งหมด', totals.houses, 'หลัง'], ['ยังไม่สำรวจ', totals.pending, 'คน'], ['บ้านที่ยังไม่ครบ', totals.incomplete, 'หลัง']].map(([label, value, unit]) => <div className="col-6 col-lg-3" key={label}><div className="survey-work-stat rounded-3 p-3"><div className="small text-muted">{label}</div><strong className="fs-5">{value.toLocaleString('th-TH')}</strong> <small>{unit}</small></div></div>)}
+        </div>
+        <div className="d-flex gap-2 flex-wrap mb-3" role="group" aria-label="เลือกสถานะบ้านแบบด่วน">
+          {['complete', 'partial', 'notStarted'].map(key => <button
+            key={key} type="button" aria-pressed={status === key}
+            className={`btn ${status === key ? 'btn-primary' : 'btn-outline-primary'}`}
+            onClick={() => { setStatus(key); setPage(1); }}>
+            {labels[key]} {houseStatusCounts[key].toLocaleString('th-TH')} หลัง
+          </button>)}
         </div>
         <p className="small text-muted">ยอดสรุปตามหมู่บ้านและ อสม. ที่เลือก • เมื่อเลือก อสม. จะนับเฉพาะคนในความรับผิดชอบของ อสม. คนนั้น</p>
         <div className="d-flex gap-2 flex-wrap mb-3"><button className="btn btn-sm btn-warning" onClick={() => setStatus('pending')}>แสดงงานที่ยังไม่ครบ</button><button className="btn btn-sm btn-outline-secondary" onClick={() => { setMoo(''); setVhv(''); setStatus('all'); setPage(1); }}>ล้างตัวกรอง</button></div>

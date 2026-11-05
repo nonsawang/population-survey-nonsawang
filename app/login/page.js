@@ -28,7 +28,7 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
-    if (!loading && user) router.replace(['admin','manager'].includes(user.role) ? '/dashboard' : '/');
+    if (!loading && user) router.replace(user.role === 'vhv' ? '/my-houses' : ['admin','manager'].includes(user.role) ? '/dashboard' : '/');
   }, [user, loading, router]);
   useEffect(() => {
     if (!user && process.env.NEXT_PUBLIC_LIFF_ID) prepareLine().catch(() => {});
