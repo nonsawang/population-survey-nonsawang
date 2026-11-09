@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth, ROLE_LABELS } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import TopBar from '@/components/TopBar';
+import NhsoApiSettingsCard from '@/components/NhsoApiSettingsCard';
 
 export default function AdminPage() {
   const { user, loading, refreshUser } = useAuth();
@@ -101,10 +102,17 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <ul className="nav nav-tabs mb-3">
-          {[{k:'users',label:'ผู้ใช้งาน',icon:'users'},{k:'logs',label:'บันทึก',icon:'clipboard-list'},{k:'password',label:'เปลี่ยนรหัส',icon:'key'}].map(({k,label,icon}) => (
+          {[{k:'users',label:'ผู้ใช้งาน',icon:'users'},{k:'nhso',label:'เชื่อมต่อ NHSO API',icon:'cloud'},{k:'logs',label:'บันทึก',icon:'clipboard-list'},{k:'password',label:'เปลี่ยนรหัส',icon:'key'}].map(({k,label,icon}) => (
             <li className="nav-item" key={k}><a className={`nav-link ${tab===k?'active':''}`} href="#" onClick={e=>{e.preventDefault();setTab(k);if(k==='logs'&&logs.length===0)loadLogs();}} style={{fontWeight:600}}><i className={`fa-solid fa-${icon} me-1`}/>{label}</a></li>
           ))}
         </ul>
+
+        {/* NHSO API Tab */}
+        {tab === 'nhso' && (
+          <div className="fade-in">
+            <NhsoApiSettingsCard />
+          </div>
+        )}
 
         {/* Users Tab */}
         {tab === 'users' && (

@@ -13,6 +13,7 @@ import { readCard } from '@/lib/eform-card.mjs';
 import PersonCard from '@/components/survey/PersonCard';
 import PersonSearch from '@/components/survey/PersonSearch';
 import ModalShell from '@/components/survey/ModalShell';
+import PendingTransfersBanner from '@/components/PendingTransfersBanner';
 import { getSwal, swal, Toast, showLoading, closeLoading } from '@/lib/survey-feedback';
 import { surveyErrorMessage } from '@/lib/survey-errors.mjs';
 
@@ -31,6 +32,12 @@ export default function SurveyPage() {
   const [moveTarget, setMoveTarget] = useState(null);
   const [moveMoo, setMoveMoo] = useState('');
   const [moveHouse, setMoveHouse] = useState('');
+  const [moveVhv, setMoveVhv] = useState('');
+  const [moveRelation, setMoveRelation] = useState('ผู้อาศัย');
+  const [movePreview, setMovePreview] = useState(null);
+  const [movePreviewLoading, setMovePreviewLoading] = useState(false);
+  const [pendingTransfersMap, setPendingTransfersMap] = useState({});
+  const [pendingRefreshKey, setPendingRefreshKey] = useState(0);
   // ✅ VHV change modal
   const [showVhvModal, setShowVhvModal] = useState(false);
   const [selectedVhv, setSelectedVhv] = useState('');
@@ -202,39 +209,121 @@ const submitVhvChange = async () => {
     }
   };
 
-  // ✅ ย้ายบ้าน
+  // ✅ เปิด Modal ย้ายบ้าน / ย้ายข้ามหมู่
+  const openMoveModal = (p) => {
+    const existingReq = pendingTransfersMap[p.personId];
+    setMoveTarget(p);
+    setMoveMoo(existingReq?.toMoo || moo || '');
+    setMoveHouse(existingReq?.toHouse || '');
+    setMoveRelation(existingReq?.relation || p.relation || 'ผู้อาศัย');
+    setMoveVhv(existingReq?.toVhv && existingReq.toVhv !== 'ไม่ระบุ' ? existingReq.toVhv : '');
+    setMovePreview(null);
+  };
+
+  useEffect(() => {
+    if (!moveTarget || !moveMoo || !moveHouse.trim()) {
+      setMovePreview(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setMovePreviewLoading(true);
+      try {
+        const res = await fetch('/api/house-transfer', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'preview',
+            targetMoo: moveMoo,
+            targetHouse: moveHouse.trim(),
+          }),
+        });
+        const data = await res.json().catch(() => null);
+        if (res.ok && data?.ok) {
+          setMovePreview(data);
+          if (data.houseVhv) setMoveVhv(data.houseVhv);
+        } else {
+          setMovePreview(null);
+        }
+      } catch {
+        setMovePreview(null);
+      } finally {
+        setMovePreviewLoading(false);
+      }
+    }, 280);
+    return () => clearTimeout(timer);
+  }, [moveTarget, moveMoo, moveHouse]);
+
+  // ✅ ย้ายบ้าน (แบบที่ B: เจ้าหน้าที่/ย้ายในหมู่เดิม -> ย้ายทันที | อสม. ย้ายข้ามหมู่ -> คิวรอยืนยันย้ายเข้า)
   const handleMove = async () => {
-    if (!moveMoo || !moveHouse.trim()) { swal({icon:'warning',title:'ข้อมูลไม่ครบ',text:'กรุณาระบุหมู่และบ้านเลขที่ใหม่'}); return; }
-    if (allowedMoos && !allowedMoos.includes(String(moveMoo))) { swal({icon:'error',title:'ไม่มีสิทธิ์ย้ายไปหมู่ ' + moveMoo}); return; }
-    showLoading('กำลังย้าย...');
-    const { data: targetRows } = await supabase.from('population').select('vhv,latitude,longitude').eq('house', moveHouse.trim()).eq('moo', moveMoo).limit(20);
-    const vhvRow = (targetRows || []).find(r => r.vhv && r.vhv !== 'ไม่ระบุ' && r.vhv !== '-');
-    const newVhv = vhvRow?.vhv || (targetRows && targetRows[0]?.vhv) || 'ไม่ระบุ';
-    const coordRow = (targetRows || []).find(r => r.latitude !== null && r.latitude !== undefined && r.longitude !== null && r.longitude !== undefined && Number.isFinite(Number(r.latitude)) && Number.isFinite(Number(r.longitude)));
-
-    const { error } = await supabase.from('population').update({
-      house: moveHouse.trim(),
-      moo: moveMoo,
-      vhv: newVhv,
-      latitude: coordRow ? Number(coordRow.latitude) : null,
-      longitude: coordRow ? Number(coordRow.longitude) : null,
-      updated_at: new Date().toISOString()
-    }).eq('person_id', moveTarget.personId);
-
-    closeLoading();
-
-    if (!error) {
-      // 🎯 [เพิ่มใหม่] บันทึก Activity Log: MOVE_HOUSE
-      const detailStr = `ย้ายไปบ้านเลขที่ ${moveHouse.trim()} ม.${moveMoo}`;
-      await writeLog(user?.userId, user?.username, 'MOVE_HOUSE', detailStr, moveTarget.personId);
-
-      swal({icon:'success',title:'ย้ายที่อยู่เรียบร้อย',showConfirmButton:false,timer:1500}).then(() => {
-        setMoveTarget(null);
-        searchDataSilent();
+    if (!moveMoo || !moveHouse.trim()) {
+      swal({ icon: 'warning', title: 'ข้อมูลไม่ครบ', text: 'กรุณาระบุหมู่และบ้านเลขที่ใหม่' });
+      return;
+    }
+    if (String(moveMoo) === String(moo) && moveHouse.trim() === house.trim()) {
+      swal({ icon: 'warning', title: 'ที่อยู่เดิม', text: 'กรุณาระบุบ้านเลขที่หรือหมู่ใหม่ที่ต้องการย้ายไป' });
+      return;
+    }
+    if (movePreview && movePreview.exists === false) {
+      swal({
+        icon: 'warning',
+        title: 'ไม่พบบ้านเลขที่ปลายทางในระบบ',
+        text: 'ไม่อนุญาตให้ย้ายเข้าบ้านเลขที่ที่ยังไม่มีในทะเบียนสำรวจ กรุณาตรวจสอบบ้านเลขที่และหมู่ปลายทาง',
       });
-    } else {
+      return;
+    }
+    showLoading('กำลังดำเนินการย้ายบ้าน...');
+    try {
+      const res = await fetch('/api/house-transfer', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'request_or_move',
+          personId: moveTarget.personId,
+          expectedMoo: moo,
+          expectedHouse: house.trim(),
+          targetMoo: moveMoo,
+          targetHouse: moveHouse.trim(),
+          targetVhv: moveVhv,
+          relation: moveRelation,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      closeLoading();
+
+      if (!res.ok || !data.ok) {
+        swal({ icon: 'error', title: 'ย้ายไม่สำเร็จ', text: data.error || 'กรุณาลองใหม่อีกครั้ง' });
+        return;
+      }
+
       setMoveTarget(null);
-      swal({icon:'error',title:'ย้ายไม่สำเร็จ',text:surveyErrorMessage(error)});
+      setPendingRefreshKey((k) => k + 1);
+
+      if (data.status === 'pending_approval') {
+        swal({
+          icon: 'info',
+          title: 'ส่งคำขอย้ายข้ามหมู่แล้ว',
+          text:
+            data.message ||
+            `ขึ้นป้าย "รอยืนยันย้ายเข้า" เรียบร้อย รอ อสม.หมู่ ${moveMoo} หรือเจ้าหน้าที่กดรับเข้าบ้าน`,
+        }).then(() => {
+          searchDataSilent();
+        });
+      } else {
+        swal({
+          icon: 'success',
+          title: 'ย้ายที่อยู่เรียบร้อย',
+          text: data.message || '',
+          showConfirmButton: false,
+          timer: 1600,
+        }).then(() => {
+          searchDataSilent();
+        });
+      }
+    } catch {
+      closeLoading();
+      swal({ icon: 'error', title: 'เชื่อมต่อไม่สำเร็จ', text: 'กรุณาลองใหม่อีกครั้ง' });
     }
   };
 
@@ -433,6 +522,15 @@ const submitVhvChange = async () => {
 
 
 
+        {/* คิวยืนยันย้ายบ้านข้ามหมู่ */}
+        <PendingTransfersBanner
+          user={user}
+          refreshTrigger={pendingRefreshKey}
+          onPendingMapChange={setPendingTransfersMap}
+          onResolved={() => searchDataSilent()}
+          onOpenHouse={(targetMoo, targetHouse) => searchData(targetMoo, targetHouse)}
+        />
+
         {/* Search */}
         <PersonSearch onOpenHouse={searchData} busy={searching || readingCard} />
         <div id="survey-house-search" className="card survey-search border-0 shadow-sm mb-4 fade-in" style={{borderRadius:16}}>
@@ -560,7 +658,7 @@ const submitVhvChange = async () => {
                 {/* 🟢 จบส่วนหัวข้อบ้าน */}
 
                 <div className="mb-2 text-muted small">พบ <strong>{results.length}</strong> คน</div>
-               {results.map(p => <PersonCard key={p.personId} person={p} onSave={handleSave} onMove={p => setMoveTarget(p)} onRefresh={searchDataSilent} user={user} />)}
+               {results.map(p => <PersonCard key={p.personId} person={p} pendingTransfer={pendingTransfersMap[p.personId]} onSave={handleSave} onMove={openMoveModal} onRefresh={searchDataSilent} user={user} />)}
                 <div className="mt-4 border-top pt-3 fade-in">
                   <button onClick={() => openAddModal(house, moo, results[0]?.vhv || 'ไม่ระบุ')} className="btn btn-outline-primary w-100 dashed-border rounded-pill">
                     <i className="fa-solid fa-user-plus me-1"/> เพิ่มผู้อาศัย
@@ -572,18 +670,175 @@ const submitVhvChange = async () => {
         )}
       </div>
 
-      {/* ✅ Move Modal */}
-      {moveTarget && (
-        <ModalShell title="ย้ายที่อยู่" icon="fa-truck-moving" onClose={() => setMoveTarget(null)} variant="warning" footer={<><button className="btn btn-secondary rounded-pill" onClick={() => setMoveTarget(null)}>ยกเลิก</button><button className="btn btn-warning rounded-pill fw-bold" onClick={handleMove}><i className="fa-solid fa-check me-1"/> ยืนยันย้าย</button></>}>
+      {/* ✅ Move Modal (แบบที่ B: ย้ายในหมู่/เจ้าหน้าที่ย้ายทันที | อสม.ย้ายข้ามหมู่เข้าคิวรอยืนยัน) */}
+      {moveTarget && (() => {
+        const isImmediateMove =
+          user?.role === 'admin' ||
+          user?.role === 'staff' ||
+          !moveMoo ||
+          String(moveMoo) === String(moo) ||
+          (allowedMoos && allowedMoos.includes(String(moveMoo)));
+        const vhvChoices = movePreview?.vhvList?.length
+          ? movePreview.vhvList
+          : vhvData[moveMoo] || [];
 
-                <p>กำลังย้าย: <strong className="text-primary">{moveTarget.fullname}</strong></p>
-                <div className="row g-2">
-                  <div className="col-5"><label className="small fw-bold">ย้ายไปหมู่ที่</label><select className="form-select text-center" value={moveMoo} onChange={e => setMoveMoo(e.target.value)}><option value="" disabled>เลือก</option>{visibleMoos.map(m => <option key={m} value={m}>หมู่ {m}</option>)}</select></div>
-                  <div className="col-7"><label className="small fw-bold">เลขที่บ้านใหม่</label><input type="text" className="form-control" value={moveHouse} onChange={e => setMoveHouse(e.target.value)} placeholder="บ้านเลขที่ใหม่" /></div>
-                </div>
+        return (
+          <ModalShell
+            title="ย้ายบ้านในทะเบียนสำรวจ (ในหมู่ / ข้ามหมู่)"
+            icon="fa-truck-moving"
+            onClose={() => setMoveTarget(null)}
+            variant="warning"
+            footer={
+              <>
+                <button className="btn btn-secondary rounded-pill" onClick={() => setMoveTarget(null)}>
+                  ยกเลิก
+                </button>
+                <button
+                  className="btn btn-warning rounded-pill fw-bold"
+                  disabled={movePreviewLoading || (movePreview && movePreview.exists === false)}
+                  onClick={handleMove}
+                >
+                  <i className={`fa-solid ${isImmediateMove ? 'fa-check' : 'fa-paper-plane'} me-1`} />
+                  {isImmediateMove ? 'ยืนยันย้ายทันที' : 'ส่งคำขอย้ายข้ามหมู่'}
+                </button>
+              </>
+            }
+          >
+            <div className="mb-2">
+              กำลังย้าย: <strong className="text-primary">{moveTarget.fullname}</strong>
+              <div className="small text-muted">
+                บ้านต้นทาง: บ้านเลขที่ <strong>{house}</strong> หมู่ <strong>{moo}</strong>
+              </div>
+            </div>
 
-        </ModalShell>
-      )}
+            <div className="row g-2 mb-3">
+              <div className="col-5">
+                <label className="small fw-bold">ย้ายไปหมู่ที่</label>
+                <select
+                  className="form-select text-center"
+                  value={moveMoo}
+                  onChange={(e) => {
+                    setMoveMoo(e.target.value);
+                    setMoveVhv('');
+                  }}
+                >
+                  <option value="" disabled>
+                    เลือกหมู่
+                  </option>
+                  {VALID_MOOS.map((m) => (
+                    <option key={m} value={m}>
+                      หมู่ {m} {String(m) === String(moo) ? '(หมู่เดิม)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-7">
+                <label className="small fw-bold">เลขที่บ้านใหม่</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={moveHouse}
+                  onChange={(e) => setMoveHouse(e.target.value)}
+                  placeholder="เช่น 45 หรือ 12/1"
+                />
+              </div>
+            </div>
+
+            <div className="row g-2 mb-3">
+              <div className="col-12 col-sm-6">
+                <label className="small fw-bold">สถานะในบ้านใหม่</label>
+                <select
+                  className="form-select form-select-sm"
+                  value={moveRelation}
+                  onChange={(e) => setMoveRelation(e.target.value)}
+                >
+                  {['เจ้าบ้าน', 'ผู้อาศัย', 'บิดา/มารดา', 'เขย/สะใภ้', 'บุตร/หลาน', 'เช่าอาศัย', 'อื่นๆ'].map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-12 col-sm-6">
+                <label className="small fw-bold">อสม. บ้านปลายทาง (ม.{moveMoo || '-'})</label>
+                <select
+                  className="form-select form-select-sm"
+                  value={moveVhv}
+                  onChange={(e) => setMoveVhv(e.target.value)}
+                >
+                  <option value="">-- ใช้ค่าอัตโนมัติของบ้านปลายทาง --</option>
+                  {vhvChoices.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {moveMoo && moveHouse.trim() && (
+              <div className="p-2 px-3 rounded-3 border bg-light mb-2 small">
+                {movePreviewLoading ? (
+                  <span className="text-muted">
+                    <span className="spinner-border spinner-border-sm me-2" />
+                    กำลังตรวจสอบข้อมูลบ้านปลายทาง...
+                  </span>
+                ) : movePreview ? (
+                  movePreview.exists ? (
+                    <div>
+                      <div className="fw-bold text-success">
+                        <i className="fa-solid fa-house-circle-check me-1" />
+                        พบบ้านเลขที่ {movePreview.targetHouse} ม.{movePreview.targetMoo} ในทะเบียนสำรวจ
+                        {movePreview.inScope && typeof movePreview.memberCount === 'number'
+                          ? ` (สมาชิกเดิม ${movePreview.memberCount} คน)`
+                          : ''}
+                      </div>
+                      {movePreview.inScope ? (
+                        <div className="text-muted mt-1">
+                          อสม. ประจำบ้าน: <strong>{movePreview.houseVhv || 'ยังไม่ระบุ'}</strong>
+                          {movePreview.hasGps ? ' • มีพิกัด GPS แล้ว' : ' • ยังไม่มีพิกัด GPS'}
+                        </div>
+                      ) : (
+                        <div className="text-muted mt-1">
+                          ข้อมูลรายละเอียดบ้านปลายทางจะตรวจสอบและยืนยันโดย อสม.หมู่ {movePreview.targetMoo} หรือเจ้าหน้าที่
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-danger fw-semibold">
+                      <i className="fa-solid fa-circle-exclamation me-1" />
+                      ไม่พบบ้านเลขที่ {moveHouse.trim()} ม.{moveMoo} ในทะเบียนสำรวจ (ต้องย้ายเข้าบ้านที่มีอยู่ในระบบเท่านั้น)
+                    </div>
+                  )
+                ) : null}
+              </div>
+            )}
+
+            {moveMoo && (
+              <div
+                className={`alert py-2 px-3 mb-0 small ${
+                  isImmediateMove ? 'alert-success' : 'alert-warning'
+                }`}
+                style={{ borderRadius: 10 }}
+              >
+                {isImmediateMove ? (
+                  <>
+                    <i className="fa-solid fa-bolt me-1" />
+                    <strong>ย้ายเข้าบ้านปลายทางทันที (เฉพาะทะเบียนสำรวจ):</strong> ระบบจะอัปเดตหมู่ บ้านเลขที่ อสม. และพิกัดในระบบสำรวจให้ทันที (ยังไม่ได้เปลี่ยนที่อยู่ใน HOSxP)
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-clock me-1" />
+                    <strong>คิวยืนยันข้ามหมู่ (เฉพาะทะเบียนสำรวจ):</strong> ระบบจะติดป้าย{' '}
+                    <strong>&ldquo;รอยืนยันย้ายเข้า&rdquo;</strong> เพื่อให้{' '}
+                    <strong>อสม. หมู่ {moveMoo}</strong> หรือ <strong>เจ้าหน้าที่</strong> กดยืนยันรับเข้าบ้าน (ยังไม่ได้เปลี่ยนที่อยู่ใน HOSxP)
+                  </>
+                )}
+              </div>
+            )}
+          </ModalShell>
+        );
+      })()}
       {/* ✅ Add Person Modal */}
       {showAddModal && (
         <ModalShell title="เพิ่มผู้อาศัยใหม่" icon="fa-user-plus" onClose={() => setShowAddModal(false)} scrollable zIndex={1055} bodyClassName="p-4" footer={<>

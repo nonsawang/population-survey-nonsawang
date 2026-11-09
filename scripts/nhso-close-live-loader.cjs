@@ -51,11 +51,31 @@ async function processCloseIntent({client,db,intentId,config,receipts,enabled=fa
  const {sendProduction}=require('./nhso-close-production.cjs');
  return sendProduction(input,{enabled:true,receipts,ledger:productionLedger(client,snapshot,input)});
 }
+async function readHosxpNhsoToken(db){
+ try{
+  const [rows]=await db.execute(
+   "SELECT sys_name, TRIM(sys_value) AS val FROM sys_var WHERE sys_name IN ('NHSO-CONFIRM-PRIVIVLEGE-API-TOKEN','NHSO-CONFIRM-PRIVILEGE-API-TOKEN','NHSO-13FILE-FEE-SCHEDULE-API-TOKEN','Authen_Token') AND sys_value IS NOT NULL AND TRIM(sys_value)<>''"
+  );
+  const byName=Object.fromEntries((rows||[]).map(r=>[r.sys_name,r.val]));
+  return (
+   byName['NHSO-CONFIRM-PRIVIVLEGE-API-TOKEN']||
+   byName['NHSO-CONFIRM-PRIVILEGE-API-TOKEN']||
+   byName['NHSO-13FILE-FEE-SCHEDULE-API-TOKEN']||
+   byName['Authen_Token']||
+   ''
+  );
+ }catch{
+  return '';
+ }
+}
 async function reconcile({source,db,config}={}){
  const summary={close_sent:0,close_written:0};
  if(!source||!db)return summary;
  const hcode=config?.NHSO_HCODE||'05080';
- const token=String(config?.NHSO_CLOSE_TOKEN||config?.NHSO_TOKEN||'').trim();
+ let token=String(config?.NHSO_CLOSE_TOKEN||config?.NHSO_TOKEN||'').trim();
+ if(!token){
+  token=await readHosxpNhsoToken(db);
+ }
  const liveEnabled=config?.NHSO_CLOSE_LIVE_ENABLED==='true' && Boolean(token);
 
  // 1. Process pending fit_close_intents when NHSO_CLOSE_LIVE_ENABLED=true and token is configured
@@ -138,4 +158,4 @@ async function reconcile({source,db,config}={}){
 
  return summary;
 }
-module.exports={loadCloseInput,productionLedger,processCloseIntent,reconcile};
+module.exports={loadCloseInput,productionLedger,processCloseIntent,readHosxpNhsoToken,reconcile};

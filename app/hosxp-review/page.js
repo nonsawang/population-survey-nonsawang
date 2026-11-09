@@ -10,6 +10,7 @@ import HosxpSyncStatus from '@/components/HosxpSyncStatus';
 import TopBar from '@/components/TopBar';
 import PersonIdentity from '@/components/PersonIdentity';
 import AuthenReportImport from '@/components/AuthenReportImport';
+import NhsoApiSettingsCard from '@/components/NhsoApiSettingsCard';
 
 const STATES = {
   ready: 'พร้อมตรวจอนุมัติ', approved: 'อนุมัติแล้ว / รอส่ง', no_change: 'ข้อมูลตรงกัน',
@@ -28,7 +29,7 @@ export default function HosxpReviewPage() {
   useEffect(() => {
     const sync = () => {
       const hash = window.location.hash.slice(1);
-      setSection(['screening-review', 'authen-report'].includes(hash) ? 'screening-review' : hash === 'house-gps' ? hash : 'population-review');
+      setSection(['screening-review', 'authen-report'].includes(hash) ? 'screening-review' : ['house-gps', 'nhso-api'].includes(hash) ? hash : 'population-review');
     };
     sync();
     window.addEventListener('hashchange', sync);
@@ -113,10 +114,11 @@ export default function HosxpReviewPage() {
   return <><TopBar showAdmin /><main className="container survey-page py-4 hosxp-workspace">
     <header className="survey-heading"><div><p className="survey-eyebrow">สำหรับเจ้าหน้าที่</p><h1>ตรวจสอบก่อนส่ง HOSxP</h1><p>จับคู่บุคคล ตรวจค่าเดิม–ใหม่ และอนุมัติรายการรอส่ง</p></div><a href="/" className="btn btn-outline-secondary">กลับหน้าสำรวจ</a></header>
     {allowed && <><HosxpSyncStatus/><nav className="nav nav-pills gap-2 mb-4" aria-label="ประเภทงานตรวจสอบ">
-      {[['population-review','สำรวจบ้าน'],['screening-review','คัดกรอง'],['house-gps','พิกัดบ้าน']].map(([id,label]) =>
+      {[['population-review','สำรวจบ้าน'],['screening-review','คัดกรอง'],['house-gps','พิกัดบ้าน'],['nhso-api','เชื่อมต่อ NHSO API']].map(([id,label]) =>
         <a key={id} href={'#'+id} aria-current={section===id?'page':undefined} className={'nav-link '+(section===id?'active':'')}>{label}</a>)}
     </nav>
-    {section==='screening-review' && <><ScreeningReview/><AuthenReportImport key={identity}/></>}
+    {section==='screening-review' && <><ScreeningReview/><AuthenReportImport key={identity}/><NhsoApiSettingsCard key={identity+':nhso'}/></>}
+    {section==='nhso-api' && <NhsoApiSettingsCard key={identity+':nhso-tab'}/>}
     {section==='house-gps' && <HouseGpsReview key={identity}/>}
     {section==='population-review' && <><details id="identity-tools" className="card p-3 mb-4 workflow-section"><summary className="fw-bold">เครื่องมือจับคู่รหัสบุคคลและจัดการแถวซ้ำ</summary><div className="mt-3"><PersonIdentity key={identity+':identity'}/></div></details><h2 id="population-review" className="h4 mb-3">ตรวจข้อมูลบุคคลก่อนส่ง HOSxP</h2></>}</>}
     {!allowed ? <div className="alert alert-warning">หน้านี้สำหรับเจ้าหน้าที่และผู้ดูแลระบบ</div> : section !== 'population-review' ? null : <>

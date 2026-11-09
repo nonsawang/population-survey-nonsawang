@@ -6,7 +6,7 @@ import { swal } from '@/lib/survey-feedback';
 import HosxpStatusSection from './HosxpStatusSection';
 import RiskScreeningSection from './RiskScreeningSection';
 import OvScreeningSection from './OvScreeningSection';
-export default function PersonCard({ person, onSave, onMove, onRefresh, user }) {
+export default function PersonCard({ person, onSave, onMove, onRefresh, user, pendingTransfer }) {
   const [relValue, setRelValue] = useState(person.relation);
   const [saving, setSaving] = useState(false);
   const doSave = async (type, discharge = person.dischargeCode, changes = {}) => {
@@ -18,6 +18,7 @@ export default function PersonCard({ person, onSave, onMove, onRefresh, user }) 
   };
 
   const rels = ['เจ้าบ้าน', 'ผู้อาศัย', 'บิดา/มารดา', 'เขย/สะใภ้', 'บุตร/หลาน', 'เช่าอาศัย', 'อื่นๆ'];
+  const activeTransfer = pendingTransfer || person.pendingTransfer || null;
 
   return (
     <div className={`card card-person border-type${person.residencyType} fade-in`} style={{ opacity: saving ? 0.6 : 1, pointerEvents: saving ? 'none' : 'auto' }}>
@@ -27,6 +28,11 @@ export default function PersonCard({ person, onSave, onMove, onRefresh, user }) 
         <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
           <h6 className="fw-bold mb-0" style={{ color: 'var(--primary)' }}>
             {person.fullname}
+            {activeTransfer && (
+              <span className="badge bg-warning text-dark ms-1" style={{ fontSize: '.68rem' }}>
+                ⏳ รอยืนยันย้ายเข้า ม.{activeTransfer.toMoo} บ้าน {activeTransfer.toHouse}
+              </span>
+            )}
             {person.smokingStatus && person.smokingStatus !== '-' && person.smokingStatus !== '' && <span className="badge ms-1" style={{ fontSize: '.65rem', background: '#6f42c1', color: 'white' }}><i className="fa-solid fa-smoking me-1" />{person.smokingStatus === 'สูบ' ? 'สูบ' : 'เลิกแล้ว'}</span>}
             {person.alcoholStatus && person.alcoholStatus !== '-' && person.alcoholStatus !== '' && <span className="badge ms-1" style={{ fontSize: '.65rem', background: '#0d6efd', color: 'white' }}><i className="fa-solid fa-wine-bottle me-1" />{person.alcoholStatus === 'ดื่ม' ? 'ดื่ม' : 'เลิกแล้ว'}</span>}
           </h6>
@@ -47,11 +53,10 @@ export default function PersonCard({ person, onSave, onMove, onRefresh, user }) 
           </div>
         </div>
 
-        <HosxpStatusSection person={person} saving={saving} doSave={doSave} onMove={onMove} />
+        <HosxpStatusSection person={person} saving={saving} doSave={doSave} onMove={onMove} pendingTransfer={activeTransfer} user={user} />
         <RiskScreeningSection person={person} user={user} onRefresh={onRefresh} saving={saving} setSaving={setSaving} />
         {person.age >= 15 && <OvScreeningSection person={person} user={user} onRefresh={onRefresh} saving={saving} setSaving={setSaving} />}
       </div>
     </div>
   );
 }
-
