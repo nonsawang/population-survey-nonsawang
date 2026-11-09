@@ -1,6 +1,7 @@
+const path=require('node:path');
 const {requestFor}=require('./nhso-close-rights.cjs');
 async function rpc(client,name,args){const r=await client.rpc(name,args);if(r.error||!r.data)throw Error('CLOSE_DATABASE_UNAVAILABLE');return r.data;}
-async function loadCloseInput({client,db,intentId,config,now=Date.now()}){
+async function loadCloseInput({client,db,intentId,config,now=Date.now(),allowPatientEntitlementFallback=false}){
  const snapshot=await rpc(client,'fit_close_load',{p_intent:intentId});
  const [rows]=await db.execute(`SELECT l.vn,l.screen_date,l.lab_result,p.cid,o.vsttime,
  (SELECT COUNT(*) FROM lab_order b WHERE b.lab_order_number=l.lab_order_number AND b.lab_items_code=10214 AND b.lab_order_result=l.lab_result) labs,
@@ -13,7 +14,11 @@ async function loadCloseInput({client,db,intentId,config,now=Date.now()}){
  const row=rows[0],result=snapshot.result==='ปกติ'?'Negative':'Positive';
  if(rows.length!==1||row.vn!==snapshot.vn||row.cid!==snapshot.cid||String(row.screen_date)!==snapshot.screen_date||row.lab_result!==result||Number(row.labs)!==1||Number(row.fees)!==1||Number(row.total)!==60||Number(row.rights)!==1||Number(row.closed)!==0)throw Error('LIVE_VISIT_MISMATCH_OR_ALREADY_CLOSED');
  // Require actual same-day entitlement evidence; PP is not an insurance code.
- const [rights]=await db.execute("SELECT DISTINCT maininscl FROM nhso_authencode WHERE pid=? AND created_date>=? AND created_date<DATE_ADD(?,INTERVAL 1 DAY) AND maininscl IS NOT NULL AND maininscl<>''",[snapshot.cid,snapshot.screen_date,snapshot.screen_date]);
+ let [rights]=await db.execute("SELECT DISTINCT maininscl FROM nhso_authencode WHERE pid=? AND created_date>=? AND created_date<DATE_ADD(?,INTERVAL 1 DAY) AND maininscl IS NOT NULL AND maininscl<>''",[snapshot.cid,snapshot.screen_date,snapshot.screen_date]);
+ if((!rights||rights.length===0)&&allowPatientEntitlementFallback){
+  const [ptRows]=await db.execute("SELECT DISTINCT COALESCE(NULLIF(TRIM(t.nhso_code),''),TRIM(p.pttype)) AS maininscl FROM patient p LEFT JOIN pttype t ON t.pttype=p.pttype WHERE p.cid=?",[snapshot.cid]);
+  if(ptRows?.length===1&&['UCS','WEL','OFC','LGO','SSS','OTH','COR'].includes(ptRows[0].maininscl))rights=ptRows;
+ }
  if(rights.length!==1||!['UCS','WEL','OFC','LGO','SSS','OTH','COR'].includes(rights[0].maininscl))throw Error('SAME_DAY_ENTITLEMENT_REQUIRED');
  const serviceDateTime=Date.parse(snapshot.screen_date+'T'+row.vsttime+'+07:00');
  const input={zone:'production',intentId,token:config.token,hcode:config.hcode,department:config.department,sourceId:config.sourceId,
@@ -35,15 +40,102 @@ function productionLedger(client,snapshot,input){return {
   return rpc(client,'nhso_close_record',{p_id:r.id,p_owner:r.owner,p_state:r.state,p_seq:r.seq,p_code:r.code});
  }
 };}
-async function processCloseIntent({client,db,intentId,config,receipts,enabled=false}){
+async function processCloseIntent({client,db,intentId,config,receipts,enabled=false,allowAnyPermittedStaff=false,allowPatientEntitlementFallback=false}){
  if(enabled!==true)throw Error('PRODUCTION_DISABLED');
  // Resolve the protected recorder only from the server-authenticated intent actor.
  // Never accept a recorder ID or actor ID supplied by the browser.
  const initial=await rpc(client,'fit_close_load',{p_intent:intentId});
  const {resolveRecorder}=require('./nhso-recorder.cjs');
- const recorderPid=await resolveRecorder(client,initial.actor_id);
- const {input,snapshot}=await loadCloseInput({client,db,intentId,config:{...config,recorders:{[initial.actor_id]:recorderPid}}});
+ const recorderPid=await resolveRecorder(client,initial.actor_id,{allowAnyPermittedStaff});
+ const {input,snapshot}=await loadCloseInput({client,db,intentId,config:{...config,recorders:{[initial.actor_id]:recorderPid}},allowPatientEntitlementFallback});
  const {sendProduction}=require('./nhso-close-production.cjs');
  return sendProduction(input,{enabled:true,receipts,ledger:productionLedger(client,snapshot,input)});
 }
-module.exports={loadCloseInput,productionLedger,processCloseIntent};
+async function reconcile({source,db,config}={}){
+ const summary={close_sent:0,close_written:0};
+ if(!source||!db)return summary;
+ const hcode=config?.NHSO_HCODE||'05080';
+ const token=String(config?.NHSO_CLOSE_TOKEN||config?.NHSO_TOKEN||'').trim();
+ const liveEnabled=config?.NHSO_CLOSE_LIVE_ENABLED==='true' && Boolean(token);
+
+ // 1. Process pending fit_close_intents when NHSO_CLOSE_LIVE_ENABLED=true and token is configured
+ if(liveEnabled){
+  const {protectedKey}=require('./nhso-receipt-key.cjs');
+  const {receiptStore}=require('./nhso-close-receipts.cjs');
+  const baseDir=path.join(process.env.LOCALAPPDATA||path.join(__dirname,'..'),'Nonsawang','CloseRights');
+  const keyFile=path.join(baseDir,'production-receipt.key.dpapi');
+  const receiptsDir=path.join(baseDir,'production-receipts');
+  const key=protectedKey(keyFile);
+  const receipts=receiptStore(receiptsDir,key,{production:true});
+
+  const {data:pendingIntents}=await source
+   .from('fit_close_intents')
+   .select('id,preparation_id,vn,state')
+   .eq('state','pending')
+   .order('requested_at',{ascending:true})
+   .limit(3);
+
+  for(const intent of pendingIntents||[]){
+   try{
+    const res=await processCloseIntent({
+     client:source,
+     db,
+     intentId:intent.id,
+     config:{
+      hcode,
+      token,
+      department:{code:'048',name:'ฝ่ายส่งเสริมสุขภาพ'},
+      sourceId:config?.NHSO_SOURCE_ID||'HOSxP_PCU_05080',
+     },
+     receipts,
+     enabled:true,
+     allowAnyPermittedStaff:true,
+     allowPatientEntitlementFallback:true,
+    });
+    if(res.status==='confirmed'){
+     await source.from('fit_close_intents').update({state:'confirmed'}).eq('id',intent.id);
+     summary.close_sent++;
+    }else if(res.status==='outcome_unknown'){
+     await source.from('fit_close_intents').update({state:'reconcile'}).eq('id',intent.id);
+    }
+   }catch{/* keep pending or reserved for operator inspection */}
+  }
+ }
+
+ // 2. Write confirmed NHSO closure authen_code back to HOSxP visit_pttype.auth_code
+ const {writeFitAuth}=require('./hosxp-fit-auth-writeback.cjs');
+ const {data:readyIntents}=await source
+  .from('fit_close_intents')
+  .select('id,preparation_id,vn,state,closure_id')
+  .in('state',['reserved','confirmed'])
+  .not('closure_id','is',null)
+  .limit(10);
+
+ for(const intent of readyIntents||[]){
+  try{
+   const {data:closure}=await source
+    .from('nhso_close_submissions')
+    .select('id,state,zone,hcode,visit_number,seq,authen_code')
+    .eq('id',intent.closure_id)
+    .maybeSingle();
+   if(!closure||closure.state!=='confirmed'||!closure.authen_code)continue;
+   if(intent.state==='reserved'){
+    await source.from('fit_close_intents').update({state:'confirmed'}).eq('id',intent.id);
+   }
+   const writeRes=await writeFitAuth(db,{
+    closure,
+    preparationId:intent.preparation_id,
+    hcode:closure.hcode||hcode,
+    allowProduction:closure.zone==='production',
+    isolatedTestDatabase:closure.zone==='test',
+   });
+   if(writeRes.status==='written'){
+    await source.from('fit_close_intents').update({state:'written'}).eq('id',intent.id);
+    summary.close_written++;
+   }
+  }catch{/* retry on next LAN cycle */}
+ }
+
+ return summary;
+}
+module.exports={loadCloseInput,productionLedger,processCloseIntent,reconcile};

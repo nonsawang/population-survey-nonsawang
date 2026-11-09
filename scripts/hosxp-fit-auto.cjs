@@ -64,6 +64,9 @@ async function run(config,optionsFile){
    await db.query('SELECT 1');
    return main({...config,HOSXP_IMPORT_ENABLED:'true'},['--job='+id,'--write','--confirm-fit-write']);
   }});
+  // Process pending NHSO close-rights intents and write confirmed authen_code back to HOSxP.
+  try{Object.assign(report,await require('./nhso-close-live-loader.cjs').reconcile({source,db,config}));}
+  catch{report.close_rights_error=true;}
   // Previously imported visits may acquire Authen/finance references later in HOSxP.
   // Refresh evidence without modifying clinical or financial records.
   try{Object.assign(report,await require('./hosxp-fit-finance-status.cjs').reconcile({source,db}));}

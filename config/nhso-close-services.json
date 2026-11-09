@@ -1,0 +1,13 @@
+{
+  "hcode": "05080",
+  "zone": "production",
+  "services": {
+    "FOBT": {
+      "enabled": true,
+      "api": "nhso-claim-detail",
+      "code": "PG0060001",
+      "reference": "NHSO Dataset v10.1 / 20261012_fit_close_reservation",
+      "verifiedBy": "vhv344108"
+    }
+  }
+}

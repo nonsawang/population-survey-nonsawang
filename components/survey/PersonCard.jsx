@@ -1,6 +1,6 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { CHRONIC_LIST } from '@/lib/utils';
+import { useState } from 'react';
+import ChronicEditor from './ChronicEditor';
 import { DISCHARGE_TYPES } from '@/lib/population-status';
 import { swal } from '@/lib/survey-feedback';
 import HosxpStatusSection from './HosxpStatusSection';
@@ -8,23 +8,12 @@ import RiskScreeningSection from './RiskScreeningSection';
 import OvScreeningSection from './OvScreeningSection';
 export default function PersonCard({ person, onSave, onMove, onRefresh, user }) {
   const [relValue, setRelValue] = useState(person.relation);
-  const [chronicValue, setChronicValue] = useState('');
-  const [chronicOther, setChronicOther] = useState('');
-  const [showOther, setShowOther] = useState(false);
   const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    const cc = (!person.chronic || person.chronic === '-') ? 'ปกติ (ไม่มีโรค)' : person.chronic;
-    if (CHRONIC_LIST.includes(cc)) { setChronicValue(cc); setShowOther(false); }
-    else { setChronicValue('__OTHER__'); setChronicOther(cc); setShowOther(true); }
-  }, [person.chronic]);
-
-  const getChronicFinal = () => chronicValue === '__OTHER__' ? (chronicOther.trim() || '-') : chronicValue;
-
   const doSave = async (type, discharge = person.dischargeCode, changes = {}) => {
-    if (!person.statusSchemaReady) { swal({ icon:'info', title:'ต้องปรับตาราง Supabase ก่อน', text:'รัน migration สถานะ HOSxP แล้วโหลดหน้านี้ใหม่' }); return; }
-    if (!DISCHARGE_TYPES.some(item => item.code === discharge)) { swal({ icon: 'warning', title: 'กรุณาระบุเหตุจำหน่ายก่อน', text: 'ข้อมูล Type 0 เดิมยังไม่มีเหตุจำหน่ายที่ตรงกับ HOSxP' }); return; }
+    if (!person.statusSchemaReady) { swal({ icon:'info', title:'ต้องปรับตาราง Supabase ก่อน', text:'รัน migration สถานะ HOSxP แล้วโหลดหน้านี้ใหม่' }); return false; }
+    if (!DISCHARGE_TYPES.some(item => item.code === discharge)) { swal({ icon: 'warning', title: 'กรุณาระบุเหตุจำหน่ายก่อน', text: 'ข้อมูล Type 0 เดิมยังไม่มีเหตุจำหน่ายที่ตรงกับ HOSxP' }); return false; }
     setSaving(true);
-    try { await onSave(person.personId, type, changes.relation ?? relValue, changes.chronic ?? getChronicFinal(), discharge); }
+    try { return await onSave(person.personId, type, changes.relation ?? relValue, changes.chronic ?? person.chronic ?? '-', discharge); }
     finally { setSaving(false); }
   };
 
@@ -54,16 +43,7 @@ export default function PersonCard({ person, onSave, onMove, onRefresh, user }) 
           </div>
           <div className="col-12 col-sm-6 px-1">
             <label className="text-muted" style={{ fontSize: '.68em', fontWeight: 600 }}>โรคประจำตัว</label>
-            <select className="form-select form-select-sm border-0 fw-bold text-danger" style={{ fontSize: '.85rem' }} value={chronicValue} onChange={e => { setChronicValue(e.target.value); setShowOther(e.target.value === '__OTHER__'); if (e.target.value !== '__OTHER__') doSave(person.residencyType, person.dischargeCode, { chronic: e.target.value }); }}>
-              {CHRONIC_LIST.map(c => <option key={c} value={c}>{c}</option>)}
-              <option value="__OTHER__">อื่นๆ (ระบุ)</option>
-            </select>
-            {showOther && (
-              <div className="input-group input-group-sm mt-1">
-                <input type="text" className="form-control border-danger" style={{ fontSize: '.8rem' }} placeholder="ระบุโรค..." value={chronicOther} onChange={e => setChronicOther(e.target.value)} onKeyDown={e => e.key === 'Enter' && doSave(person.residencyType)} />
-                <button className="btn btn-danger btn-sm" onClick={() => doSave(person.residencyType)}><i className="fa-solid fa-check" /></button>
-              </div>
-            )}
+            <ChronicEditor value={person.chronic} disabled={saving} onSave={chronic=>doSave(person.residencyType,person.dischargeCode,{chronic})} />
           </div>
         </div>
 

@@ -1,8 +1,8 @@
 // Accept closure evidence only from a trusted ledger loader, never browser JSON.
-// Isolated-test adapter until the authenticated production workflow is connected.
-async function writeFitAuth(db, {closure, preparationId, hcode, isolatedTestDatabase=false}) {
- if(!isolatedTestDatabase)throw Error('AUTH_WRITEBACK_LIVE_DISABLED');
- if(closure?.state!=='confirmed'||closure.zone!=='test'||closure.hcode!==hcode||
+async function writeFitAuth(db, {closure, preparationId, hcode, isolatedTestDatabase=false, allowProduction=false}) {
+ if(!isolatedTestDatabase && !allowProduction)throw Error('AUTH_WRITEBACK_LIVE_DISABLED');
+ const expectedZone = allowProduction ? 'production' : 'test';
+ if(closure?.state!=='confirmed'||closure.zone!==expectedZone||closure.hcode!==hcode||
     !closure.id||!closure.seq||!closure.visit_number||
     typeof closure.authen_code!=='string'||!closure.authen_code.trim()||
     closure.authen_code.length>20||/\s/.test(closure.authen_code))throw Error('CONFIRMED_CLOSURE_REQUIRED');

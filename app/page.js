@@ -158,6 +158,7 @@ const handleSave = async (personId, newType, relation, chronic, dischargeCode) =
 
     if (error) {
       swal({icon:'error',title:'บันทึกไม่สำเร็จ',text:surveyErrorMessage(error)});
+      return false;
     } else {
       // 🎯 [เพิ่มใหม่] บันทึก Activity Log: UPDATE_STATUS
       const detailStr = `ประเภทอยู่อาศัย->${newType || 'ไม่ระบุ'} | สถานะจำหน่าย->${dischargeCode} | ${relation}`;
@@ -165,6 +166,7 @@ const handleSave = async (personId, newType, relation, chronic, dischargeCode) =
     }
 
     await searchDataSilent();
+    return true;
   };
 
   // ✅ เปลี่ยน อสม. — เปิด modal เลือกจาก vhv_data

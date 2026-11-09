@@ -8,11 +8,11 @@ function readRecorder(){
   return value;
  }catch{throw Error('RECORDER_CONFIG_UNAVAILABLE');}
 }
-async function resolveRecorder(client,actorId,{read=readRecorder}={}){
+async function resolveRecorder(client,actorId,{read=readRecorder,allowAnyPermittedStaff=false}={}){
  const {data:user,error}=await client.from('app_users').select('id,username,role,is_active').eq('id',actorId).single();
- if(error||!user||user.id!==actorId||user.username!=='vhv344108'||!user.is_active||!['staff','admin'].includes(user.role))throw Error('RECORDER_ACCOUNT_NOT_ALLOWED');
+ if(error||!user||user.id!==actorId||(!allowAnyPermittedStaff&&user.username!=='vhv344108')||!user.is_active||!['staff','admin'].includes(user.role))throw Error('RECORDER_ACCOUNT_NOT_ALLOWED');
  const permission=await client.from('nhso_close_permissions').select('enabled').eq('user_id',actorId).single();
  if(permission.error||permission.data?.enabled!==true)throw Error('RECORDER_PERMISSION_REQUIRED');
  return read();
 }
-module.exports={resolveRecorder};
+module.exports={resolveRecorder,readRecorder};

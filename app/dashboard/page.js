@@ -331,7 +331,7 @@ export default function DashboardPage() {
                 },
                 {
                   key: 'multi_chronic',
-                  title: 'โรคเรื้อรังซับซ้อน',
+                  title: 'มีโรคเรื้อรังร่วม ≥2 โรค',
                   sub: 'มีโรคประจำตัวตั้งแต่ 2 โรคขึ้นไป',
                   val: activeMooStats?.watchlist?.multiChronic?.length,
                   icon: 'heart-circle-exclamation',
@@ -504,7 +504,7 @@ export default function DashboardPage() {
                       <th className="text-center">ติดเตียง / ติดบ้าน</th>
                       <th className="text-center">สูงอายุอยู่คนเดียว</th>
                       <th className="text-center">บ้านไร้พิกัด GPS</th>
-                      <th className="text-center">โรคเรื้อรังซับซ้อน</th>
+                      <th className="text-center">มีโรคเรื้อรังร่วม ≥2 โรค</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -611,7 +611,7 @@ export default function DashboardPage() {
                         <td className="text-center">
                           <button type="button" className="btn btn-sm btn-outline-danger rounded-pill"
                             onClick={() => openDrilldown('multi_chronic', row.moo)}
-                            aria-label={`ดูรายชื่อโรคเรื้อรังซับซ้อน หมู่ ${row.moo} จำนวน ${row.multiChronic} คน`}>
+                            aria-label={`ดูรายชื่อมีโรคเรื้อรังร่วม ≥2 โรค หมู่ ${row.moo} จำนวน ${row.multiChronic} คน`}>
                             {row.multiChronic} คน
                           </button>
                         </td>
