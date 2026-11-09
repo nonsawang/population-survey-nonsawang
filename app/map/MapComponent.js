@@ -6,7 +6,7 @@ import L from 'leaflet';
 import { supabase } from '@/lib/supabase';
 import { normalizePersonRecord, compareThaiNumeric, isBedriddenElder, isHomeboundElder, isMultiChronicResident } from '@/lib/proactive-dashboard.mjs';
 import SmartPin from './SmartPin';
-import {severity,distanceMeters,visitOrder} from '@/lib/health-gis.mjs';
+import {severity,distanceMeters,visitOrder,houseDiseasePin,DISEASE_PINS} from '@/lib/health-gis.mjs';
 import { villageCenter } from '@/lib/village-centers';
 import VillageBoundaries from './VillageBoundaries';
 
@@ -61,6 +61,13 @@ function icon(color,pulse=false){
   return ICON_CACHE[key] ||= L.divIcon({className:'',iconSize:[18,18],iconAnchor:[9,9],html:'<span class="health-gis-pin '+(pulse?'health-gis-pulse':'')+'" style="background:'+color+'"></span>'});
 }
 
+function diseaseIcon(color) {
+  const key = 'disease-' + color;
+  return ICON_CACHE[key] ||= L.divIcon({
+    className: '', iconSize: [22,28], iconAnchor: [11,28], popupAnchor: [0,-25],
+    html: '<svg width="22" height="28" viewBox="0 0 22 28" aria-hidden="true"><path d="M11 27C8 22 1 16 1 11a10 10 0 0 1 20 0c0 5-7 11-10 16Z" fill="'+color+'" stroke="white" stroke-width="1.5"/><circle cx="11" cy="11" r="3.2" fill="white"/></svg>',
+  });
+}
 function houseMatchesFilter(house, filterMode) {
   if (!filterMode || filterMode === 'ALL') return true;
   const norms = house.members.map(m => m.norm).filter(Boolean);
@@ -149,7 +156,7 @@ export default function MapComponent() {
   const [zoom, setZoom] = useState(13);
   const labelIcons = useRef(new WeakMap());
   function houseIcon(house, color) {
-    if (zoom < 17) return icon(color, layer === 'severity' && color === 'red');
+    if (zoom < 17) return layer === 'disease' ? diseaseIcon(color) : icon(color, layer === 'severity' && color === 'red');
     let cached = labelIcons.current.get(house);
     if (!cached) { cached = new Map(); labelIcons.current.set(house, cached); }
     if (cached.has(color)) return cached.get(color);
@@ -189,7 +196,7 @@ export default function MapComponent() {
   const [selectedVhv, setSelectedVhv] = useState('ALL');
   const [selectedHouse, setSelectedHouse] = useState('');
 
-  const [layer,setLayer]=useState('village'), [focus,setFocus]=useState(null);
+  const [layer,setLayer]=useState('disease'), [focus,setFocus]=useState(null);
   const [baseMap, setBaseMap] = useState('street');
   const [visits,setVisits]=useState([]), [pin,setPin]=useState(null), [reload,setReload]=useState(0);
   const [loadState,setLoadState]=useState('loading');
@@ -285,7 +292,7 @@ export default function MapComponent() {
       if (!cancelled) {
         const completedHouses = Object.values(groupedHouses).map(house => ({
           ...house,
-          severityColor: severity(house.members),
+          severityColor: severity(house.members), diseasePin: houseDiseasePin(house.members),
         }));
         fullReady.current=true;setPreview([]);setHouses(completedHouses);setLoadState('ready');
       }
@@ -396,7 +403,7 @@ export default function MapComponent() {
   }, [houses, selectedMoo, selectedVhv, selectedHouse, selectedFilter]);
 
   const visibleHouses=filteredHouses.filter(h=>h.latitude!==null && (layer!=='pending'||houseMatchesFilter(h,'vhv_pending')));
-  const isClusterMode = zoom <= 14 && selectedMoo === 'ALL' && !selectedHouse && layer !== 'radius';
+  const isClusterMode = zoom <= 14 && selectedMoo === 'ALL' && !selectedHouse && layer !== 'radius' && layer !== 'disease';
   const villageClusters = useMemo(() => {
     if (!isClusterMode) return [];
     const byMoo = new Map();
@@ -498,7 +505,7 @@ export default function MapComponent() {
           <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
             <div className="d-flex flex-wrap align-items-center gap-2">
               <label className="small fw-bold d-inline-flex align-items-center gap-1">มุมมอง <select className="form-select form-select-sm w-auto" value={layer} onChange={e=>{setLayer(e.target.value);setFocus(null);}}>
-                <option value="village">แยกสีตามหมู่บ้าน</option><option value="severity">โรคเรื้อรัง / ความรุนแรง</option>
+                <option value="disease">หมุดตามโรค</option><option value="village">แยกสีตามหมู่บ้าน</option><option value="severity">โรคเรื้อรัง / ความรุนแรง</option>
                 <option value="pending">บ้านค้างคัดกรอง</option><option value="radius">สำรวจรัศมี 100 เมตร</option></select></label>
               <label className="small fw-bold d-inline-flex align-items-center gap-1">อสม. <select className="form-select form-select-sm w-auto" value={selectedVhv} onChange={e=>setSelectedVhv(e.target.value)}><option value="ALL">ทุกคน</option>{vhvs.map(v=><option key={v}>{v}</option>)}</select></label>
             </div>
@@ -594,6 +601,11 @@ export default function MapComponent() {
           )}
         </div>
 
+        {layer === 'disease' && <details className="gis-disease-legend" open>
+          <summary className="fw-bold">หมุดตามโรคของบ้าน</summary>
+          {DISEASE_PINS.map(pin => <div key={pin.key}><svg width="16" height="20" viewBox="0 0 22 28" aria-hidden="true"><path d="M11 27C8 22 1 16 1 11a10 10 0 0 1 20 0c0 5-7 11-10 16Z" fill={pin.color}/><circle cx="11" cy="11" r="3" fill="white"/></svg> {pin.label}</div>)}
+          <small>หลายกลุ่มใช้สีลำดับบนก่อน • กดบ้านดูสมาชิก</small>
+        </details>}
         <MapContainer center={[16.102000, 103.678235]} zoom={15} maxZoom={19} style={{ height: '100%', width: '100%', zIndex: 0 }}>
           <TileLayer
             key={`base-${baseMap}`}
@@ -628,7 +640,7 @@ export default function MapComponent() {
             <VillageClusterMarkers clusters={villageClusters} />
           ) : (
           onScreen.map((h) => (
-            <Marker key={h.key} position={[h.latitude, h.longitude]} title={`บ้าน ${h.house} หมู่ ${h.moo}`} icon={houseIcon(h, layer==='severity'?h.severityColor:layer==='village'?villageColors[mooOptions.indexOf(h.moo)%villageColors.length]:layer==='pending'?'orange':'#376b92')}>
+            <Marker key={h.key} position={[h.latitude, h.longitude]} title={`บ้าน ${h.house} หมู่ ${h.moo}`} icon={houseIcon(h, layer==='disease'?h.diseasePin.color:layer==='severity'?h.severityColor:layer==='village'?villageColors[mooOptions.indexOf(h.moo)%villageColors.length]:layer==='pending'?'orange':'#376b92')}>
               <Popup>
                 <div style={{ fontSize: '0.9rem', minWidth: '240px', maxHeight: '280px', overflowY: 'auto' }}>
                   <div className="fw-bold text-primary mb-2 border-bottom pb-1" style={{ position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>
@@ -695,7 +707,7 @@ export default function MapComponent() {
       </div>
 
       <style jsx global>{`
-        .gis-mobile-summary,.gis-mobile-heading{display:none}
+        .gis-disease-legend{position:absolute;bottom:24px;right:10px;z-index:900;background:white;padding:10px;border-radius:8px;box-shadow:0 2px 8px #0003;font-size:12px;max-height:35%;overflow:auto}.gis-disease-legend svg{vertical-align:middle}.gis-mobile-summary,.gis-mobile-heading{display:none}
         @media(max-width:767px){
           .gis-mobile-summary{display:flex;align-items:center;gap:4px;position:absolute;top:10px;left:50px;right:8px;z-index:1000;background:white;border-radius:10px;padding:4px;box-shadow:0 2px 8px #0003;font-size:12px}
           .gis-mobile-summary span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
