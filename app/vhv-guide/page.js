@@ -72,7 +72,7 @@ const SCENES = [
     steps: [
       'เลือก "สถานะในบ้าน" (เช่น เจ้าบ้าน, ผู้อาศัย, บุตร/หลาน)',
       'กดปุ่ม "โรคประจำตัว" → ติ๊กเลือกได้หลายโรคพร้อมกัน (โรคไขว้) หรือพิมพ์ระบุโรคอื่นๆ → กดบันทึกโรค',
-      'เลือก "ประเภทอยู่อาศัย" (Type 1 มีชื่ออยู่จริง / Type 2 มีชื่อไม่อยู่ / Type 3 มาอาศัยไม่มีชื่อในทะเบียน)',
+      'เลือก "ประเภทอยู่อาศัย" (Type 1 มีชื่ออยู่จริง / Type 2 มีชื่อไม่อยู่ / Type 3 มาอาศัยไม่มีชื่อในทะเบียน / Type 4 มีชื่อนอกเขตและไม่ได้อยู่ในเขต)',
       'เลือก "สถานะจำหน่าย" (ปกติเลือก 9 = ไม่จำหน่าย) แล้วกดปุ่มสีน้ำเงินเพื่อบันทึก',
     ],
     tip: 'หากผู้ป่วยไม่มีโรคประจำตัว ให้ติ๊ก "ปกติ (ไม่มีโรค)" ระบบจะล้างรายการโรคอื่นให้อัตโนมัติ',
@@ -100,25 +100,26 @@ const SCENES = [
   {
     id: 6,
     badge: 'บทที่ 6 / 6',
-    title: 'บันทึกผลตรวจคัดกรอง 4 KPI (วัณโรค • มะเร็งลำไส้ FIT • OV • เด็ก)',
+    title: 'แผนที่สุขภาพหลังคาบ้าน 3 สี',
     durationSec: 16,
-    audioSrc: '/audio/guide/scene-6.mp3',
+    audioSrc: null, // Old recording describes screening, not this map chapter.
     voiceText:
-      'บทที่หก การบันทึกผลคัดกรองสี่เคพีไอค่ะ ให้ ออ-สอ-มอ กดเมนู คัดกรองรายบุคคล เพื่อค้นหาชื่อลูกบ้าน และบันทึกผลตรวจคัดกรอง วัณโรค มะเร็งลำไส้ใหญ่ฟิตเทสต์ พยาธิใบไม้ตับโอวี และพัฒนาการเด็ก ตามกลุ่มเป้าหมาย แล้วกดบันทึกผลค่ะ',
+      'บทที่หก แผนที่สุขภาพหลังคาบ้านค่ะ เปิดเมนูแผนที่ แล้วเลือกโหมดสถานะงานสำรวจ สีเขียวหมายถึงครบ สีส้มหมายถึงรอเคพีไอ สีแดงหมายถึงยังไม่สำรวจ ซูมเข้าแล้วแตะหมุดบ้านเพื่อดูรายละเอียดและเปิดหน้าสำรวจค่ะ ตรวจคำอธิบายสีทุกครั้ง เพราะโหมดโรคใช้สีต่างกันนะคะ',
     displayText:
-      'บทที่ 6 การบันทึกผลคัดกรอง 4 KPI: ให้ อสม. กดเมนู "คัดกรองรายบุคคล" เพื่อค้นหาชื่อลูกบ้าน และบันทึกผลตรวจคัดกรอง วัณโรค (TB), มะเร็งลำไส้ใหญ่ (FIT Test), พยาธิใบไม้ตับ (OV) และพัฒนาการเด็ก (DSPM) ตามกลุ่มเป้าหมาย แล้วกดบันทึกผลค่ะ',
+      'แผนที่สถานะงาน: 🟢 เขียว = ครบ, 🟠 ส้ม = รอ KPI, 🔴 แดง = ยังไม่สำรวจ แตะหมุดเพื่อดูรายละเอียดและเปิดหน้าสำรวจ สีในโหมดโรคมีความหมายต่างกัน',
     steps: [
-      'กดปุ่ม "เมนู" มุมขวาบน → เลือก "คัดกรองรายบุคคล"',
-      'พิมพ์ค้นหาชื่อ หรือเลือกกรองตามกลุ่มเป้าหมาย KPI ที่ยังไม่ได้ตรวจ',
-      'กดเลือกผลการคัดกรอง (ปกติ / ผิดปกติ) แล้วกดบันทึกผล',
+      'เปิดแผนที่ เลือกหมู่บ้านและโหมดสถานะงานสำรวจ',
+      'อ่านคำอธิบายสี: เขียวครบ / ส้มรอ KPI / แดงยังไม่สำรวจ',
+      'ซูมเข้า แตะหมุดบ้าน แล้วเปิดหน้าสำรวจเพื่อทำงานต่อ',
     ],
-    tip: 'รายการที่บันทึกผลแล้วจะส่งต่อให้เจ้าหน้าที่ รพ.สต. ตรวจสอบและเชื่อมข้อมูลเข้า HOSxP',
-    mockup: 'kpi',
+    tip: 'ตรวจชื่อโหมดและคำอธิบายสีก่อนใช้ติดตามงาน',
+    mockup: 'health-map',
   },
 ];
 
 function PhoneMockupScreen({ type, tick }) {
   const pulse = tick % 2 === 0;
+  if (type === 'health-map') return <div className="p-4"><h3 className="h6">แผนที่สถานะงาน</h3><p>🏠 🟢 ครบ</p><p>🏠 🟠 รอ KPI</p><p>🏠 🔴 ยังไม่สำรวจ</p><small>แตะหมุดเพื่อเปิดรายละเอียดบ้าน</small></div>;
 
   if (type === 'login') {
     return (
@@ -477,7 +478,7 @@ export default function VhvGuidePage() {
   const currentScene = SCENES[currentIdx];
 
   // Stop any active audio and speech synthesis
-  const stopAudio = useCallback(() => {
+  const stopAudio = useCallback(() => { generationRef.current += 1;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -487,38 +488,48 @@ export default function VhvGuidePage() {
     }
   }, []);
 
-  // Play natural audio file with Web Speech fallback
-  const playAudioForScene = useCallback(
-    (scene) => {
-      if (!voiceEnabled) return;
-      stopAudio();
+  //   const [audioError, setAudioError] = useState('');
+  const [narrationEnded, setNarrationEnded] = useState(false);
+  const generationRef = useRef(0);
+  const playAudioForScene = useCallback((scene) => {
+    stopAudio();
+    setNarrationEnded(false);
+    setAudioError('');
+    if (!voiceEnabled) return;
+    const generation = generationRef.current;
+    const current = () => generation === generationRef.current;
+    const done = () => { if (current()) { setSceneProgress(100); setNarrationEnded(true); } };
+    const fail = () => { if (current()) { setAudioError('เล่นเสียงไม่สำเร็จ กรุณากดฟังซ้ำ'); setIsPlaying(false); } };
+    const fallback = () => {
+      if (!current()) return;
+      if (!('speechSynthesis' in window)) { fail(); return; }
+      const utter = new SpeechSynthesisUtterance(scene.voiceText);
+      utter.lang = 'th-TH';
+      utter.rate = speechRate;
+      utter.onend = done;
+      utter.onerror = fail;
+      window.speechSynthesis.speak(utter);
+    };
+    if (!scene.audioSrc) { fallback(); return; }
+    const audio = new Audio(scene.audioSrc);
+    audioRef.current = audio;
+    audio.playbackRate = speechRate;
+    audio.onended = done;
+    audio.ontimeupdate = () => {
+      if (current() && Number.isFinite(audio.duration) && audio.duration > 0)
+        setSceneProgress(audio.currentTime / audio.duration * 100);
+    };
+    audio.play().catch(fallback);
+  }, [voiceEnabled, speechRate, stopAudio]);
 
-      if (!audioRef.current && typeof Audio !== 'undefined') {
-        audioRef.current = new Audio();
-      }
-
-      if (audioRef.current && scene.audioSrc) {
-        audioRef.current.src = scene.audioSrc;
-        audioRef.current.playbackRate = speechRate;
-        audioRef.current
-          .play()
-          .catch(() => {
-            // Fallback to Web Speech API with correct phonetic text
-            if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-              const utter = new SpeechSynthesisUtterance(scene.voiceText);
-              utter.lang = 'th-TH';
-              utter.rate = speechRate;
-              const voices = window.speechSynthesis.getVoices().filter((v) => /^th(?:-|$)/i.test(v.lang));
-              utter.voice = voices.find((v) => v.default) || voices[0] || null;
-              window.speechSynthesis.speak(utter);
-            }
-          });
-      }
-    },
-    [voiceEnabled, speechRate, stopAudio]
-  );
-
-  // Play audio when current scene changes while playing
+  useEffect(() => {
+    if (!isPlaying || !voiceEnabled || !narrationEnded) return;
+    if (currentIdx < SCENES.length - 1) {
+      setNarrationEnded(false);
+      setCurrentIdx(currentIdx + 1);
+    } else setIsPlaying(false);
+  }, [isPlaying, voiceEnabled, narrationEnded, currentIdx]);
+// Play audio when current scene changes while playing
   useEffect(() => {
     setSceneProgress(0);
     if (isPlaying) {
@@ -538,7 +549,7 @@ export default function VhvGuidePage() {
 
   // Progress timer for auto-advancing scenes
   useEffect(() => {
-    if (!isPlaying) {
+    if (!isPlaying || voiceEnabled) {
       if (timerRef.current) clearInterval(timerRef.current);
       return;
     }
@@ -563,7 +574,7 @@ export default function VhvGuidePage() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isPlaying, currentScene.durationSec]);
+  }, [isPlaying, voiceEnabled, currentScene.durationSec]);
 
   // Subtle visual pulse tick
   useEffect(() => {
@@ -687,8 +698,8 @@ export default function VhvGuidePage() {
                   onClick={() => {
                     const next = !voiceEnabled;
                     setVoiceEnabled(next);
-                    if (!next) stopAudio();
-                    else if (isPlaying) playAudioForScene(currentScene);
+                    
+                    
                   }}
                   className={`btn btn-sm rounded-pill px-3 ${
                     voiceEnabled ? 'btn-primary' : 'btn-outline-secondary'
@@ -711,6 +722,7 @@ export default function VhvGuidePage() {
               </div>
             </div>
 
+            {audioError && <div role="alert" className="alert alert-warning">{audioError}</div>}
             {/* Scene Progress Timeline */}
             <div className="mb-3">
               <div className="d-flex justify-content-between small text-muted mb-1">
