@@ -488,12 +488,15 @@ export default function VhvGuidePage() {
     }
   }, []);
 
-  //   const [audioError, setAudioError] = useState('');
+  const [audioError, setAudioError] = useState('');
   const [narrationEnded, setNarrationEnded] = useState(false);
   const generationRef = useRef(0);
+  const speechRateRef = useRef(speechRate);
+  speechRateRef.current = speechRate;
   const playAudioForScene = useCallback((scene) => {
     stopAudio();
     setNarrationEnded(false);
+    setSceneProgress(0);
     setAudioError('');
     if (!voiceEnabled) return;
     const generation = generationRef.current;
@@ -505,7 +508,7 @@ export default function VhvGuidePage() {
       if (!('speechSynthesis' in window)) { fail(); return; }
       const utter = new SpeechSynthesisUtterance(scene.voiceText);
       utter.lang = 'th-TH';
-      utter.rate = speechRate;
+      utter.rate = speechRateRef.current;
       utter.onend = done;
       utter.onerror = fail;
       window.speechSynthesis.speak(utter);
@@ -513,14 +516,14 @@ export default function VhvGuidePage() {
     if (!scene.audioSrc) { fallback(); return; }
     const audio = new Audio(scene.audioSrc);
     audioRef.current = audio;
-    audio.playbackRate = speechRate;
+    audio.playbackRate = speechRateRef.current;
     audio.onended = done;
     audio.ontimeupdate = () => {
       if (current() && Number.isFinite(audio.duration) && audio.duration > 0)
         setSceneProgress(audio.currentTime / audio.duration * 100);
     };
     audio.play().catch(fallback);
-  }, [voiceEnabled, speechRate, stopAudio]);
+  }, [voiceEnabled, stopAudio]);
 
   useEffect(() => {
     if (!isPlaying || !voiceEnabled || !narrationEnded) return;
@@ -531,7 +534,6 @@ export default function VhvGuidePage() {
   }, [isPlaying, voiceEnabled, narrationEnded, currentIdx]);
 // Play audio when current scene changes while playing
   useEffect(() => {
-    setSceneProgress(0);
     if (isPlaying) {
       playAudioForScene(currentScene);
     } else {
@@ -672,7 +674,7 @@ export default function VhvGuidePage() {
                   className={`btn ${isPlaying ? 'btn-danger' : 'btn-success'} rounded-pill px-4 fw-bold shadow-sm`}
                 >
                   <i className={`fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'} me-2`} />
-                  {isPlaying ? 'หยุดชั่วคราว' : '▶ เล่นวิดีโอพร้อมเสียงบรรยาย'}
+                  {isPlaying ? 'หยุดเล่น' : '▶ เล่นวิดีโอพร้อมเสียงบรรยาย'}
                 </button>
                 <button
                   type="button"
