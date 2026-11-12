@@ -9,8 +9,11 @@ const SCENES = [
     badge: 'บทที่ 1 / 6',
     title: 'เข้าใช้งานผ่าน LINE LIFF & ผูกบัญชีครั้งแรก',
     durationSec: 16,
+    audioSrc: '/audio/guide/scene-1.mp3',
     voiceText:
-      'บทที่หนึ่ง เข้าสู่ระบบผ่านไลน์ค่ะ. เริ่มจากเปิดลิงก์ระบบในกลุ่มไลน์ อสม. แล้วกด เข้าสู่ระบบด้วยไลน์. หากใช้งานครั้งแรก ให้ตรวจรูปโปรไฟล์ เลือก อสม. และกรอกเลขบัตรประชาชนสิบสามหลักของท่าน. ตรวจข้อมูลอีกครั้ง แล้วกด ยืนยันและผูกบัญชีไลน์. ครั้งต่อไป ให้เข้าใช้งานด้วยบัญชีไลน์เดิมนะคะ.',
+      'บทที่หนึ่ง การเข้าสู่ระบบผ่านไลน์ลิฟค่ะ สำหรับพี่น้อง ออ-สอ-มอ เมื่อเปิดลิงก์ในกลุ่มไลน์แล้ว ให้กดปุ่ม เข้าสู่ระบบด้วยไลน์ หากเป็นการใช้งานครั้งแรก ให้กดเลือก ออ-สอ-มอ และกรอกเลขบัตรประชาชนสิบสามหลัก แล้วกดปุ่ม ยืนยันและผูกบัญชีไลน์ ครั้งต่อไปจะสามารถกดเข้าใช้งานได้ทันทีค่ะ',
+    displayText:
+      'บทที่ 1 การเข้าสู่ระบบผ่าน LINE LIFF: สำหรับพี่น้อง อสม. เมื่อเปิดลิงก์ในกลุ่ม LINE แล้ว ให้กดปุ่ม "เข้าสู่ระบบด้วย LINE" หากเป็นการใช้งานครั้งแรก ให้เลือก "อสม." แล้วกรอกเลขบัตรประชาชน 13 หลัก จากนั้นกดปุ่ม "ยืนยันและผูกบัญชี LINE" ครั้งต่อไปเมื่อกดเข้าผ่าน LINE ระบบจะเข้าใช้งานได้ทันทีโดยไม่ต้องกรอกรหัสอีกค่ะ',
     steps: [
       'กดลิงก์ระบบสุขภาพโนนสว่างจากในแชท LINE หรือเมนูกลุ่ม อสม.',
       'กดปุ่มสีเขียว "เข้าสู่ระบบด้วย LINE"',
@@ -25,8 +28,11 @@ const SCENES = [
     badge: 'บทที่ 2 / 6',
     title: 'หน้า "บ้านที่ฉันรับผิดชอบ" เลือกบ้านลงสำรวจ',
     durationSec: 14,
+    audioSrc: '/audio/guide/scene-2.mp3',
     voiceText:
-      'บทที่สอง บ้านที่ฉันรับผิดชอบค่ะ. หลังเข้าสู่ระบบ อสม. จะเห็นบ้านในความรับผิดชอบ พร้อมสถานะการสำรวจ. หากต้องการทำงานต่อ ให้เลือก งานที่ยังไม่ครบ. จากนั้นเลือกบ้านเลขที่ที่ต้องการ แล้วเปิดดูสมาชิกในบ้านค่ะ.',
+      'บทที่สอง หน้าบ้านที่ฉันรับผิดชอบค่ะ เมื่อ ออ-สอ-มอ เข้าสู่ระบบแล้ว จะเห็นรายชื่อบ้านในความรับผิดชอบทั้งหมด สามารถกดดูงานที่ยังไม่ครบ แล้วแตะเลือกบ้านเลขที่ที่ต้องการ เพื่อเปิดดูรายชื่อคนในบ้านได้ทันทีค่ะ',
+    displayText:
+      'บทที่ 2 หน้าบ้านที่ฉันรับผิดชอบ: เมื่อ อสม. เข้าสู่ระบบแล้ว จะเห็นรายชื่อบ้านในความรับผิดชอบทั้งหมด สามารถกดเลือกดู "งานที่ยังไม่ครบ" แล้วแตะเลือกบ้านเลขที่ที่ต้องการ เพื่อเปิดดูรายชื่อสมาชิกในบ้านได้ทันทีค่ะ',
     steps: [
       'หลังล็อกอิน ระบบจะเปิดหน้า "บ้านที่ฉันรับผิดชอบ" อัตโนมัติ',
       'ดูยอดสรุป: บ้านที่รับผิดชอบทั้งหมด / สำรวจครบแล้ว / ยังไม่ครบ',
@@ -40,8 +46,11 @@ const SCENES = [
     badge: 'บทที่ 3 / 6',
     title: 'ปักหมุดพิกัดหลังคาบ้าน (GPS) หน้าบ้านจริง',
     durationSec: 13,
+    audioSrc: '/audio/guide/scene-3.mp3',
     voiceText:
-      'บทที่สาม บันทึกพิกัดบ้านค่ะ. เมื่อไปถึงบ้านที่ต้องการสำรวจ ให้เปิดข้อมูลบ้านหลังนั้น แล้วกด บันทึกพิกัดบ้าน. หากมือถือขอใช้ตำแหน่ง ให้กด อนุญาต. ตรวจตำแหน่งและค่าความแม่นยำก่อนยืนยัน. พิกัดจะเข้าคิวรอเจ้าหน้าที่ตรวจและกดส่ง ก่อนตัวเชื่อมจะเขียนเข้า ฮอสเอ็กซ์พี ค่ะ.',
+      'บทที่สาม การปักหมุดพิกัดหลังคาบ้านด้วยจีพีเอสค่ะ ให้ ออ-สอ-มอ ยืนอยู่บริเวณหน้าบ้านจริง แล้วกดปุ่ม บันทึกพิกัดบ้านเข้าคิวฮอสเอ็กซ์พี หากมือถือถาม ให้กดอนุญาตให้เข้าถึงตำแหน่ง พิกัดจะถูกส่งเข้าคิวให้เจ้าหน้าที่ตรวจสอบต่อไปค่ะ',
+    displayText:
+      'บทที่ 3 การปักหมุดพิกัดหลังคาบ้าน (GPS): ให้ อสม. ยืนอยู่บริเวณหน้าบ้านจริงที่กำลังสำรวจ แล้วกดปุ่ม "บันทึกพิกัดบ้าน / เข้าคิว HOSxP" หากมือถือถามสิทธิ์ ให้กด "อนุญาต" เพื่อให้ระบบจับพิกัดดาวเทียมและส่งเข้าคิวให้เจ้าหน้าที่ตรวจสอบต่อไปค่ะ',
     steps: [
       'ยืนอยู่บริเวณบ้านที่กำลังสำรวจ แล้วเปิดข้อมูลบ้านหลังนั้น',
       'กดปุ่มสีฟ้า "📍 บันทึกพิกัดบ้าน / เข้าคิว HOSxP" ในกล่องหัวข้อบ้าน',
@@ -55,8 +64,11 @@ const SCENES = [
     badge: 'บทที่ 4 / 6',
     title: 'บันทึกโรคประจำตัว (เลือกหลายโรคได้) & สถานะ Type 1–4',
     durationSec: 18,
+    audioSrc: '/audio/guide/scene-4.mp3',
     voiceText:
-      'บทที่สี่ บันทึกโรคและสถานะการอยู่อาศัยค่ะ. ในการ์ดรายบุคคล ให้เลือกสถานะในบ้าน. กด แก้ไขโรค แล้วเลือกได้หลายโรค เช่น เบาหวาน และความดันโลหิตสูง. หากมีโรคอื่น สามารถพิมพ์เพิ่มได้ แล้วกด บันทึกโรคประจำตัว เพียงครั้งเดียว. จากนั้นตรวจประเภทอยู่อาศัย และสถานะจำหน่ายให้ตรงกับข้อมูลจริง ก่อนกดบันทึกค่ะ.',
+      'บทที่สี่ การบันทึกโรคประจำตัวและประเภทอยู่อาศัยค่ะ ในการ์ดของแต่ละคน ออ-สอ-มอ สามารถกดเลือกโรคประจำตัวได้หลายโรคพร้อมกัน หรือพิมพ์ระบุเพิ่มได้ จากนั้นเลือกประเภทอยู่อาศัย ไทป์หนึ่งถึงสี่ และสถานะจำหน่าย แล้วกดปุ่มสีน้ำเงินเพื่อบันทึกค่ะ',
+    displayText:
+      'บทที่ 4 การบันทึกโรคประจำตัวและประเภทอยู่อาศัย: ในการ์ดของแต่ละคน อสม. สามารถกดเลือกโรคประจำตัวได้หลายโรคพร้อมกัน (โรคไขว้) หรือพิมพ์ระบุเพิ่มได้ จากนั้นเลือกประเภทอยู่อาศัย (Type 1–4) และสถานะจำหน่าย แล้วกดปุ่มสีน้ำเงิน "บันทึกประเภทอยู่อาศัยและสถานะจำหน่าย" ค่ะ',
     steps: [
       'เลือก "สถานะในบ้าน" (เช่น เจ้าบ้าน, ผู้อาศัย, บุตร/หลาน)',
       'กดปุ่ม "โรคประจำตัว" → ติ๊กเลือกได้หลายโรคพร้อมกัน (โรคไขว้) หรือพิมพ์ระบุโรคอื่นๆ → กดบันทึกโรค',
@@ -71,8 +83,11 @@ const SCENES = [
     badge: 'บทที่ 5 / 6',
     title: 'การย้ายบ้านในหมู่ & คิวยืนยันย้ายข้ามหมู่',
     durationSec: 17,
+    audioSrc: '/audio/guide/scene-5.mp3',
     voiceText:
-      'บทที่ห้า การย้ายบ้านค่ะ. กด ย้ายบ้านในทะเบียนสำรวจ แล้วเลือกหมู่และบ้านปลายทางที่มีอยู่ในระบบ. ตรวจบ้านเลขที่และชื่อ อสม. ผู้รับผิดชอบให้ถูกต้อง. หากปลายทางอยู่นอกหมู่ที่ท่านรับผิดชอบ รายการจะรอ อสม. หมู่ปลายทาง หรือเจ้าหน้าที่ ยืนยันรับเข้า. การย้ายนี้เปลี่ยนเฉพาะทะเบียนสำรวจ ยังไม่ได้ย้ายบ้านใน ฮอสเอ็กซ์พี นะคะ.',
+      'บทที่ห้า การย้ายบ้านในทะเบียนสำรวจค่ะ หากคนในบ้านย้ายที่อยู่ ให้กดปุ่ม ย้ายบ้านในทะเบียนสำรวจ แล้วเลือกหมู่และบ้านเลขที่ใหม่ ถ้าย้ายในหมู่เดิมจะย้ายทันที แต่ถ้าย้ายข้ามหมู่ ระบบจะส่งเข้าคิว เพื่อให้ ออ-สอ-มอ หมู่ปลายทาง หรือเจ้าหน้าที่กดยืนยันรับเข้าบ้านค่ะ',
+    displayText:
+      'บทที่ 5 การย้ายบ้านในทะเบียนสำรวจ: หากคนในบ้านย้ายที่อยู่ ให้กดปุ่ม "ย้ายบ้านในทะเบียนสำรวจ" แล้วเลือกหมู่และบ้านเลขที่ใหม่ที่มีอยู่ในระบบ ถ้าย้ายในหมู่เดิมจะย้ายทันที แต่ถ้าย้ายข้ามหมู่ ระบบจะส่งเข้าคิว "⏳ รอยืนยันย้ายเข้า" เพื่อให้ อสม. หมู่ปลายทาง หรือเจ้าหน้าที่กดยืนยันรับเข้าบ้านค่ะ',
     steps: [
       'กดปุ่ม "🚚 ย้ายบ้านในทะเบียนสำรวจ (ในหมู่ / ข้ามหมู่)" บนการ์ดของบุคคลนั้น',
       'เลือกหมู่ที่ย้ายไป และระบุบ้านเลขที่ปลายทาง (ต้องเป็นบ้านที่มีอยู่ในระบบแล้ว)',
@@ -85,18 +100,20 @@ const SCENES = [
   {
     id: 6,
     badge: 'บทที่ 6 / 6',
-    title: 'ดูแผนที่สุขภาพและเปิดข้อมูลบ้าน',
+    title: 'บันทึกผลตรวจคัดกรอง 4 KPI (วัณโรค • มะเร็งลำไส้ FIT • OV • เด็ก)',
     durationSec: 16,
+    audioSrc: '/audio/guide/scene-6.mp3',
     voiceText:
-      'บทที่หก การใช้แผนที่สุขภาพค่ะ. เปิดเมนู แผนที่ แล้วเลือกหมู่บ้านที่ต้องการ. อสม. สามารถซูมเข้าเพื่อดูบ้านแต่ละหลัง และแตะหมุดเพื่อเปิดข้อมูลบ้านได้. สีหมุดมีความหมายตามโหมดที่เลือก ให้ดูคำอธิบายสีบนแผนที่ทุกครั้งนะคะ. หากต้องการทำงานต่อ ให้กดเปิดหน้าสำรวจจากบ้านที่เลือกค่ะ.',
+      'บทที่หก การบันทึกผลคัดกรองสี่เคพีไอค่ะ ให้ ออ-สอ-มอ กดเมนู คัดกรองรายบุคคล เพื่อค้นหาชื่อลูกบ้าน และบันทึกผลตรวจคัดกรอง วัณโรค มะเร็งลำไส้ใหญ่ฟิตเทสต์ พยาธิใบไม้ตับโอวี และพัฒนาการเด็ก ตามกลุ่มเป้าหมาย แล้วกดบันทึกผลค่ะ',
+    displayText:
+      'บทที่ 6 การบันทึกผลคัดกรอง 4 KPI: ให้ อสม. กดเมนู "คัดกรองรายบุคคล" เพื่อค้นหาชื่อลูกบ้าน และบันทึกผลตรวจคัดกรอง วัณโรค (TB), มะเร็งลำไส้ใหญ่ (FIT Test), พยาธิใบไม้ตับ (OV) และพัฒนาการเด็ก (DSPM) ตามกลุ่มเป้าหมาย แล้วกดบันทึกผลค่ะ',
     steps: [
-      'เปิดเมนู แผนที่ แล้วเลือกหมู่บ้านที่ต้องการดู',
-      'เลือกโหมดหมุด และอ่านคำอธิบายสีของโหมดนั้น',
-      'ซูมเข้าแล้วแตะหมุดบ้าน เพื่อดูรายละเอียด',
-      'กดเปิดหน้าสำรวจบ้านที่เลือก เพื่อบันทึกข้อมูลต่อ',
+      'กดปุ่ม "เมนู" มุมขวาบน → เลือก "คัดกรองรายบุคคล"',
+      'พิมพ์ค้นหาชื่อ หรือเลือกกรองตามกลุ่มเป้าหมาย KPI ที่ยังไม่ได้ตรวจ',
+      'กดเลือกผลการคัดกรอง (ปกติ / ผิดปกติ) แล้วกดบันทึกผล',
     ],
-    tip: 'สีหมุดเปลี่ยนความหมายตามโหมดแผนที่ ไม่ควรสรุปสถานะสำรวจจากสีหมุดเพียงอย่างเดียว',
-    mockup: 'map',
+    tip: 'รายการที่บันทึกผลแล้วจะส่งต่อให้เจ้าหน้าที่ รพ.สต. ตรวจสอบและเชื่อมข้อมูลเข้า HOSxP',
+    mockup: 'kpi',
   },
 ];
 
@@ -346,42 +363,6 @@ function PhoneMockupScreen({ type, tick }) {
     );
   }
 
-  if (type === 'screening-card') {
-    return (
-      <div className="p-3" style={{ fontSize: '.75rem' }}>
-        <div className="border rounded-3 p-2 bg-white mb-2">
-          <div className="fw-bold text-dark mb-1">
-            <i className="fa-solid fa-smoking text-danger me-1" /> คัดกรองพฤติกรรมเสี่ยง
-          </div>
-          <div className="d-flex gap-1 mb-1">
-            <span className="badge bg-success flex-fill py-1">บุหรี่: ไม่สูบ</span>
-            <span className="badge bg-primary flex-fill py-1">สุรา: เลิกแล้ว</span>
-          </div>
-        </div>
-
-        <div
-          className="border rounded-3 p-2 bg-white"
-          style={{
-            borderColor: '#f59e0b',
-            boxShadow: pulse ? '0 0 0 4px rgba(245,158,11,0.3)' : 'none',
-          }}
-        >
-          <div className="fw-bold mb-1" style={{ color: '#b45309' }}>
-            <i className="fa-solid fa-fish me-1" /> คัดกรองพยาธิใบไม้ตับ (OV) (อายุ ≥ 15 ปี)
-          </div>
-          <div className="small text-muted mb-2" style={{ fontSize: '.67rem' }}>
-            1. เคยตรวจอุจจาระ/ปัสสาวะหาพยาธิใบไม้ตับหรือไม่?
-            <br />
-            2. เคยมีประวัติกินปลาดิบ (ก้อยปลา/ปลาร้าดิบ/ส้มปลา) หรือไม่?
-          </div>
-          <div className="btn btn-sm btn-warning w-100 fw-bold" style={{ fontSize: '.72rem' }}>
-            ✓ บันทึกผลคัดกรอง OV
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (type === 'transfer') {
     return (
       <div className="p-3" style={{ fontSize: '.75rem' }}>
@@ -430,97 +411,53 @@ function PhoneMockupScreen({ type, tick }) {
     );
   }
 
-  if (type === 'kpi') {
-    return (
-      <div className="p-3" style={{ fontSize: '.75rem' }}>
-        <div className="fw-bold text-primary mb-2">
-          <i className="fa-solid fa-heart-pulse me-1" /> คัดกรองรายบุคคล 4 KPI
-        </div>
-        <div className="d-flex flex-column gap-2">
-          <div className="p-2 rounded-3 border bg-white d-flex justify-content-between align-items-center">
-            <div>
-              <strong>1. วัณโรค (TB)</strong>
-              <div className="text-muted" style={{ fontSize: '.65rem' }}>
-                กลุ่มเสี่ยง / ผู้สูงอายุ
-              </div>
-            </div>
-            <span className="badge bg-success">ปกติ</span>
-          </div>
-          <div
-            className="p-2 rounded-3 border bg-white d-flex justify-content-between align-items-center"
-            style={{ boxShadow: pulse ? '0 0 0 3px rgba(37,99,235,0.3)' : 'none' }}
-          >
-            <div>
-              <strong>2. มะเร็งลำไส้ใหญ่ (FIT Test)</strong>
-              <div className="text-muted" style={{ fontSize: '.65rem' }}>
-                อายุ 50–70 ปี
-              </div>
-            </div>
-            <span className="btn btn-sm btn-primary py-0 px-2" style={{ fontSize: '.66rem' }}>
-              บันทึกผล
-            </span>
-          </div>
-          <div className="p-2 rounded-3 border bg-white d-flex justify-content-between align-items-center">
-            <div>
-              <strong>3. พยาธิใบไม้ตับ (OV)</strong>
-              <div className="text-muted" style={{ fontSize: '.65rem' }}>
-                อายุ 15 ปีขึ้นไป
-              </div>
-            </div>
-            <span className="badge bg-success">ตรวจแล้ว</span>
-          </div>
-          <div className="p-2 rounded-3 border bg-white d-flex justify-content-between align-items-center">
-            <div>
-              <strong>4. พัฒนาการเด็ก (DSPM)</strong>
-              <div className="text-muted" style={{ fontSize: '.65rem' }}>
-                เด็กเล็ก 0–5 ปี
-              </div>
-            </div>
-            <span className="badge bg-info text-dark">สมวัย</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="p-3" style={{ fontSize: '.75rem' }}>
       <div className="fw-bold text-primary mb-2">
-        <i className="fa-solid fa-map-location-dot me-1" /> แผนที่สุขภาพหลังคาบ้าน (GIS)
+        <i className="fa-solid fa-heart-pulse me-1" /> คัดกรองรายบุคคล 4 KPI
       </div>
-      <div
-        className="rounded-3 p-3 position-relative border mb-2"
-        style={{
-          height: 155,
-          background: 'linear-gradient(135deg, #dcfce7 0%, #e0f2fe 100%)',
-        }}
-      >
-        <div
-          className="badge bg-success position-absolute shadow-sm"
-          style={{ top: 24, left: 28, fontSize: '.68rem' }}
-        >
-          📍 บ้าน 12
+      <div className="d-flex flex-column gap-2">
+        <div className="p-2 rounded-3 border bg-white d-flex justify-content-between align-items-center">
+          <div>
+            <strong>1. วัณโรค (TB)</strong>
+            <div className="text-muted" style={{ fontSize: '.65rem' }}>
+              กลุ่มเสี่ยง / ผู้สูงอายุ
+            </div>
+          </div>
+          <span className="badge bg-success">ปกติ</span>
         </div>
         <div
-          className="badge bg-warning text-dark position-absolute shadow-sm"
-          style={{ top: 68, right: 32, fontSize: '.68rem' }}
+          className="p-2 rounded-3 border bg-white d-flex justify-content-between align-items-center"
+          style={{ boxShadow: pulse ? '0 0 0 3px rgba(37,99,235,0.3)' : 'none' }}
         >
-          📍 บ้าน 24/1
+          <div>
+            <strong>2. มะเร็งลำไส้ใหญ่ (FIT Test)</strong>
+            <div className="text-muted" style={{ fontSize: '.65rem' }}>
+              อายุ 50–70 ปี
+            </div>
+          </div>
+          <span className="btn btn-sm btn-primary py-0 px-2" style={{ fontSize: '.66rem' }}>
+            บันทึกผล
+          </span>
         </div>
-        <div
-          className="badge bg-danger position-absolute shadow-sm"
-          style={{
-            bottom: 22,
-            left: 55,
-            fontSize: '.68rem',
-            boxShadow: pulse ? '0 0 0 4px rgba(220,38,38,0.35)' : 'none',
-          }}
-        >
-          📍 บ้าน 39
+        <div className="p-2 rounded-3 border bg-white d-flex justify-content-between align-items-center">
+          <div>
+            <strong>3. พยาธิใบไม้ตับ (OV)</strong>
+            <div className="text-muted" style={{ fontSize: '.65rem' }}>
+              อายุ 15 ปีขึ้นไป
+            </div>
+          </div>
+          <span className="badge bg-success">ตรวจแล้ว</span>
         </div>
-      </div>
-      <div className="d-flex justify-content-around small text-muted" style={{ fontSize: '.66rem' }}>
-        <span>ภาพตัวอย่าง • ดูความหมายสีตามโหมดที่เลือกบนแผนที่จริง</span>
+        <div className="p-2 rounded-3 border bg-white d-flex justify-content-between align-items-center">
+          <div>
+            <strong>4. พัฒนาการเด็ก (DSPM)</strong>
+            <div className="text-muted" style={{ fontSize: '.65rem' }}>
+              เด็กเล็ก 0–5 ปี
+            </div>
+          </div>
+          <span className="badge bg-info text-dark">สมวัย</span>
+        </div>
       </div>
     </div>
   );
@@ -530,66 +467,76 @@ export default function VhvGuidePage() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [speechRate, setSpeechRate] = useState(0.9);
+  const [speechRate, setSpeechRate] = useState(1.0);
   const [sceneProgress, setSceneProgress] = useState(0);
   const [tick, setTick] = useState(0);
   const [copiedNotice, setCopiedNotice] = useState('');
 
+  const audioRef = useRef(null);
   const timerRef = useRef(null);
-  const speechRun = useRef(0);
-  const speechDone = useRef(true);
-  const pauseRef = useRef(null);
-  const utteranceRef = useRef(null);
   const currentScene = SCENES[currentIdx];
 
-  const stopSpeech = useCallback(() => {
-    speechRun.current += 1;
-    clearTimeout(pauseRef.current);
-    speechDone.current = true;
-    utteranceRef.current = null;
+  // Stop any active audio and speech synthesis
+  const stopAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
   }, []);
 
-  const speakText = useCallback(
-    (text) => {
-      if (typeof window === 'undefined' || !('speechSynthesis' in window) || !voiceEnabled) return;
-      stopSpeech();
-      const run = speechRun.current;
-      speechDone.current = false;
-      const sentences = text.split(/(?<!อสม)[.!?]+/).map(x=>x.trim()).filter(Boolean);
-      const read = (index) => {
-        if (run !== speechRun.current) return;
-        if (index >= sentences.length) { speechDone.current = true; utteranceRef.current = null; return; }
-        try {
-          const utter = new SpeechSynthesisUtterance(sentences[index]);
-          utter.lang = 'th-TH'; utter.rate = speechRate; utter.pitch = 1;
-          const voices = window.speechSynthesis.getVoices().filter(v=>/^th(?:-|$)/i.test(v.lang));
-          utter.voice = voices.find(v=>v.default) || voices[0] || null;
-          utter.onend = () => { if(run === speechRun.current) pauseRef.current = setTimeout(()=>read(index+1), 280); };
-          utter.onerror = () => { if(run === speechRun.current) {speechDone.current=true; setIsPlaying(false);} };
-          utteranceRef.current = utter;
-          window.speechSynthesis.speak(utter);
-        } catch { speechDone.current=true; setIsPlaying(false); }
-      };
-      read(0);
+  // Play natural audio file with Web Speech fallback
+  const playAudioForScene = useCallback(
+    (scene) => {
+      if (!voiceEnabled) return;
+      stopAudio();
+
+      if (!audioRef.current && typeof Audio !== 'undefined') {
+        audioRef.current = new Audio();
+      }
+
+      if (audioRef.current && scene.audioSrc) {
+        audioRef.current.src = scene.audioSrc;
+        audioRef.current.playbackRate = speechRate;
+        audioRef.current
+          .play()
+          .catch(() => {
+            // Fallback to Web Speech API with correct phonetic text
+            if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+              const utter = new SpeechSynthesisUtterance(scene.voiceText);
+              utter.lang = 'th-TH';
+              utter.rate = speechRate;
+              const voices = window.speechSynthesis.getVoices().filter((v) => /^th(?:-|$)/i.test(v.lang));
+              utter.voice = voices.find((v) => v.default) || voices[0] || null;
+              window.speechSynthesis.speak(utter);
+            }
+          });
+      }
     },
-    [voiceEnabled, speechRate, stopSpeech]
+    [voiceEnabled, speechRate, stopAudio]
   );
 
-  // Trigger voiceover when scene changes while playing
+  // Play audio when current scene changes while playing
   useEffect(() => {
     setSceneProgress(0);
-    if (isPlaying && voiceEnabled) {
-      speakText(currentScene.voiceText);
+    if (isPlaying) {
+      playAudioForScene(currentScene);
     } else {
-      stopSpeech();
+      stopAudio();
     }
-    return () => stopSpeech();
-  }, [currentIdx, isPlaying, voiceEnabled, currentScene.voiceText, speakText, stopSpeech]);
+    return () => stopAudio();
+  }, [currentIdx, isPlaying, currentScene, playAudioForScene, stopAudio]);
 
-  // Progress timer for auto-advancing scenes like a video player
+  // Handle audio rate changes
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = speechRate;
+    }
+  }, [speechRate]);
+
+  // Progress timer for auto-advancing scenes
   useEffect(() => {
     if (!isPlaying) {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -602,7 +549,6 @@ export default function VhvGuidePage() {
       setSceneProgress((prev) => {
         const next = prev + (stepMs / totalMs) * 100;
         if (next >= 100) {
-          if (voiceEnabled && !speechDone.current) return 99;
           setCurrentIdx((idx) => {
             if (idx < SCENES.length - 1) return idx + 1;
             setIsPlaying(false);
@@ -617,9 +563,9 @@ export default function VhvGuidePage() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isPlaying, currentIdx, currentScene.durationSec, voiceEnabled, speechRate]);
+  }, [isPlaying, currentScene.durationSec]);
 
-  // Subtle animation tick even when paused
+  // Subtle visual pulse tick
   useEffect(() => {
     if (isPlaying) return;
     const id = setInterval(() => setTick((t) => t + 1), 1200);
@@ -647,7 +593,7 @@ export default function VhvGuidePage() {
         await navigator.share({ title: shareText, text: shareText, url: shareUrl });
         return;
       } catch {
-        // fallback to copy
+        // fallback
       }
     }
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -679,7 +625,7 @@ export default function VhvGuidePage() {
                   วิดีโอสอนการใช้งานระบบสำรวจสุขภาพ (ผ่าน LINE LIFF)
                 </h1>
                 <p className="mb-0 small text-white-50">
-                  รพ.สต.บ้านโนนสว่าง • กดปุ่ม ▶ เล่นวิดีโอเพื่อฟังเสียงบรรยายภาษาไทยและดูภาพจำลองทีละขั้นตอน
+                  รพ.สต.บ้านโนนสว่าง • กดปุ่ม ▶ เล่นวิดีโอเพื่อฟังเสียงบรรยายและดูภาพจำลองหน้าจอทีละขั้นตอน
                 </p>
               </div>
               <div className="d-flex gap-2 flex-wrap">
@@ -738,7 +684,12 @@ export default function VhvGuidePage() {
               <div className="d-flex align-items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setVoiceEnabled((v) => !v)}
+                  onClick={() => {
+                    const next = !voiceEnabled;
+                    setVoiceEnabled(next);
+                    if (!next) stopAudio();
+                    else if (isPlaying) playAudioForScene(currentScene);
+                  }}
                   className={`btn btn-sm rounded-pill px-3 ${
                     voiceEnabled ? 'btn-primary' : 'btn-outline-secondary'
                   }`}
@@ -767,7 +718,7 @@ export default function VhvGuidePage() {
                   กำลังแสดง: <strong className="text-dark">{currentScene.badge}</strong> — {currentScene.title}
                 </span>
                 <span>
-                  ฉากที่ {currentIdx + 1} จาก {SCENES.length}
+                  บทที่ {currentIdx + 1} จาก {SCENES.length}
                 </span>
               </div>
               <div className="progress" style={{ height: 8, borderRadius: 8 }}>
@@ -822,11 +773,11 @@ export default function VhvGuidePage() {
                     <i className="fa-solid fa-microphone-lines me-1" /> คำบรรยาย (แตะปุ่มฟังซ้ำได้):
                   </div>
                   <p className="mb-2 small text-dark" style={{ lineHeight: 1.65 }}>
-                    &ldquo;{currentScene.voiceText}&rdquo;
+                    &ldquo;{currentScene.displayText}&rdquo;
                   </p>
                   <button
                     type="button"
-                    onClick={() => speakText(currentScene.voiceText)}
+                    onClick={() => playAudioForScene(currentScene)}
                     className="btn btn-sm btn-outline-success rounded-pill px-3"
                     style={{ fontSize: '.75rem' }}
                   >
