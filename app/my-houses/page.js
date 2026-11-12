@@ -26,8 +26,15 @@ export default function MyHousesPage() {
     <>
       <TopBar />
       <main className="container survey-page py-4">
-        <h1>บ้านที่ฉันรับผิดชอบ</h1>
-        <p>{user.displayName} • เลือก “สำรวจครบ” เพื่อดูบ้านที่บันทึกครบแล้ว หรือเลือกงานที่ยังไม่ครบเพื่อติดตามต่อ</p>
+        <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+          <div>
+            <h1 className="mb-1">บ้านที่ฉันรับผิดชอบ</h1>
+            <p className="mb-0">{user.displayName} • เลือก “สำรวจครบ” เพื่อดูบ้านที่บันทึกครบแล้ว หรือเลือกงานที่ยังไม่ครบเพื่อติดตามต่อ</p>
+          </div>
+          <a href="/vhv-guide" className="btn btn-outline-success btn-sm rounded-pill px-3 fw-bold">
+            <i className="fa-solid fa-circle-play me-1" /> วิดีโอสอนใช้งาน อสม.
+          </a>
+        </div>
         <PendingTransfersBanner
           user={user}
           onResolved={() => setRefreshKey((k) => k + 1)}

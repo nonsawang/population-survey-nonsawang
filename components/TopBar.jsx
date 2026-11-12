@@ -19,13 +19,13 @@ export default function TopBar() {
     ['/screening', 'คัดกรองรายบุคคล', 'fa-heart-pulse'],
     ['/map', 'แผนที่', 'fa-map-location-dot'],
     ['/dashboard', 'ภาพรวม', 'fa-chart-pie'],
+    ['/vhv-guide', 'คู่มือ อสม.', 'fa-circle-play'],
   ];
   const links = user?.role === 'manager' ? [...mainLinks.filter(link => link[0] === '/dashboard'), ...mainLinks.filter(link => link[0] !== '/dashboard')] : mainLinks;
   const navLink = ([href, label, icon]) => {
     const active = pathname === href.split('?')[0];
     return <Link key={href} href={href} onClick={() => setMenuOpen(false)} className={`top-bar-link${active ? ' is-active' : ''}`} aria-current={active ? 'page' : undefined}><i className={`fa-solid ${icon}`} aria-hidden="true" />{label}</Link>;
   };
-
 
   const handleLogout = () => {
     const S = typeof window !== 'undefined' ? window.Swal : null;

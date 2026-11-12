@@ -87,5 +87,10 @@ export default function LoginPage() {
         <button type="submit" className="btn btn-primary w-100 py-3 fw-bold">{profile ? 'ยืนยันและผูกบัญชี LINE' : 'เข้าสู่ระบบ'}</button>
       </fieldset>
     </form>
+    <div className="mt-3 pt-3 border-top text-center">
+      <a href="/vhv-guide" className="btn btn-outline-success w-100 rounded-pill fw-bold py-2">
+        <i className="fa-solid fa-circle-play me-2" />วิดีโอสอนใช้งานสำหรับ อสม. (LINE LIFF)
+      </a>
+    </div>
   </div></div>;
 }
