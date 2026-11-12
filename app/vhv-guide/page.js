@@ -6,11 +6,11 @@ import TopBar from '@/components/TopBar';
 const SCENES = [
   {
     id: 1,
-    badge: 'บทที่ 1 / 8',
+    badge: 'บทที่ 1 / 6',
     title: 'เข้าใช้งานผ่าน LINE LIFF & ผูกบัญชีครั้งแรก',
     durationSec: 16,
     voiceText:
-      'บทที่ 1 การเข้าสู่ระบบผ่านไลน์ลิฟ ให้กดลิงก์ระบบจากกลุ่มไลน์ อสม. จากนั้นกดปุ่มสีเขียว เข้าสู่ระบบด้วยไลน์ หากเข้าใช้งานครั้งแรก ระบบจะแสดงรูปโปรไฟล์ไลน์ของท่าน ให้เลือกปุ่ม อสม. แล้วกรอกเลขบัตรประชาชน 13 หลักของท่าน จากนั้นกดปุ่ม ยืนยันและผูกบัญชีไลน์ ครั้งต่อไปเมื่อกดเข้าจากไลน์ ระบบจะเข้าใช้งานได้ทันทีโดยไม่ต้องกรอกรหัสอีกค่ะ',
+      'บทที่หนึ่ง เข้าสู่ระบบผ่านไลน์ค่ะ. เริ่มจากเปิดลิงก์ระบบในกลุ่มไลน์ อะสม แล้วกด เข้าสู่ระบบด้วยไลน์. หากใช้งานครั้งแรก ให้ตรวจรูปโปรไฟล์ เลือก อะสม และกรอกเลขบัตรประชาชนสิบสามหลักของท่าน. ตรวจข้อมูลอีกครั้ง แล้วกด ยืนยันและผูกบัญชีไลน์. ครั้งต่อไป ให้เข้าใช้งานด้วยบัญชีไลน์เดิมนะคะ.',
     steps: [
       'กดลิงก์ระบบสุขภาพโนนสว่างจากในแชท LINE หรือเมนูกลุ่ม อสม.',
       'กดปุ่มสีเขียว "เข้าสู่ระบบด้วย LINE"',
@@ -22,11 +22,11 @@ const SCENES = [
   },
   {
     id: 2,
-    badge: 'บทที่ 2 / 8',
+    badge: 'บทที่ 2 / 6',
     title: 'หน้า "บ้านที่ฉันรับผิดชอบ" เลือกบ้านลงสำรวจ',
     durationSec: 14,
     voiceText:
-      'บทที่ 2 หน้าบ้านที่ฉันรับผิดชอบ เมื่อเข้าสู่ระบบแล้ว อสม. จะพบรายชื่อบ้านที่ตนเองรับผิดชอบทั้งหมด ระบบจะแยกป้ายชัดเจนว่าบ้านไหนสำรวจครบแล้ว และบ้านไหนยังต้องติดตาม ให้กดเลือกหัวข้อ งานที่ยังไม่ครบ แล้วแตะที่บ้านเลขที่ เพื่อเปิดหน้าสำรวจบ้านหลังนั้นได้ทันทีค่ะ',
+      'บทที่สอง บ้านที่ฉันรับผิดชอบค่ะ. หลังเข้าสู่ระบบ อะสม จะเห็นบ้านในความรับผิดชอบ พร้อมสถานะการสำรวจ. หากต้องการทำงานต่อ ให้เลือก งานที่ยังไม่ครบ. จากนั้นเลือกบ้านเลขที่ที่ต้องการ แล้วเปิดดูสมาชิกในบ้านค่ะ.',
     steps: [
       'หลังล็อกอิน ระบบจะเปิดหน้า "บ้านที่ฉันรับผิดชอบ" อัตโนมัติ',
       'ดูยอดสรุป: บ้านที่รับผิดชอบทั้งหมด / สำรวจครบแล้ว / ยังไม่ครบ',
@@ -37,11 +37,11 @@ const SCENES = [
   },
   {
     id: 3,
-    badge: 'บทที่ 3 / 8',
+    badge: 'บทที่ 3 / 6',
     title: 'ปักหมุดพิกัดหลังคาบ้าน (GPS) หน้าบ้านจริง',
     durationSec: 13,
     voiceText:
-      'บทที่ 3 การบันทึกพิกัดจีพีเอสหลังคาบ้าน เมื่อเดินไปถึงหน้าบ้านที่กำลังสำรวจ ให้กดปุ่มสีฟ้า บันทึกพิกัดบ้าน เข้าคิว ฮอสเอ็กซ์พี หากมือถือถามสิทธิ์ตำแหน่ง ให้กด อนุญาต ระบบจะจับพิกัดดาวเทียมและบันทึกตำแหน่งหลังคาบ้านทันทีค่ะ',
+      'บทที่สาม บันทึกพิกัดบ้านค่ะ. เมื่อไปถึงบ้านที่ต้องการสำรวจ ให้เปิดข้อมูลบ้านหลังนั้น แล้วกด บันทึกพิกัดบ้าน. หากมือถือขอใช้ตำแหน่ง ให้กด อนุญาต. ตรวจตำแหน่งและค่าความแม่นยำก่อนยืนยัน. พิกัดจะเข้าคิวรอเจ้าหน้าที่ตรวจและกดส่ง ก่อนตัวเชื่อมจะเขียนเข้า ฮอสเอ็กซ์พี ค่ะ.',
     steps: [
       'ยืนอยู่บริเวณบ้านที่กำลังสำรวจ แล้วเปิดข้อมูลบ้านหลังนั้น',
       'กดปุ่มสีฟ้า "📍 บันทึกพิกัดบ้าน / เข้าคิว HOSxP" ในกล่องหัวข้อบ้าน',
@@ -52,11 +52,11 @@ const SCENES = [
   },
   {
     id: 4,
-    badge: 'บทที่ 4 / 8',
+    badge: 'บทที่ 4 / 6',
     title: 'บันทึกโรคประจำตัว (เลือกหลายโรคได้) & สถานะ Type 1–4',
     durationSec: 18,
     voiceText:
-      'บทที่ 4 การบันทึกโรคประจำตัวและสถานะการอยู่อาศัย ในการ์ดของแต่ละคน ให้เลือกสถานะในบ้าน และกดช่องโรคประจำตัว ซึ่งสามารถติ๊กเลือกควบคู่กันหลายโรคได้ เช่น เบาหวาน ร่วมกับ ความดันโลหิตสูง แล้วกดบันทึก จากนั้นเลือกประเภทอยู่อาศัย ไทป์ 1 ถึง 4 และสถานะจำหน่าย แล้วกดปุ่มสีน้ำเงิน บันทึกประเภทอยู่อาศัยและสถานะจำหน่าย ค่ะ',
+      'บทที่สี่ บันทึกโรคและสถานะการอยู่อาศัยค่ะ. ในการ์ดรายบุคคล ให้เลือกสถานะในบ้าน. กด แก้ไขโรค แล้วเลือกได้หลายโรค เช่น เบาหวาน และความดันโลหิตสูง. หากมีโรคอื่น สามารถพิมพ์เพิ่มได้ แล้วกด บันทึกโรคประจำตัว เพียงครั้งเดียว. จากนั้นตรวจประเภทอยู่อาศัย และสถานะจำหน่ายให้ตรงกับข้อมูลจริง ก่อนกดบันทึกค่ะ.',
     steps: [
       'เลือก "สถานะในบ้าน" (เช่น เจ้าบ้าน, ผู้อาศัย, บุตร/หลาน)',
       'กดปุ่ม "โรคประจำตัว" → ติ๊กเลือกได้หลายโรคพร้อมกัน (โรคไขว้) หรือพิมพ์ระบุโรคอื่นๆ → กดบันทึกโรค',
@@ -68,26 +68,11 @@ const SCENES = [
   },
   {
     id: 5,
-    badge: 'บทที่ 5 / 8',
-    title: 'คัดกรองบุหรี่ • สุรา • พยาธิใบไม้ตับ (OV)',
-    durationSec: 15,
-    voiceText:
-      'บทที่ 5 การคัดกรองพฤติกรรมเสี่ยงและพยาธิใบไม้ตับ เลื่อนลงมาด้านล่างของการ์ดรายบุคคล กดเลือกสถานะการสูบบุหรี่ และการดื่มสุรา หากสูบหรือดื่ม ระบบจะเปิดคำถามประเมินให้ตอบต่อทันที และสำหรับผู้ที่มีอายุ 15 ปีขึ้นไป ให้ตอบแบบคัดกรองพยาธิใบไม้ตับ โอวี ทั้ง 5 ข้อ แล้วกดบันทึกค่ะ',
-    steps: [
-      'หัวข้อ "คัดกรองพฤติกรรมเสี่ยง": เลือกสถานะ สูบบุหรี่ และ ดื่มสุรา แล้วกดบันทึก',
-      'หากเลือก "สูบ" หรือ "ดื่ม" ให้กดทำแบบประเมิน Fagerstrom / ASSIST จนครบ',
-      'สำหรับผู้ที่อายุ 15 ปีขึ้นไป: ตอบคำถามคัดกรองพยาธิใบไม้ตับ (OV) 5 ข้อ แล้วกดบันทึกผล',
-    ],
-    tip: 'เมื่อบันทึกครบทุกส่วน บ้านหลังนี้จะเปลี่ยนสถานะเป็น "สำรวจครบ" ทันที',
-    mockup: 'screening-card',
-  },
-  {
-    id: 6,
-    badge: 'บทที่ 6 / 8',
+    badge: 'บทที่ 5 / 6',
     title: 'การย้ายบ้านในหมู่ & คิวยืนยันย้ายข้ามหมู่',
     durationSec: 17,
     voiceText:
-      'บทที่ 6 การย้ายบ้านในทะเบียนสำรวจ หากลูกบ้านย้ายไปอยู่อีกหลัง ให้กดปุ่ม ย้ายบ้านในทะเบียนสำรวจ เลือกหมู่และพิมพ์บ้านเลขที่ใหม่ที่มีอยู่ในระบบ ถ้าย้ายภายในหมู่เดียวกัน ระบบจะย้ายเข้าบ้านใหม่ทันที แต่ถ้า อสม. กดย้ายข้ามหมู่ ระบบจะติดป้าย รอยืนยันย้ายเข้า เพื่อให้ อสม. หมู่ปลายทาง หรือเจ้าหน้าที่กดรับเข้าบ้านค่ะ',
+      'บทที่ห้า การย้ายบ้านค่ะ. กด ย้ายบ้านในทะเบียนสำรวจ แล้วเลือกหมู่และบ้านปลายทางที่มีอยู่ในระบบ. ตรวจบ้านเลขที่และชื่อ อะสม ผู้รับผิดชอบให้ถูกต้อง. หากปลายทางอยู่นอกหมู่ที่ท่านรับผิดชอบ รายการจะรอ อะสม หมู่ปลายทาง หรือเจ้าหน้าที่ ยืนยันรับเข้า. การย้ายนี้เปลี่ยนเฉพาะทะเบียนสำรวจ ยังไม่ได้ย้ายบ้านใน ฮอสเอ็กซ์พี นะคะ.',
     steps: [
       'กดปุ่ม "🚚 ย้ายบ้านในทะเบียนสำรวจ (ในหมู่ / ข้ามหมู่)" บนการ์ดของบุคคลนั้น',
       'เลือกหมู่ที่ย้ายไป และระบุบ้านเลขที่ปลายทาง (ต้องเป็นบ้านที่มีอยู่ในระบบแล้ว)',
@@ -98,34 +83,19 @@ const SCENES = [
     mockup: 'transfer',
   },
   {
-    id: 7,
-    badge: 'บทที่ 7 / 8',
-    title: 'บันทึกผลตรวจคัดกรอง 4 KPI (วัณโรค • มะเร็งลำไส้ FIT • OV • เด็ก)',
-    durationSec: 14,
+    id: 6,
+    badge: 'บทที่ 6 / 6',
+    title: 'ดูแผนที่สุขภาพและเปิดข้อมูลบ้าน',
+    durationSec: 16,
     voiceText:
-      'บทที่ 7 หน้าคัดกรองรายบุคคล 4 เคพีไอ กดปุ่มเมนูด้านบนแล้วเลือก คัดกรองรายบุคคล สามารถค้นหาชื่อลูกบ้านเพื่อบันทึกผลตรวจวัณโรค มะเร็งลำไส้ใหญ่ฟิตเทสต์ พยาธิใบไม้ตับ และพัฒนาการเด็ก ตามกลุ่มเป้าหมายของแต่ละคนได้เลยค่ะ',
+      'บทที่หก การใช้แผนที่สุขภาพค่ะ. เปิดเมนู แผนที่ แล้วเลือกหมู่บ้านที่ต้องการ. อะสม สามารถซูมเข้าเพื่อดูบ้านแต่ละหลัง และแตะหมุดเพื่อเปิดข้อมูลบ้านได้. สีหมุดมีความหมายตามโหมดที่เลือก ให้ดูคำอธิบายสีบนแผนที่ทุกครั้งนะคะ. หากต้องการทำงานต่อ ให้กดเปิดหน้าสำรวจจากบ้านที่เลือกค่ะ.',
     steps: [
-      'กดปุ่ม "เมนู" มุมขวาบน → เลือก "คัดกรองรายบุคคล"',
-      'พิมพ์ค้นหาชื่อ หรือเลือกกรองตามกลุ่มเป้าหมาย KPI ที่ยังไม่ได้ตรวจ',
-      'กดเลือกผลการคัดกรอง (ปกติ / ผิดปกติ) แล้วกดบันทึกผล',
+      'เปิดเมนู แผนที่ แล้วเลือกหมู่บ้านที่ต้องการดู',
+      'เลือกโหมดหมุด และอ่านคำอธิบายสีของโหมดนั้น',
+      'ซูมเข้าแล้วแตะหมุดบ้าน เพื่อดูรายละเอียด',
+      'กดเปิดหน้าสำรวจบ้านที่เลือก เพื่อบันทึกข้อมูลต่อ',
     ],
-    tip: 'รายการที่บันทึกผลแล้วจะส่งต่อให้เจ้าหน้าที่ รพ.สต. ตรวจสอบและเชื่อมข้อมูลเข้า HOSxP',
-    mockup: 'kpi',
-  },
-  {
-    id: 8,
-    badge: 'บทที่ 8 / 8',
-    title: 'ดูแผนที่หลังคาบ้าน 3 สี (เขียว • ส้ม • แดง)',
-    durationSec: 14,
-    voiceText:
-      'บทที่ 8 การดูแผนที่สุขภาพจีไอเอส กดเมนู แผนที่ เพื่อดูขอบเขตหมู่บ้านและหมุดหลังคาบ้าน หมุดสีเขียวคือบ้านที่สำรวจและคัดกรองครบแล้ว หมุดสีส้มคือสำรวจแล้วแต่ยังเหลือคัดกรอง และหมุดสีแดงคือบ้านที่ยังไม่ได้สำรวจ สามารถแตะที่หมุดบ้านบนแผนที่เพื่อเปิดหน้าสำรวจบ้านหลังนั้นได้ทันทีค่ะ',
-    steps: [
-      'เปิดเมนู "แผนที่" เพื่อดูภาพรวมหลังคาบ้านในหมู่บ้านของตน',
-      '🟢 หมุดสีเขียว = สำรวจและคัดกรองครบถ้วนแล้ว',
-      '🟠 หมุดสีส้ม = สำรวจประชากรแล้ว แต่ยังเหลือคัดกรอง KPI',
-      '🔴 หมุดสีแดง = ยังไม่ได้สำรวจ (แตะที่หมุดแล้วกด "เปิดหน้าสำรวจบ้านนี้" ได้ทันที)',
-    ],
-    tip: 'สามารถสลับมุมมองแผนที่ดาวเทียมเพื่อดูหลังคาบ้านจริงได้จากปุ่มมุมขวาบนของแผนที่',
+    tip: 'สีหมุดเปลี่ยนความหมายตามโหมดแผนที่ ไม่ควรสรุปสถานะสำรวจจากสีหมุดเพียงอย่างเดียว',
     mockup: 'map',
   },
 ];
@@ -529,13 +499,13 @@ function PhoneMockupScreen({ type, tick }) {
           className="badge bg-success position-absolute shadow-sm"
           style={{ top: 24, left: 28, fontSize: '.68rem' }}
         >
-          🟢 บ้าน 12 (ครบ)
+          📍 บ้าน 12
         </div>
         <div
           className="badge bg-warning text-dark position-absolute shadow-sm"
           style={{ top: 68, right: 32, fontSize: '.68rem' }}
         >
-          🟠 บ้าน 24/1 (รอ KPI)
+          📍 บ้าน 24/1
         </div>
         <div
           className="badge bg-danger position-absolute shadow-sm"
@@ -546,13 +516,11 @@ function PhoneMockupScreen({ type, tick }) {
             boxShadow: pulse ? '0 0 0 4px rgba(220,38,38,0.35)' : 'none',
           }}
         >
-          🔴 บ้าน 39 (ยังไม่สำรวจ)
+          📍 บ้าน 39
         </div>
       </div>
       <div className="d-flex justify-content-around small text-muted" style={{ fontSize: '.66rem' }}>
-        <span>🟢 สำรวจ+KPI ครบ</span>
-        <span>🟠 เหลือ KPI</span>
-        <span>🔴 ยังไม่สำรวจ</span>
+        <span>ภาพตัวอย่าง • ดูความหมายสีตามโหมดที่เลือกบนแผนที่จริง</span>
       </div>
     </div>
   );
@@ -562,15 +530,23 @@ export default function VhvGuidePage() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [speechRate, setSpeechRate] = useState(1.0);
+  const [speechRate, setSpeechRate] = useState(0.9);
   const [sceneProgress, setSceneProgress] = useState(0);
   const [tick, setTick] = useState(0);
   const [copiedNotice, setCopiedNotice] = useState('');
 
   const timerRef = useRef(null);
+  const speechRun = useRef(0);
+  const speechDone = useRef(true);
+  const pauseRef = useRef(null);
+  const utteranceRef = useRef(null);
   const currentScene = SCENES[currentIdx];
 
   const stopSpeech = useCallback(() => {
+    speechRun.current += 1;
+    clearTimeout(pauseRef.current);
+    speechDone.current = true;
+    utteranceRef.current = null;
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
@@ -579,20 +555,27 @@ export default function VhvGuidePage() {
   const speakText = useCallback(
     (text) => {
       if (typeof window === 'undefined' || !('speechSynthesis' in window) || !voiceEnabled) return;
-      try {
-        window.speechSynthesis.cancel();
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = 'th-TH';
-        utter.rate = speechRate;
-        const voices = window.speechSynthesis.getVoices();
-        const thVoice = voices.find((v) => v.lang && v.lang.toLowerCase().includes('th'));
-        if (thVoice) utter.voice = thVoice;
-        window.speechSynthesis.speak(utter);
-      } catch {
-        // ignore speech synthesis errors on unsupported browsers
-      }
+      stopSpeech();
+      const run = speechRun.current;
+      speechDone.current = false;
+      const sentences = text.replace(/อสม\.?/g, 'อะสม').split(/[.!?]+/).map(x=>x.trim()).filter(Boolean);
+      const read = (index) => {
+        if (run !== speechRun.current) return;
+        if (index >= sentences.length) { speechDone.current = true; utteranceRef.current = null; return; }
+        try {
+          const utter = new SpeechSynthesisUtterance(sentences[index]);
+          utter.lang = 'th-TH'; utter.rate = speechRate; utter.pitch = 1;
+          const voices = window.speechSynthesis.getVoices().filter(v=>/^th(?:-|$)/i.test(v.lang));
+          utter.voice = voices.find(v=>v.default) || voices[0] || null;
+          utter.onend = () => { if(run === speechRun.current) pauseRef.current = setTimeout(()=>read(index+1), 280); };
+          utter.onerror = () => { if(run === speechRun.current) {speechDone.current=true; setIsPlaying(false);} };
+          utteranceRef.current = utter;
+          window.speechSynthesis.speak(utter);
+        } catch { speechDone.current=true; setIsPlaying(false); }
+      };
+      read(0);
     },
-    [voiceEnabled, speechRate]
+    [voiceEnabled, speechRate, stopSpeech]
   );
 
   // Trigger voiceover when scene changes while playing
@@ -619,6 +602,7 @@ export default function VhvGuidePage() {
       setSceneProgress((prev) => {
         const next = prev + (stepMs / totalMs) * 100;
         if (next >= 100) {
+          if (voiceEnabled && !speechDone.current) return 99;
           setCurrentIdx((idx) => {
             if (idx < SCENES.length - 1) return idx + 1;
             setIsPlaying(false);
@@ -633,7 +617,7 @@ export default function VhvGuidePage() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isPlaying, currentScene.durationSec]);
+  }, [isPlaying, currentIdx, currentScene.durationSec, voiceEnabled, speechRate]);
 
   // Subtle animation tick even when paused
   useEffect(() => {
