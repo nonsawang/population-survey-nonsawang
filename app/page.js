@@ -32,7 +32,7 @@ export default function SurveyPage() {
   const [searching, setSearching] = useState(false);
   useEffect(() => {
     if (results !== null) {
-      const target = targetPerson && document.getElementById('person-card-' + targetPerson);
+      const target = targetPerson ? document.getElementById('person-card-' + targetPerson) : null;
       (target || document.getElementById('survey-house-results'))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       target?.focus({ preventScroll: true });
     }
