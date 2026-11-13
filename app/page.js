@@ -673,18 +673,34 @@ const submitVhvChange = async () => {
 
                   <hr className="my-2" style={{opacity: 0.1}}/>
 
-                  <button
-                    onClick={handleSaveGPS}
-                    disabled={savingGps}
-                    className="btn btn-sm w-100 rounded-pill fw-bold d-flex align-items-center justify-content-center"
-                    style={{background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', height: '40px'}}
-                  >
-                    {savingGps ? (
-                      <><span className="spinner-border spinner-border-sm me-2"/> กำลังหาพิกัด...</>
-                    ) : (
-                      <><i className="fa-solid fa-location-crosshairs fa-lg me-2"/> บันทึกพิกัดบ้าน / เข้าคิว HOSxP</>
-                    )}
-                  </button>
+                  {results.some(p => p.latitude !== null && p.longitude !== null) ? (
+                    <div className="d-flex justify-content-between align-items-center gap-2 px-3 py-2 rounded-pill" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+                      <span className="small fw-bold text-success">
+                        <i className="fa-solid fa-location-dot me-1" /> ✓ มีพิกัดบ้านแล้ว
+                      </span>
+                      <button
+                        onClick={handleSaveGPS}
+                        disabled={savingGps}
+                        className="btn btn-sm btn-outline-success rounded-pill px-3 fw-semibold"
+                        style={{ fontSize: '.75rem' }}
+                      >
+                        {savingGps ? 'กำลังหาพิกัด...' : 'อัปเดตพิกัด'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleSaveGPS}
+                      disabled={savingGps}
+                      className="btn w-100 rounded-pill fw-bold d-flex align-items-center justify-content-center"
+                      style={{background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', minHeight: '46px'}}
+                    >
+                      {savingGps ? (
+                        <><span className="spinner-border spinner-border-sm me-2"/> กำลังหาพิกัด...</>
+                      ) : (
+                        <><i className="fa-solid fa-location-crosshairs fa-lg me-2"/> 📍 บันทึกพิกัดบ้าน / เข้าคิว HOSxP</>
+                      )}
+                    </button>
+                  )}
                 </div>
                 {/* 🟢 จบส่วนหัวข้อบ้าน */}
 

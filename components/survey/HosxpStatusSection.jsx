@@ -109,7 +109,8 @@ export default function HosxpStatusSection({ person, saving, doSave, onMove, pen
       </div>
       <button
         type="button"
-        className="btn btn-primary w-100 mt-3"
+        className="btn btn-primary w-100 mt-3 fw-bold"
+        style={{ minHeight: 46 }}
         disabled={saving || !dischargeValue || !person.statusSchemaReady}
         onClick={async () => {
           if (dischargeValue !== person.dischargeCode) {

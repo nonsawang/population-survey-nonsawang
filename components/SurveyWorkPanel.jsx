@@ -21,7 +21,8 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
   const [moo, setMoo] = useState('');
   const [vhv, setVhv] = useState('');
   const isStaffView = ['staff', 'admin', 'manager'].includes(user?.role);
-  const [status, setStatus] = useState(() => isStaffView ? 'pending' : 'all');
+  const [status, setStatus] = useState(() => (isStaffView || personal) ? 'pending' : 'all');
+  const [houseQuery, setHouseQuery] = useState('');
   const [scrollTarget, setScrollTarget] = useState('');
   useEffect(() => {
     if (scrollTarget) { document.getElementById(scrollTarget)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); setScrollTarget(''); }
@@ -101,19 +102,22 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
     }
     return counts;
   }, [baseSummary]);
-  const fieldWork = useMemo(() => {
+  const pinnedSet = useMemo(() => {
     const pinned = new Set();
     for (const r of rows) {
       const lat = Number(r.latitude), lon = Number(r.longitude);
       if (Number.isFinite(lat) && Number.isFinite(lon) && lat !== 0 && lon !== 0 && Math.abs(lat) <= 90 && Math.abs(lon) <= 180)
         pinned.add(JSON.stringify([String(r.moo ?? '').trim(), String(r.house ?? '').trim()]));
     }
+    return pinned;
+  }, [rows]);
+  const fieldWork = useMemo(() => {
     return baseSummary.houses
-      .filter(h => h.house && h.house !== '-' && (h.pending || !pinned.has(h.key)))
+      .filter(h => h.house && h.house !== '-' && (h.pending || !pinnedSet.has(h.key)))
       .slice()
       .sort((a, b) => thCollator.compare(String(a.moo ?? ''), String(b.moo ?? '')) || thCollator.compare(String(a.house ?? ''), String(b.house ?? '')))
-      .map(h => [h.moo, h.house, h.owners.join(', '), h.pending ? labels[h.status] + ' (ค้าง ' + h.pending + ' คน)' : 'ครบแล้ว', pinned.has(h.key) ? 'มีพิกัด' : 'ต้องปักหมุด', '']);
-  }, [rows, baseSummary]);
+      .map(h => [h.moo, h.house, h.owners.join(', '), h.pending ? labels[h.status] + ' (ค้าง ' + h.pending + ' คน)' : 'ครบแล้ว', pinnedSet.has(h.key) ? 'มีพิกัด' : 'ต้องปักหมุด', '']);
+  }, [baseSummary, pinnedSet]);
   function printFieldWork() {
     const w = window.open('', '_blank');
     if (!w) { window.alert('กรุณาอนุญาตหน้าต่างใหม่เพื่อพิมพ์ใบงาน'); return; }
@@ -131,7 +135,12 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
     add(d.body,'button','พิมพ์อีกครั้ง').onclick = () => w.print();
     w.focus(); w.print();
   }
-  const houses = useMemo(() => filterSurveyHouses(baseSummary.houses, status), [baseSummary.houses, status]);
+  const houses = useMemo(() => {
+    const filtered = filterSurveyHouses(baseSummary.houses, status);
+    const q = houseQuery.trim().toLowerCase();
+    if (!q) return filtered;
+    return filtered.filter(h => String(h.house || '').toLowerCase().includes(q));
+  }, [baseSummary.houses, status, houseQuery]);
   const staffSummary = useMemo(() => isStaffView ? summarizeStaffSurvey(rows) : null, [rows, isStaffView]);
   const aiTrackingContext = useMemo(() => ({
     selectedMoo: selectedMoo || 'ทุกหมู่',
@@ -165,18 +174,109 @@ export default function SurveyWorkPanel({ user, refreshKey, opening, onOpenHouse
         <div className="row g-2 mb-3" aria-live="polite">
           {[['ประชากร', totals.people, 'คน'], ['บ้านทั้งหมด', totals.houses, 'หลัง'], ['ยังไม่สำรวจ', totals.pending, 'คน'], ['บ้านที่ยังไม่ครบ', totals.incomplete, 'หลัง']].map(([label, value, unit]) => <div className="col-6 col-lg-3" key={label}><div className="survey-work-stat rounded-3 p-3"><div className="small text-muted">{label}</div><strong className="fs-5">{value.toLocaleString('th-TH')}</strong> <small>{unit}</small></div></div>)}
         </div>
-        <div className="d-flex gap-2 flex-wrap mb-3" role="group" aria-label="เลือกสถานะบ้านแบบด่วน">
-          {['complete', 'partial', 'notStarted'].map(key => <button
-            key={key} type="button" aria-pressed={status === key}
-            className={`btn ${status === key ? 'btn-primary' : 'btn-outline-primary'}`}
-            onClick={() => { setStatus(key); setPage(1); }}>
-            {labels[key]} {houseStatusCounts[key].toLocaleString('th-TH')} หลัง
-          </button>)}
-        </div>
-        <p className="small text-muted">ยอดสรุปตามหมู่บ้านและ อสม. ที่เลือก • เมื่อเลือก อสม. จะนับเฉพาะคนในความรับผิดชอบของ อสม. คนนั้น</p>
-        <div className="d-flex gap-2 flex-wrap mb-3"><button className="btn btn-sm btn-warning" onClick={() => setStatus('pending')}>แสดงงานที่ยังไม่ครบ</button><button className="btn btn-sm btn-outline-secondary" onClick={() => { setMoo(''); setVhv(''); setStatus('all'); setPage(1); }}>ล้างตัวกรอง</button></div>
+        {personal ? (
+          <>
+            <div className="input-group input-group-lg mb-3 shadow-sm" style={{ borderRadius: 14, overflow: 'hidden' }}>
+              <span className="input-group-text bg-white border-end-0 text-primary">
+                <i className="fa-solid fa-magnifying-glass" />
+              </span>
+              <input
+                type="text"
+                className="form-control border-start-0 ps-0"
+                placeholder="ค้นหาบ้านเลขที่ด่วน (เช่น 24/1)..."
+                value={houseQuery}
+                onChange={e => { setHouseQuery(e.target.value); setPage(1); }}
+              />
+              {houseQuery && (
+                <button
+                  type="button"
+                  className="btn btn-white border border-start-0 text-muted"
+                  onClick={() => { setHouseQuery(''); setPage(1); }}
+                  aria-label="ล้างคำค้นหา"
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              )}
+            </div>
+            <div className="d-flex gap-2 overflow-auto pb-2 mb-3" role="group" aria-label="ตัวกรองสถานะบ้าน">
+              {[
+                ['pending', `ยังไม่ครบ (${(houseStatusCounts.partial + houseStatusCounts.notStarted).toLocaleString('th-TH')})`],
+                ['complete', `สำรวจครบแล้ว (${houseStatusCounts.complete.toLocaleString('th-TH')})`],
+                ['all', `ทั้งหมด (${totals.houses.toLocaleString('th-TH')})`],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={status === key}
+                  onClick={() => { setStatus(key); setPage(1); }}
+                  className={`btn rounded-pill px-3 py-2 fw-bold text-nowrap ${status === key ? 'btn-primary shadow-sm' : 'btn-outline-secondary bg-white'}`}
+                  style={{ minHeight: 44 }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="d-flex gap-2 flex-wrap mb-3" role="group" aria-label="เลือกสถานะบ้านแบบด่วน">
+              {['complete', 'partial', 'notStarted'].map(key => <button
+                key={key} type="button" aria-pressed={status === key}
+                className={`btn ${status === key ? 'btn-primary' : 'btn-outline-primary'}`}
+                onClick={() => { setStatus(key); setPage(1); }}>
+                {labels[key]} {houseStatusCounts[key].toLocaleString('th-TH')} หลัง
+              </button>)}
+            </div>
+            <p className="small text-muted">ยอดสรุปตามหมู่บ้านและ อสม. ที่เลือก • เมื่อเลือก อสม. จะนับเฉพาะคนในความรับผิดชอบของ อสม. คนนั้น</p>
+            <div className="d-flex gap-2 flex-wrap mb-3"><button className="btn btn-sm btn-warning" onClick={() => setStatus('pending')}>แสดงงานที่ยังไม่ครบ</button><button className="btn btn-sm btn-outline-secondary" onClick={() => { setMoo(''); setVhv(''); setStatus('all'); setPage(1); }}>ล้างตัวกรอง</button></div>
+          </>
+        )}
         {!houses.length ? <p role="status" className="text-center bg-light rounded p-3">ไม่พบงานตามตัวกรองที่เลือก</p> : <>
-          <div className="table-responsive survey-work-table"><table className="table align-middle"><caption>พบ {houses.length.toLocaleString('th-TH')} รายการ • เรียงงานคงค้างมากก่อน</caption><thead><tr><th scope="col">บ้าน</th><th scope="col">อสม.</th><th scope="col">สำรวจแล้ว / ทั้งหมด</th><th scope="col">คงค้าง</th><th scope="col">สถานะ</th><th scope="col">ดำเนินการ</th></tr></thead><tbody>{houses.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map(h => <tr key={h.key}><td data-label="บ้าน" className="text-nowrap">ม.{h.moo || '-'} บ้าน {h.house || 'ไม่ระบุ'}</td><td data-label="อสม.">{h.owners.join(', ')}</td><td data-label="สำรวจแล้ว / ทั้งหมด">{h.done} / {h.total}</td><td data-label="คงค้าง" className={h.pending ? 'text-danger fw-bold' : ''}>{h.pending} คน</td><td data-label="สถานะ"><span className={`badge ${h.status === 'complete' ? 'bg-success' : h.status === 'partial' ? 'bg-warning text-dark' : 'bg-secondary'}`}>{labels[h.status]}</span></td><td className="survey-work-action"><button className="btn btn-sm btn-primary text-nowrap" disabled={opening || !h.house || h.house === '-'} onClick={() => onOpenHouse(h.moo, h.house)} aria-label={`เปิดบ้าน ${h.house} หมู่ ${h.moo}`}>เปิดบ้าน</button></td></tr>)}</tbody></table></div>
+          {personal ? (
+            <div className="d-flex flex-column gap-2 mb-3">
+              {houses.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map(h => {
+                const hasGps = pinnedSet.has(h.key);
+                const disabled = opening || !h.house || h.house === '-';
+                return (
+                  <button
+                    key={h.key}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onOpenHouse(h.moo, h.house)}
+                    className="card border shadow-sm text-start p-3 w-100 bg-white"
+                    style={{ borderRadius: 14, transition: 'transform .1s' }}
+                  >
+                    <div className="d-flex justify-content-between align-items-center gap-2 w-100">
+                      <div>
+                        <div className="fs-5 fw-bold text-dark">
+                          บ้านเลขที่ {h.house || 'ไม่ระบุ'} <span className="fs-6 fw-normal text-muted">ม.{h.moo || '-'}</span>
+                        </div>
+                        <div className="small text-muted mt-1 d-flex align-items-center gap-2 flex-wrap">
+                          <span><i className="fa-solid fa-users me-1" />{h.total} คน</span>
+                          <span className={hasGps ? 'text-success fw-semibold' : 'text-danger fw-semibold'}>
+                            {hasGps ? '📍 มีพิกัดแล้ว' : '⚠️ ยังไม่ปักหมุด'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-end">
+                        {h.pending > 0 ? (
+                          <span className="badge bg-warning text-dark px-3 py-2 rounded-pill" style={{ fontSize: '.85rem' }}>
+                            เหลือ {h.pending} คน
+                          </span>
+                        ) : (
+                          <span className="badge bg-success px-3 py-2 rounded-pill" style={{ fontSize: '.85rem' }}>
+                            ✓ ครบแล้ว
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="table-responsive survey-work-table"><table className="table align-middle"><caption>พบ {houses.length.toLocaleString('th-TH')} รายการ • เรียงงานคงค้างมากก่อน</caption><thead><tr><th scope="col">บ้าน</th><th scope="col">อสม.</th><th scope="col">สำรวจแล้ว / ทั้งหมด</th><th scope="col">คงค้าง</th><th scope="col">สถานะ</th><th scope="col">ดำเนินการ</th></tr></thead><tbody>{houses.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map(h => <tr key={h.key}><td data-label="บ้าน" className="text-nowrap">ม.{h.moo || '-'} บ้าน {h.house || 'ไม่ระบุ'}</td><td data-label="อสม.">{h.owners.join(', ')}</td><td data-label="สำรวจแล้ว / ทั้งหมด">{h.done} / {h.total}</td><td data-label="คงค้าง" className={h.pending ? 'text-danger fw-bold' : ''}>{h.pending} คน</td><td data-label="สถานะ"><span className={`badge ${h.status === 'complete' ? 'bg-success' : h.status === 'partial' ? 'bg-warning text-dark' : 'bg-secondary'}`}>{labels[h.status]}</span></td><td className="survey-work-action"><button className="btn btn-sm btn-primary text-nowrap" disabled={opening || !h.house || h.house === '-'} onClick={() => onOpenHouse(h.moo, h.house)} aria-label={`เปิดบ้าน ${h.house} หมู่ ${h.moo}`}>เปิดบ้าน</button></td></tr>)}</tbody></table></div>
+          )}
           <div className="d-flex justify-content-between align-items-center"><button className="btn btn-sm btn-outline-secondary" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>ก่อนหน้า</button><span className="small" aria-live="polite">หน้า {currentPage} / {pages}</span><button className="btn btn-sm btn-outline-secondary" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}>ถัดไป</button></div>
         </>}
       </>}
