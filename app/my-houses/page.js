@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import TopBar from '@/components/TopBar';
 import SurveyWorkPanel from '@/components/SurveyWorkPanel';
+import MyHouseSurveyProgress from '@/components/MyHouseSurveyProgress';
 import PendingTransfersBanner from '@/components/PendingTransfersBanner';
 
 export default function MyHousesPage() {
@@ -40,13 +41,11 @@ export default function MyHousesPage() {
           onResolved={() => setRefreshKey((k) => k + 1)}
           onOpenHouse={openHouse}
         />
-        <SurveyWorkPanel
-          user={user}
-          personal
-          refreshKey={refreshKey}
-          opening={false}
-          onOpenHouse={openHouse}
-        />
+        <MyHouseSurveyProgress refreshKey={refreshKey} />
+        <details><summary>ใบงานเดิมตามประเภทอยู่อาศัย / พิมพ์บ้านขาดพิกัด</summary>
+          <p className="small text-muted">รายงานเดิมนับจากประเภทอยู่อาศัย ไม่ใช่หลักฐานการยืนยันสำรวจรายคน</p>
+          <SurveyWorkPanel user={user} personal refreshKey={refreshKey} opening={false} onOpenHouse={openHouse} />
+        </details>
       </main>
     </>
   );

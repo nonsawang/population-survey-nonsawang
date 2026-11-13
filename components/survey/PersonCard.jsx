@@ -6,9 +6,18 @@ import { swal } from '@/lib/survey-feedback';
 import HosxpStatusSection from './HosxpStatusSection';
 import RiskScreeningSection from './RiskScreeningSection';
 import OvScreeningSection from './OvScreeningSection';
-export default function PersonCard({ person, onSave, onMove, onRefresh, user, pendingTransfer }) {
+import { supabase } from '@/lib/supabase';
+import { SURVEY_LABELS } from '@/lib/survey-progress.mjs';
+export default function PersonCard({ person, onSave, onMove, onRefresh, user, pendingTransfer, surveyProgress, progressError, progressLoading, focused, onSurveyConfirmed, onNextPending }) {
   const [relValue, setRelValue] = useState(person.relation);
   const [saving, setSaving] = useState(false);
+  const [highlight, setHighlight] = useState(false);
+  useEffect(() => {
+    if (!focused) { setHighlight(false); return; }
+    setHighlight(true);
+    const timer = setTimeout(() => setHighlight(false), 4500);
+    return () => clearTimeout(timer);
+  }, [focused]);
   useEffect(() => { setRelValue(person.relation); }, [person.personId, person.relation]);
   const doSave = async (type, discharge = person.dischargeCode, changes = {}) => {
     if (!person.statusSchemaReady) { swal({ icon:'info', title:'ต้องปรับตาราง Supabase ก่อน', text:'รัน migration สถานะ HOSxP แล้วโหลดหน้านี้ใหม่' }); return false; }
@@ -21,9 +30,24 @@ export default function PersonCard({ person, onSave, onMove, onRefresh, user, pe
 
   const rels = ['เจ้าบ้าน', 'ผู้อาศัย', 'บิดา/มารดา', 'เขย/สะใภ้', 'บุตร/หลาน', 'เช่าอาศัย', 'อื่นๆ'];
   const activeTransfer = pendingTransfer || person.pendingTransfer || null;
+  const confirmSurvey = async () => {
+    if (!surveyProgress || saving) return;
+    if (!window.confirm('ยืนยันว่าได้ตรวจสอบข้อมูลของ ' + person.fullname + ' แล้ว? การยืนยันนี้ไม่ส่งข้อมูลเข้า HOSxP')) return;
+    setSaving(true);
+    try {
+      const {error} = await supabase.rpc('survey_confirm_person',{p_person_id:String(person.personId),p_expected:person.surveyExpected});
+      if(error) {
+        const message=String(error.message || '');
+        throw new Error(message.includes('SURVEY_CHANGED') ? 'ข้อมูลเปลี่ยนแปลง กรุณาโหลดบ้านใหม่และตรวจสอบอีกครั้ง' : message.includes('SURVEY_INCOMPLETE') ? 'ข้อมูลยังไม่ครบ กรุณาตรวจช่องที่ขาด' : 'ยืนยันสำรวจไม่สำเร็จ กรุณาตรวจสิทธิ์และการติดตั้ง migration');
+      }
+      onSurveyConfirmed?.();
+      swal({icon:'success',title:'ยืนยันสำรวจแล้ว',text:'บันทึกผู้ตรวจและเวลาแล้ว ไม่ใช่ผลส่ง HOSxP'});
+    } catch(e) { swal({icon:'error',title:'ยังไม่ได้ยืนยันสำรวจ',text:e.message}); }
+    finally {setSaving(false);}
+  };
 
   return (
-    <div className={`card card-person border-type${person.residencyType} fade-in`} style={{ opacity: saving ? 0.6 : 1, pointerEvents: saving ? 'none' : 'auto' }}>
+    <div id={'person-card-' + person.personId} tabIndex={-1} className={`card card-person border-type${person.residencyType} fade-in ${highlight ? 'border-primary border-3 shadow' : ''}`} style={{ scrollMarginTop: 90, opacity: saving ? 0.6 : 1, pointerEvents: saving ? 'none' : 'auto' }}>
       {saving && <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 5 }}><span className="spinner-border spinner-border-sm text-primary" /></div>}
       <div className="card-body p-3">
         {/* Header */}
@@ -41,6 +65,16 @@ export default function PersonCard({ person, onSave, onMove, onRefresh, user, pe
           <span className="badge bg-light text-dark border" style={{ fontSize: '.8em' }}>อายุ {person.age}</span>
         </div>
 
+        <div className="small mb-3" aria-live="polite">
+          {progressLoading ? 'กำลังตรวจหลักฐานสำรวจ…' : progressError ? <span className="text-warning-emphasis">{progressError}</span> : surveyProgress ? <>
+            <strong>{SURVEY_LABELS[surveyProgress.status]}</strong>
+            {surveyProgress.missing?.length > 0 && <div>ข้อมูลที่ขาด: {surveyProgress.missing.join(', ')}</div>}
+            {surveyProgress.status === 'partial' && !surveyProgress.missing?.length && <div>กรุณายืนยันข้อมูลล่าสุดอีกครั้ง</div>}
+            {surveyProgress.reviewed_at && <div className="text-muted">บันทึกสำรวจล่าสุด {new Date(surveyProgress.reviewed_at).toLocaleString('th-TH')} • {surveyProgress.reviewed_by}</div>}
+            <button className="btn btn-sm btn-success mt-2" disabled={saving || surveyProgress.status==='complete' || surveyProgress.missing?.length>0} onClick={confirmSurvey}>ยืนยันตรวจสอบแล้ว</button>
+            {onNextPending && <button className="btn btn-sm btn-outline-primary mt-2 ms-2" onClick={onNextPending}>คนถัดไปที่ยังไม่ครบ</button>}
+          </> : 'ยังไม่มีข้อมูลหลักฐานสำรวจในสิทธิ์ของบัญชีนี้'}
+        </div>
         {/* Relation + Chronic */}
         <div className="row g-2 mb-3 p-2 rounded-3 mx-0" style={{ background: '#f8f9fa' }}>
           <div className="col-12 col-sm-6 px-1">
@@ -62,7 +96,7 @@ export default function PersonCard({ person, onSave, onMove, onRefresh, user, pe
           </div>
         </div>
 
-        <HosxpStatusSection person={person} saving={saving} doSave={doSave} onMove={onMove} pendingTransfer={activeTransfer} user={user} />
+        <HosxpStatusSection person={person} saving={saving} doSave={doSave} onMove={onMove} pendingTransfer={activeTransfer} user={user} focused={focused} />
         <RiskScreeningSection person={person} user={user} onRefresh={onRefresh} saving={saving} setSaving={setSaving} />
         {person.age >= 15 && <OvScreeningSection person={person} user={user} onRefresh={onRefresh} saving={saving} setSaving={setSaving} />}
       </div>

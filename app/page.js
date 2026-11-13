@@ -16,6 +16,7 @@ import ModalShell from '@/components/survey/ModalShell';
 import PendingTransfersBanner from '@/components/PendingTransfersBanner';
 import { getSwal, swal, Toast, showLoading, closeLoading } from '@/lib/survey-feedback';
 import { surveyErrorMessage } from '@/lib/survey-errors.mjs';
+import { loadSurveyProgress, inProgressScope } from '@/lib/survey-progress.mjs';
 
 export default function SurveyPage() {
   const { user, loading } = useAuth();
@@ -23,10 +24,30 @@ export default function SurveyPage() {
   const [moo, setMoo] = useState('');
   const [house, setHouse] = useState('');
   const [results, setResults] = useState(null);
+  const [surveyProgress, setSurveyProgress] = useState({});
+  const [progressError, setProgressError] = useState('');
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [progressRetry, setProgressRetry] = useState(0);
+  const [targetPerson, setTargetPerson] = useState('');
   const [searching, setSearching] = useState(false);
   useEffect(() => {
-    if (results !== null) document.getElementById('survey-house-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [results]);
+    if (results !== null) {
+      const target = targetPerson && document.getElementById('person-card-' + targetPerson);
+      (target || document.getElementById('survey-house-results'))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      target?.focus({ preventScroll: true });
+    }
+  }, [results, targetPerson]);
+  useEffect(() => {
+    let active = true;
+    setSurveyProgress({}); setProgressError('');
+    if (!results?.length) return;
+    setProgressLoading(true);
+    loadSurveyProgress(supabase, moo, house.trim()).then(rows => {
+      if (active) setSurveyProgress(Object.fromEntries(rows.map(r => [r.person_id,r])));
+    }).catch(e => { if (active) setProgressError(e.message); })
+      .finally(() => { if (active) setProgressLoading(false); });
+    return () => { active = false; };
+  }, [results, progressRetry]);
   const [showGuide, setShowGuide] = useState(false);
   const [vhvData, setVhvData] = useState({});
   const [moveTarget, setMoveTarget] = useState(null);
@@ -78,6 +99,7 @@ export default function SurveyPage() {
         const params = new URLSearchParams(window.location.search);
         const qMoo = (params.get('moo') || '').trim();
         const qHouse = (params.get('house') || '').trim();
+        setTargetPerson(params.get('person') || '');
         if (qMoo && qHouse) {
           autoSearchedRef.current = true;
           setTimeout(() => { searchData(qMoo, qHouse); }, 100);
@@ -104,6 +126,7 @@ export default function SurveyPage() {
 
     return {
       personId: r.person_id,
+      surveyExpected: Object.fromEntries(['moo','house','vhv','relation','chronic','residency_type','person_discharge_id','status_model_version'].map(key => [key,r[key] ?? null])),
       cid: r.cid||'-',
       fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''),
       age: calculateAge(r.birth_date),
@@ -178,6 +201,7 @@ const handleSave = async (personId, newType, relation, chronic, dischargeCode) =
       ...person, residencyType: newType || '', dischargeCode: String(dischargeCode),
       relation: sanitizeInput(relation), chronic: chronic || '-',
       needsStatusReview: !newType, legacyDischarge: false,
+      surveyExpected: { ...person.surveyExpected, ...statusUpdate(newType,dischargeCode), relation: sanitizeInput(relation), chronic: chronic || '-' },
     } : person));
     try { await searchDataSilent(); } catch { /* Preserve the confirmed saved values. */ }
     return true;
@@ -665,7 +689,14 @@ const submitVhvChange = async () => {
                 {/* 🟢 จบส่วนหัวข้อบ้าน */}
 
                 <div className="mb-2 text-muted small">พบ <strong>{results.length}</strong> คน</div>
-               {results.map(p => <PersonCard key={p.personId} person={p} pendingTransfer={pendingTransfersMap[p.personId]} onSave={handleSave} onMove={openMoveModal} onRefresh={searchDataSilent} user={user} />)}
+               {results.map(p => <PersonCard key={p.personId} person={p} pendingTransfer={pendingTransfersMap[p.personId]} onSave={handleSave} onMove={openMoveModal} onRefresh={searchDataSilent} user={user}
+                 surveyProgress={surveyProgress[p.personId]} progressError={progressError} progressLoading={progressLoading}
+                 focused={String(p.personId) === targetPerson}
+                 onSurveyConfirmed={() => setProgressRetry(v => v + 1)}
+                 onNextPending={Object.values(surveyProgress).some(r => String(r.person_id)!==String(p.personId) && inProgressScope(r) && r.status!=='complete') ? () => {
+                   const next = Object.values(surveyProgress).find(r => String(r.person_id)!==String(p.personId) && inProgressScope(r) && r.status!=='complete');
+                   if(next) setTargetPerson(String(next.person_id));
+                 } : null} />)}
                 <div className="mt-4 border-top pt-3 fade-in">
                   <button onClick={() => openAddModal(house, moo, results[0]?.vhv || 'ไม่ระบุ')} className="btn btn-outline-primary w-100 dashed-border rounded-pill">
                     <i className="fa-solid fa-user-plus me-1"/> เพิ่มผู้อาศัย

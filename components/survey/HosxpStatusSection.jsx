@@ -3,9 +3,10 @@ import { useState, useEffect } from 'react';
 import { getSwal } from '@/lib/survey-feedback';
 import { RESIDENCY_TYPES, DISCHARGE_TYPES } from '@/lib/population-status';
 
-export default function HosxpStatusSection({ person, saving, doSave, onMove, pendingTransfer, user }) {
+export default function HosxpStatusSection({ person, saving, doSave, onMove, pendingTransfer, user, focused }) {
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState('');
+  useEffect(() => { if (focused) setEditing(true); }, [focused]);
   const [typeValue, setTypeValue] = useState(person.residencyType);
   const [dischargeValue, setDischargeValue] = useState(person.dischargeCode);
   useEffect(() => {
