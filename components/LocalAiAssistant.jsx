@@ -9,14 +9,14 @@ const PRESET_PROMPTS = [
   { key: 'risk', label: 'วิเคราะห์กลุ่มเสี่ยงบุหรี่/สุรา', prompt: 'วิเคราะห์สถานการณ์ผู้สูบบุหรี่ (Fagerstrom) และดื่มสุรา (ASSIST) พร้อมแนวทางติดตามกลุ่มเสี่ยงสูง' },
 ];
 
-export default function LocalAiAssistant({ dashboard = null, tracking = null, defaultFocus = 'overview', title = 'ผู้ช่วย Local AI วิเคราะห์ข้อมูลสุขภาพและคิวงาน (Offline / ในหน่วยบริการ)' }) {
+export default function LocalAiAssistant({ dashboard = null, tracking = null, defaultFocus = 'overview', defaultExpanded = true, title = 'ผู้ช่วย Local AI วิเคราะห์ข้อมูลสุขภาพและคิวงาน (Offline / ในหน่วยบริการ)' }) {
   const [aiStatus, setAiStatus] = useState({ checking: true, online: false, model: '' });
   const [focus, setFocus] = useState(defaultFocus);
   const [customPrompt, setCustomPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [reply, setReply] = useState('');
   const [replyMeta, setReplyMeta] = useState(null);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(defaultExpanded);
 
   const checkStatus = useCallback(async () => {
     setAiStatus(s => ({ ...s, checking: true }));
@@ -100,8 +100,8 @@ export default function LocalAiAssistant({ dashboard = null, tracking = null, de
             <button type="button" className="btn btn-sm btn-outline-primary rounded-pill" onClick={checkStatus} disabled={aiStatus.checking || loading}>
               <i className="fa-solid fa-rotate me-1" /> ตรวจสถานะ AI
             </button>
-            <button type="button" className="btn btn-sm btn-light border rounded-pill" onClick={() => setExpanded(v => !v)}>
-              {expanded ? 'ย่อ' : 'ขยาย'}
+            <button type="button" className="btn btn-sm btn-light border rounded-pill" aria-expanded={expanded} onClick={() => setExpanded(v => !v)}>
+              {expanded ? 'พับผู้ช่วย AI ▴' : 'เปิดผู้ช่วย AI ▾'}
             </button>
           </div>
         </div>
