@@ -4,6 +4,8 @@ import { getSwal } from '@/lib/survey-feedback';
 import { RESIDENCY_TYPES, DISCHARGE_TYPES } from '@/lib/population-status';
 
 export default function HosxpStatusSection({ person, saving, doSave, onMove, pendingTransfer, user }) {
+  const [editing, setEditing] = useState(false);
+  const [notice, setNotice] = useState('');
   const [typeValue, setTypeValue] = useState(person.residencyType);
   const [dischargeValue, setDischargeValue] = useState(person.dischargeCode);
   useEffect(() => {
@@ -13,10 +15,24 @@ export default function HosxpStatusSection({ person, saving, doSave, onMove, pen
 
   const activeTransfer = pendingTransfer || person.pendingTransfer || null;
   const canMove = !user || ['admin', 'staff', 'vhv'].includes(user.role);
+  const residency = RESIDENCY_TYPES.find(item => item.code === String(person.residencyType));
+  const discharge = DISCHARGE_TYPES.find(item => item.code === String(person.dischargeCode));
+  const cancelEdit = () => {
+    setTypeValue(person.residencyType);
+    setDischargeValue(person.dischargeCode);
+    setEditing(false);
+  };
 
   return (
     <div className="border rounded-3 p-3 my-3 bg-white">
-      <h3 className="h6 fw-bold">สถานะตาม HOSxP</h3>
+      <h3 className="h6 fw-bold">ประเภทอยู่อาศัยและสถานะจำหน่าย</h3>
+      <div className="small mb-2">
+        <div><strong>ประเภทอยู่อาศัย: </strong>{residency ? `Type ${residency.code} — ${residency.label}` : 'ยังไม่ระบุ / รอตรวจสอบ'}</div>
+        <div><strong>สถานะจำหน่าย: </strong>{discharge ? `${discharge.code} — ${discharge.label}` : 'รอตรวจเหตุจำหน่ายเดิม'}</div>
+      </div>
+      <p className="small text-muted mb-2">ข้อมูลจากทะเบียนสำรวจบนเว็บ การบันทึกนี้ไม่ได้เขียนเข้า HOSxP ทันที ต้องตรวจสอบก่อนส่งผ่านตัวเชื่อม</p>
+      <p className="small text-muted">หน้านี้ยังไม่แสดงผลคิวส่ง HOSxP จึงไม่ใช้ยืนยันว่าเขียนสำเร็จแล้ว</p>
+      {notice && <div role="status" className="alert alert-info py-2 small">{notice}</div>}
       {!person.statusSchemaReady && (
         <p className="small text-danger" role="status">
           ต้องรัน migration สถานะ HOSxP ใน Supabase ก่อนบันทึก
@@ -42,6 +58,14 @@ export default function HosxpStatusSection({ person, saving, doSave, onMove, pen
           </div>
         </div>
       )}
+      <button type="button" className="btn btn-outline-primary btn-sm" disabled={saving}
+        aria-expanded={editing} aria-controls={'status-editor-' + person.personId}
+        onClick={() => { if (editing) cancelEdit(); else { setNotice(''); setEditing(true); } }}>
+        {editing ? 'ยกเลิกการแก้ไข' : 'ตรวจ / แก้ไขสถานะ'}
+      </button>
+      {editing && <div id={'status-editor-' + person.personId} className="mt-3">
+      <fieldset disabled={saving}>
+      <legend className="visually-hidden">แก้ไขสถานะในทะเบียนสำรวจ</legend>
       <div className="row g-2">
         <div className="col-12 col-md-7">
           <label className="form-label" htmlFor={'residency-' + person.personId}>
@@ -104,11 +128,17 @@ export default function HosxpStatusSection({ person, saving, doSave, onMove, pen
               : window.confirm(person.fullname + ' → ' + label);
             if (!confirmed) return;
           }
-          await doSave(typeValue, dischargeValue);
+          const saved = await doSave(typeValue, dischargeValue);
+          if (saved === true) {
+            setEditing(false);
+            setNotice('บันทึกในทะเบียนสำรวจแล้ว — ยังไม่ใช่หลักฐานว่าเขียนเข้า HOSxP สำเร็จ');
+          }
         }}
       >
-        บันทึกประเภทอยู่อาศัยและสถานะจำหน่าย
+        บันทึกสถานะในทะเบียนสำรวจ
       </button>
+      </fieldset>
+      </div>}
       {canMove && (
         <button
           type="button"

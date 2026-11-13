@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ChronicEditor from './ChronicEditor';
 import { DISCHARGE_TYPES } from '@/lib/population-status';
 import { swal } from '@/lib/survey-feedback';
@@ -9,11 +9,13 @@ import OvScreeningSection from './OvScreeningSection';
 export default function PersonCard({ person, onSave, onMove, onRefresh, user, pendingTransfer }) {
   const [relValue, setRelValue] = useState(person.relation);
   const [saving, setSaving] = useState(false);
+  useEffect(() => { setRelValue(person.relation); }, [person.personId, person.relation]);
   const doSave = async (type, discharge = person.dischargeCode, changes = {}) => {
     if (!person.statusSchemaReady) { swal({ icon:'info', title:'ต้องปรับตาราง Supabase ก่อน', text:'รัน migration สถานะ HOSxP แล้วโหลดหน้านี้ใหม่' }); return false; }
     if (!DISCHARGE_TYPES.some(item => item.code === discharge)) { swal({ icon: 'warning', title: 'กรุณาระบุเหตุจำหน่ายก่อน', text: 'ข้อมูล Type 0 เดิมยังไม่มีเหตุจำหน่ายที่ตรงกับ HOSxP' }); return false; }
     setSaving(true);
     try { return await onSave(person.personId, type, changes.relation ?? relValue, changes.chronic ?? person.chronic ?? '-', discharge); }
+    catch { swal({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: 'กรุณาลองใหม่ ข้อมูลที่เลือกยังไม่ได้รับการยืนยันว่าบันทึกสำเร็จ' }); return false; }
     finally { setSaving(false); }
   };
 
@@ -43,7 +45,14 @@ export default function PersonCard({ person, onSave, onMove, onRefresh, user, pe
         <div className="row g-2 mb-3 p-2 rounded-3 mx-0" style={{ background: '#f8f9fa' }}>
           <div className="col-12 col-sm-6 px-1">
             <label className="text-muted" style={{ fontSize: '.68em', fontWeight: 600 }}>สถานะในบ้าน</label>
-            <select className="form-select form-select-sm border-0 fw-bold" style={{ fontSize: '.85rem', color: 'var(--primary)' }} value={relValue} onChange={e => { setRelValue(e.target.value); doSave(person.residencyType, person.dischargeCode, { relation: e.target.value }); }}>
+            <select aria-label={'สถานะในบ้านของ ' + person.fullname} disabled={saving} className="form-select form-select-sm border-0 fw-bold" style={{ fontSize: '.85rem', color: 'var(--primary)' }} value={relValue} onChange={async e => {
+              const previous = relValue;
+              const next = e.target.value;
+              setRelValue(next);
+              const saved = await doSave(person.residencyType, person.dischargeCode, { relation: next });
+              if (saved !== true) setRelValue(previous);
+            }}>
+              {!rels.includes(relValue) && <option value={relValue || ''}>{relValue || 'ยังไม่ระบุ'}</option>}
               {rels.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>

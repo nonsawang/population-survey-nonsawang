@@ -146,7 +146,8 @@ export default function SurveyPage() {
   // ✅ Refresh เงียบๆ — ไม่แสดง Swal loading (ใช้หลังบันทึก Type)
 const searchDataSilent = async () => {
     if (!moo || !house.trim()) return;
-    const { data } = await supabase.from('population').select('*').eq('house', house.trim()).eq('moo', moo).order('fname');
+    const { data, error } = await supabase.from('population').select('*').eq('house', house.trim()).eq('moo', moo).order('fname');
+    if (error) return; // Keep the visible household when a background refresh fails.
 
     const mapped = (data || []).map(mapPopulationRow);
     setResults(mapped);
@@ -172,7 +173,13 @@ const handleSave = async (personId, newType, relation, chronic, dischargeCode) =
       await writeLog(user?.userId, user?.username, 'UPDATE_STATUS', detailStr, personId);
     }
 
-    await searchDataSilent();
+    // The update is already committed; a refresh failure must not undo its UI result.
+    setResults(previous => previous?.map(person => person.personId === personId ? {
+      ...person, residencyType: newType || '', dischargeCode: String(dischargeCode),
+      relation: sanitizeInput(relation), chronic: chronic || '-',
+      needsStatusReview: !newType, legacyDischarge: false,
+    } : person));
+    try { await searchDataSilent(); } catch { /* Preserve the confirmed saved values. */ }
     return true;
   };
 
