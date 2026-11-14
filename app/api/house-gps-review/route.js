@@ -34,10 +34,12 @@ export async function POST(request) {
     if (!user) return authResponse({}, 401);
     if (!['staff', 'admin'].includes(user.role)) return authResponse({}, 403);
     const body = await readBody(request);
-    if (!['prepare', 'revise', 'approve'].includes(body.action)) return authResponse({}, 400);
-    if (body.action !== 'prepare' && isReadOnly()) return readOnlyResponse();
-    const rpc = body.action === 'approve' ? 'house_gps_approve' : body.action === 'prepare' ? 'house_gps_revision_context' : 'house_gps_revise';
-    const args = body.action === 'approve' ? {p_id:body.id,p_lat:body.latitude,p_lng:body.longitude} : body.action === 'prepare' ? { p_id: body.oldId } : {
+    if (!['prepare', 'revise', 'approve', 'preview_batch', 'approve_batch'].includes(body.action)) return authResponse({}, 400);
+    if (!['prepare','preview_batch'].includes(body.action) && isReadOnly()) return readOnlyResponse();
+    const batch = ['preview_batch','approve_batch'].includes(body.action);
+    if (batch && (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 25)) return authResponse({},400);
+    const rpc = batch ? 'house_gps_batch_review' : body.action === 'approve' ? 'house_gps_approve' : body.action === 'prepare' ? 'house_gps_revision_context' : 'house_gps_revise';
+    const args = batch ? {p_items:body.items,p_approve:body.action==='approve_batch'} : body.action === 'approve' ? {p_id:body.id,p_lat:body.latitude,p_lng:body.longitude} : body.action === 'prepare' ? { p_id: body.oldId } : {
       p_old_id: body.oldId, p_id: body.id, p_batch_id: body.batchId,
       p_expected_state: body.expectedState, p_lat: body.latitude,
       p_lng: body.longitude, p_reason: body.reason,

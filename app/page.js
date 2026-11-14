@@ -359,6 +359,23 @@ const submitVhvChange = async () => {
   };
 
   // 🟢 ฟังก์ชันดึงพิกัด GPS จากมือถือและบันทึกลงฐานข้อมูล Supabase
+  const handleClearGPS = async () => {
+    if (savingGps || !results?.length) return;
+    setSavingGps(true);
+    try {
+      const confirmation = await swal({ icon: 'warning', title: 'ลบพิกัดบนเว็บเพื่อปักใหม่', text: 'ยกเลิกคิวที่ยังรอส่ง และล้างหมุดบนเว็บของบ้านนี้ พิกัดใน HOSxP จะยังอยู่ตามเดิม พร้อมเก็บประวัติการล้าง', input: 'textarea', inputPlaceholder: 'เหตุผลที่ต้องปักใหม่ (อย่างน้อย 3 ตัวอักษร)', inputValidator: value => !value || value.trim().length < 3 || value.trim().length > 500 ? 'กรุณาระบุเหตุผล 3–500 ตัวอักษร' : undefined, showCancelButton: true, confirmButtonText: 'ยืนยันลบพิกัดบนเว็บ', cancelButtonText: 'ยกเลิก' });
+      if (!confirmation?.isConfirmed) return;
+      const { error } = await supabase.rpc('house_gps_clear_web', { p_id: crypto.randomUUID(), p_moo: String(moo), p_house: house.trim(), p_expected: results.map(p => ({ person_id: String(p.personId), latitude: p.latitude, longitude: p.longitude })), p_reason: confirmation.value.trim() });
+      if (error) throw error;
+      setResults(previous => previous?.map(p => ({ ...p, latitude: null, longitude: null })));
+      await swal({ icon: 'success', title: 'ล้างพิกัดบนเว็บแล้ว', text: 'กดบันทึกพิกัดบ้านเพื่อปักใหม่ จากนั้นให้เจ้าหน้าที่ตรวจและอนุมัติส่ง พิกัด HOSxP เดิมยังไม่ถูกลบ' });
+    } catch (error) {
+      const detail = String(error?.message || '');
+      const text = detail.includes('GPS_PROCESSING') ? 'คิวกำลังส่ง ต้องตรวจผลใน HOSxP ก่อนล้างพิกัด' : detail.includes('GPS_SNAPSHOT_AFTER_RESULT_REQUIRED') ? 'ต้องอ่านข้อมูลอ้างอิง HOSxP ใหม่หลังผลส่งล่าสุดก่อนล้างพิกัด' : detail.includes('GPS_REFERENCE_CHANGED') ? 'ข้อมูลบ้านหรือพิกัดเปลี่ยน กรุณาค้นหาบ้านใหม่แล้วตรวจอีกครั้ง' : ['PGRST202','42883'].includes(error?.code) ? 'ต้องติดตั้ง migration 20261114_house_gps_clear.sql ก่อนใช้ปุ่มนี้' : detail.includes('FORBIDDEN') ? 'ล้างได้เฉพาะบ้านที่รับผิดชอบ กรุณาให้เจ้าหน้าที่ตรวจผู้รับผิดชอบบ้าน' : 'ล้างพิกัดไม่สำเร็จ กรุณาโหลดบ้านและตรวจคิวก่อนลองใหม่';
+      await swal({ icon: 'error', title: 'ยังล้างพิกัดไม่ได้', text });
+    } finally { setSavingGps(false); }
+  };
+
   const handleSaveGPS = () => {
     if (!navigator.geolocation) {
       swal({ icon: 'error', title: 'ไม่รองรับ GPS', text: 'เบราว์เซอร์หรือมือถือของคุณไม่รองรับการดึงพิกัด' });
@@ -674,7 +691,7 @@ const submitVhvChange = async () => {
                   <hr className="my-2" style={{opacity: 0.1}}/>
 
                   {results.some(p => p.latitude !== null && p.longitude !== null) ? (
-                    <div className="d-flex justify-content-between align-items-center gap-2 px-3 py-2 rounded-pill" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+                    <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 rounded-3" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
                       <span className="small fw-bold text-success">
                         <i className="fa-solid fa-location-dot me-1" /> ✓ มีพิกัดบ้านแล้ว
                       </span>
@@ -686,6 +703,7 @@ const submitVhvChange = async () => {
                       >
                         {savingGps ? 'กำลังหาพิกัด...' : 'อัปเดตพิกัด'}
                       </button>
+                      <button type="button" onClick={handleClearGPS} disabled={savingGps} className="btn btn-sm btn-outline-danger rounded-pill">ลบพิกัดบนเว็บเพื่อปักใหม่</button>
                     </div>
                   ) : (
                     <button
