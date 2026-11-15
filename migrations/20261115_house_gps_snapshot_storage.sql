@@ -10,6 +10,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public SET lock_tim
 DECLARE latest public.house_gps_batches; n integer; same boolean; target uuid; nr bigint;nb bigint;size_bytes bigint;state text;source text;
 BEGIN
  PERFORM pg_advisory_xact_lock(15112026,8190);
+ LOCK TABLE public.house_gps_queue IN SHARE ROW EXCLUSIVE MODE;
  LOCK TABLE public.house_gps_batches,public.house_gps_snapshot IN SHARE ROW EXCLUSIVE MODE;
  IF p_id IS NULL OR p_captured IS NULL OR p_captured>now()+interval '5 minutes' OR p_captured<now()-interval '1 hour' OR p_source IS NULL OR p_source='' OR jsonb_typeof(p_rows) IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'INVALID_SNAPSHOT'; END IF;
  n:=jsonb_array_length(p_rows);
@@ -37,7 +38,7 @@ BEGIN
  AND NOT EXISTS(SELECT 1 FROM public.house_gps_queue q WHERE q.reference_captured_at=b.captured_at)
  AND NOT EXISTS(SELECT 1 FROM public.house_gps_refresh_requests r WHERE r.result_batch_id=b.id AND r.state='processing');
  GET DIAGNOSTICS nb=ROW_COUNT;
- UPDATE public.house_gps_refresh_requests SET result_batch_id=target,house_count=n WHERE id=p_id AND state='processing';
+ UPDATE public.house_gps_refresh_requests SET result_batch_id=target,house_count=n WHERE id=p_id AND house_gps_refresh_requests.state='processing';
  size_bytes:=pg_database_size(current_database());
  INSERT INTO public.house_gps_storage_daily VALUES((now() AT TIME ZONE 'Asia/Bangkok')::date,size_bytes,pg_total_relation_size('public.house_gps_snapshot'),size_bytes>=400000000,now())
  ON CONFLICT(day) DO UPDATE SET database_bytes=excluded.database_bytes,snapshot_bytes=excluded.snapshot_bytes,warning=excluded.warning,checked_at=excluded.checked_at;
@@ -58,5 +59,14 @@ END $$;
 REVOKE ALL ON FUNCTION public.house_gps_snapshot_publish(uuid,timestamptz,jsonb,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.house_gps_snapshot_publish(uuid,timestamptz,jsonb,text) TO service_role;
 REVOKE INSERT,UPDATE,DELETE,TRUNCATE ON public.house_gps_batches,public.house_gps_snapshot FROM service_role;
+CREATE OR REPLACE FUNCTION public.house_gps_refresh_status() RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+DECLARE a jsonb:=public.app_current_user(); r jsonb;b jsonb;
+BEGIN
+ IF a->>'userId' IS NULL OR coalesce(a->>'role','') NOT IN ('staff','admin') THEN RAISE EXCEPTION 'FORBIDDEN'; END IF;
+ SELECT to_jsonb(t) INTO r FROM (SELECT id,state,requested_at,started_at,finished_at,house_count,error_code FROM public.house_gps_refresh_requests ORDER BY requested_at DESC,id DESC LIMIT 1)t;
+ SELECT jsonb_build_object('captured_at',captured_at,'completed_at',completed_at) INTO b FROM public.house_gps_batches WHERE completed_at IS NOT NULL ORDER BY captured_at DESC,id DESC LIMIT 1;
+ RETURN jsonb_build_object('request',r,'snapshot',b,'storage',(SELECT to_jsonb(d) FROM public.house_gps_storage_daily d ORDER BY day DESC LIMIT 1));
+END $$;
 NOTIFY pgrst,'reload schema';
 COMMIT;

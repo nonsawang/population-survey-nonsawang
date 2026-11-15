@@ -6,6 +6,7 @@ CREATE TABLE hosxp_review_snapshot(batch_id text REFERENCES hosxp_review_batches
 CREATE TABLE hosxp_review_approvals(id int PRIMARY KEY,batch_id text REFERENCES hosxp_review_batches(id),target_person_id text);
 GRANT ALL ON hosxp_review_batches,hosxp_review_snapshot TO service_role;`);
 await db.exec(fs.readFileSync('migrations/20261029_hosxp_review_retention.sql','utf8'));
+await db.exec(fs.readFileSync('migrations/20261115_hosxp_review_retention_7_days.sql','utf8'));
 const rows=[{hosxp_person_id:'1',cid:'fixture',residency_type:'1',discharge_code:'9',source_updated_at:null}];
 const refresh=async r=>(await db.query("SELECT hosxp_review_refresh_v2('fixture',now(),$1::jsonb) r",[JSON.stringify(r)])).rows[0].r;
 assert.equal((await refresh(rows)).status,'created');assert.equal((await refresh(rows)).status,'unchanged');

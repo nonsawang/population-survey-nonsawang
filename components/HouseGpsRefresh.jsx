@@ -36,6 +36,7 @@ export default function HouseGpsRefresh(){
   {error&&<p role="alert" className="text-danger mt-2">{error}</p>}
   {state&&<p role="status" className="mt-2">{labels[state]}{state==='completed'?` • ${data.request.house_count} หลัง`:''}</p>}
   {waiting&&<p className="small text-muted">เปิดเครื่อง LAN ที่ติดตั้งตัวเชื่อมและเข้าสู่ Windows ไว้ ระบบรับงานตามรอบ Scheduled Task ประมาณ 1 นาที หากสถานะค้างนาน ให้เจ้าหน้าที่ตรวจโปรเซสและบันทึกตัวเชื่อมก่อนลองใหม่</p>}
+  {data?.storage&&<p className={data.storage.warning?'alert alert-warning mt-2':'small text-muted mt-2'}>พื้นที่ฐานล่าสุด {(data.storage.database_bytes/1000000).toFixed(1)} MB • ตรวจเมื่อ {new Date(data.storage.checked_at).toLocaleString('th-TH')}{data.storage.warning?' — ถึงเกณฑ์เตือนภายในระบบ 400 MB กรุณาตรวจพื้นที่และ retention':''}</p>}
   <small>ข้อมูลอ้างอิงล่าสุด: {data?.snapshot?.captured_at?new Date(data.snapshot.captured_at).toLocaleString('th-TH',{timeZone:'Asia/Bangkok'}):'ยังไม่มี / ยังโหลดไม่สำเร็จ'}</small>
  </section>;
 }

@@ -10,13 +10,14 @@ async function run(){
  const checked=async p=>{const r=await p;if(r.error)throw Error('QUEUE_REQUEST_FAILED');return r.data;};
  try{
  if(mode==='snapshot'){
+ const captured=new Date().toISOString();
  await db.query('START TRANSACTION READ ONLY');
  const [rows]=await db.query('SELECT h.house_id,h.village_id,TRIM(h.address) address,h.latitude,h.longitude,TRIM(v.village_moo) moo FROM house h JOIN village v ON v.village_id=h.village_id');await db.commit();
  if(!rows.length)throw Error('EMPTY_SNAPSHOT');
  if(id&&!/^[0-9a-f-]{36}$/i.test(id))throw Error('INVALID_BATCH_ID');
  const batch=id||randomUUID();
   const report=await checked(client.rpc('house_gps_snapshot_publish',{
- p_id:batch,p_captured:new Date().toISOString(),p_source:c.HOSXP_DB_HOST+'/'+c.HOSXP_DB_NAME,
+ p_id:batch,p_captured:captured,p_source:c.HOSXP_DB_HOST+'/'+c.HOSXP_DB_NAME,
  p_rows:rows.map(r=>({...r,house_id:String(r.house_id),village_id:String(r.village_id),latitude:r.latitude==null?null:String(r.latitude),longitude:r.longitude==null?null:String(r.longitude)}))
  }));
  if(!['created','unchanged'].includes(report?.status))throw Error('SNAPSHOT_PUBLISH_FAILED');
