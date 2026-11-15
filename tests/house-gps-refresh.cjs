@@ -1,0 +1,26 @@
+const {PGlite}=require('@electric-sql/pglite'),fs=require('node:fs'),assert=require('node:assert/strict');
+const {refreshHouseReference}=require('../scripts/house-gps-refresh-worker.cjs');
+(async()=>{const db=new PGlite();try{
+ await db.exec(`CREATE ROLE anon;CREATE ROLE authenticated;CREATE ROLE service_role;
+ CREATE FUNCTION app_current_user() RETURNS jsonb LANGUAGE sql AS $$SELECT jsonb_build_object('userId','tester','role',coalesce(nullif(current_setting('test.role',true),''),'staff'))$$;
+ CREATE TABLE house_gps_batches(id uuid PRIMARY KEY,captured_at timestamptz DEFAULT now(),completed_at timestamptz);
+ CREATE TABLE house_gps_snapshot(batch_id uuid,house_id text);`);
+ await db.exec(fs.readFileSync('migrations/20261115_house_gps_refresh.sql','utf8'));
+ const request=async()=>(await db.query('SELECT house_gps_refresh_request() r')).rows[0].r;
+ let r=await request(),id=r.request.id;assert.equal(r.request.state,'pending');assert.equal((await request()).request.id,id);
+ await db.exec("SET test.role='vhv'");await assert.rejects(request(),/FORBIDDEN/);await db.exec("SET test.role='staff'");
+ await db.exec('SET ROLE authenticated');await assert.rejects(db.query('SELECT house_gps_refresh_claim()'),/permission denied/);await assert.rejects(db.query('SELECT * FROM house_gps_refresh_requests'),/permission denied/);await db.exec('RESET ROLE');
+ assert.equal((await db.query('SELECT house_gps_refresh_claim() id')).rows[0].id,id);
+ assert.equal((await db.query('SELECT house_gps_refresh_claim() id')).rows[0].id,null);
+ await assert.rejects(db.query('SELECT house_gps_refresh_finish($1,true)',[id]),/SNAPSHOT_INCOMPLETE/);
+ await db.query('INSERT INTO house_gps_batches(id,completed_at) VALUES($1,now())',[id]);
+ await db.query("INSERT INTO house_gps_snapshot VALUES($1,'1'),($1,'2')",[id]);
+ await db.query('SELECT house_gps_refresh_finish($1,true)',[id]);
+ r=(await db.query('SELECT house_gps_refresh_status() r')).rows[0].r;assert.equal(r.request.state,'completed');assert.equal(r.request.house_count,2);
+ const calls=[];const client={rpc:async(name,args)=>{calls.push({name,args});return name==='house_gps_refresh_claim'?{data:id}:{data:null};}};
+ await refreshHouseReference(client,(exe,args,opts)=>{assert.equal(args[1],'snapshot');assert.equal(args[2],id);assert.equal(opts.windowsHide,true);return {status:0};});
+ assert.equal(calls[1].args.p_success,true);
+ calls.length=0;await refreshHouseReference(client,()=>({status:null,error:new Error('timeout')}));assert.equal(calls[1].args.p_success,false);
+ let spawned=false;await refreshHouseReference({rpc:async()=>({data:null})},()=>{spawned=true;});assert.equal(spawned,false);
+ console.log('PASS: request deduplication, staff scope, claim ACL, one worker, complete snapshot verification, counts, read-only child mode, timeout and idle');
+}finally{await db.close();}})().catch(e=>{console.error(e);process.exit(1)});

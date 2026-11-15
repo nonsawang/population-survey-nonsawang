@@ -3,10 +3,12 @@ const path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const {createClient}=require('@supabase/supabase-js');
 const {readConfig}=require('./refresh-hosxp-review.cjs');
+const {refreshHouseReference}=require('./house-gps-refresh-worker.cjs');
 async function run(){
  const c=readConfig(path.resolve(__dirname,'../.env.sync'));
- if(c.HOSXP_HOUSE_GPS_WRITE_ENABLED!=='true')throw Error('GPS_WRITE_DISABLED');
  const client=createClient(c.SUPABASE_URL,c.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false}});
+ await refreshHouseReference(client);
+ if(c.HOSXP_HOUSE_GPS_WRITE_ENABLED!=='true'){console.log('GPS_REFERENCE_ONLY_WRITE_DISABLED');return;}
  const {data,error}=await client.from('house_gps_queue').select('id').eq('state','pending').not('approved_at','is',null).not('approved_by','is',null).order('approved_at').limit(10);
  if(error)throw Error('APPROVED_QUEUE_READ_FAILED');
  for(const q of data){

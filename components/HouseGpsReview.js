@@ -2,6 +2,7 @@
 import {useEffect,useState} from 'react';
 import dynamic from 'next/dynamic';
 import HouseGpsBatchApproval from './HouseGpsBatchApproval';
+import HouseGpsRefresh from './HouseGpsRefresh';
 const HouseGpsRevision = dynamic(() => import('./HouseGpsRevision'), {ssr:false});
 
 const labels = {pending:'รอเจ้าหน้าที่ตรวจสอบ', processing:'กำลังส่ง', sent:'เขียนเข้า HOSxP แล้ว', conflict:'ข้อมูลบ้านเปลี่ยน ต้องตรวจสอบ',superseded:'ยกเลิกและแทนที่แล้ว',cancelled:'ยกเลิก — ล้างพิกัดบนเว็บเพื่อปักใหม่'};
@@ -48,6 +49,7 @@ export default function HouseGpsReview() {
   return <section id="house-gps" className="card p-3">
     <h2 className="h4">รายการพิกัดบ้าน</h2>
     <p>เจ้าหน้าที่ตรวจพิกัดและกดส่งก่อน ตัวส่ง LAN จึงเขียนเข้า HOSxP อัตโนมัติ</p>
+    <HouseGpsRefresh />
     <div><button className="btn btn-outline-primary" disabled={preparing} onClick={()=>setRefresh(n=>n+1)}>โหลดรายการใหม่</button></div>
     {data?.revisionAvailable === false && <p role="status" className="alert alert-warning mt-2">แสดงคิวพิกัดเดิมได้แล้ว การแก้ไขและส่งใหม่ต้องติดตั้ง migration 20261105_house_gps_revision.sql ก่อน</p>}
     {message && <p role="status" className="alert alert-info mt-2">{message}</p>}

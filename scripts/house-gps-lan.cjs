@@ -12,16 +12,15 @@ async function run(){
  if(mode==='snapshot'){
  await db.query('START TRANSACTION READ ONLY');
  const [rows]=await db.query('SELECT h.house_id,h.village_id,TRIM(h.address) address,h.latitude,h.longitude,TRIM(v.village_moo) moo FROM house h JOIN village v ON v.village_id=h.village_id');await db.commit();
- if(!rows.length)throw Error('EMPTY_SNAPSHOT');const batch=randomUUID();
- await checked(client.from('house_gps_batches').insert({id:batch}));
- for(let i=0;i<rows.length;i+=500)await checked(client.from('house_gps_snapshot').insert(rows.slice(i,i+500).map(r=>({...r,house_id:String(r.house_id),village_id:String(r.village_id),batch_id:batch}))));
- const count=await client.from('house_gps_snapshot').select('house_id',{head:true,count:'exact'}).eq('batch_id',batch);
- if(count.error||count.count!==rows.length)throw Error('SNAPSHOT_INCOMPLETE');
- await checked(client.from('house_gps_batches').update({completed_at:new Date().toISOString()}).eq('id',batch));
- await client.from('house_gps_snapshot').delete().neq('batch_id',batch);
- await client.from('house_gps_batches').delete().neq('id',batch);
- console.log('SNAPSHOT_READY '+rows.length);return;
- }
+ if(!rows.length)throw Error('EMPTY_SNAPSHOT');
+ if(id&&!/^[0-9a-f-]{36}$/i.test(id))throw Error('INVALID_BATCH_ID');
+ const batch=id||randomUUID();
+  const report=await checked(client.rpc('house_gps_snapshot_publish',{
+ p_id:batch,p_captured:new Date().toISOString(),p_source:c.HOSXP_DB_HOST+'/'+c.HOSXP_DB_NAME,
+ p_rows:rows.map(r=>({...r,house_id:String(r.house_id),village_id:String(r.village_id),latitude:r.latitude==null?null:String(r.latitude),longitude:r.longitude==null?null:String(r.longitude)}))
+ }));
+ if(!['created','unchanged'].includes(report?.status))throw Error('SNAPSHOT_PUBLISH_FAILED');
+ console.log(JSON.stringify(report));return; }
  if(!/^[0-9a-f-]{36}$/i.test(id||''))throw Error('JOB_ID_REQUIRED');
  if(mode==='recover'){
  const q=await checked(client.from('house_gps_queue').select('*').eq('id',id).single());
