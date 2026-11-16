@@ -1,0 +1,12 @@
+const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
+let src=fs.readFileSync('app/api/house-gps-review/route.js','utf8').replace(/^import .*;\r?\n/gm,'').replace(/export /g,'');
+let calls=[],failCounts=false,body={},approval='skipped';
+const c=vm.createContext({URL,URLSearchParams,AbortSignal,Response,VALID_MOOS:['1','19'],currentUser:async()=>({role:'admin'}),sameOrigin:()=>true,isReadOnly:()=>false,getSessionToken:async()=> 'fixture',readBody:async()=>body,databaseConfig:()=>({url:'https://fixture',key:'fixture'}),authResponse:(b,s=200)=>Response.json(b,{status:s}),fetch:async(u,o)=>{calls.push([u,o]);if(u.includes('/rpc/'))return Response.json({rows:[{status:approval}]});if(u.includes('app_users'))return Response.json([{id:'abc',display_name:'สมใจ'}]);if(o.method==='HEAD')return failCounts?new Response(null,{status:503}):new Response(null,{headers:{'content-range':'0-0/6500'}});return Response.json([{id:'q',actor:'abc'}]);}});
+vm.runInContext(src+';this.GET=GET;this.POST=POST;this.apply=applyFilters;',c);
+(async()=>{const q=new URLSearchParams();c.apply(q,{moo:'19',status:'approved',search:'สมใจ',actors:['abc']});assert.match(q.get('and'),/address/);assert.match(q.get('and'),/state.eq.processing/);assert.match(q.get('and'),/actor.in/);
+let r=await c.GET({url:'https://fixture/?moo=19&status=approved&search='+encodeURIComponent('สมใจ')});assert.equal(r.status,200);let d=await r.json();assert.equal(d.counts.all,6500);assert.equal(d.rows[0].actor_name,'สมใจ');
+failCounts=true;d=await(await c.GET({url:'https://fixture/'})).json();assert.equal(d.counts,null);assert.equal(d.countsError,true);
+assert.equal((await c.GET({url:'https://fixture/?moo=999'})).status,400);
+body={action:'approve',id:'q'};calls=[];assert.equal((await c.POST({})).status,409);assert.equal(calls.length,0);
+body.batchId='b';assert.equal((await c.POST({})).status,409);assert.match(calls[0][0],/house_gps_batch_review/);approval='approved';assert.equal((await c.POST({})).status,200);
+console.log('PASS filters, names, exact counts >5000, count failures, invalid village, checked single approval');})().catch(e=>{console.error(e);process.exitCode=1});
