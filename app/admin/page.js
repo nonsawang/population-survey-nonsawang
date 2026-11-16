@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth, ROLE_LABELS } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import TopBar from '@/components/TopBar';
+import ActivityLogPanel from '@/components/ActivityLogPanel';
 import NhsoApiSettingsCard from '@/components/NhsoApiSettingsCard';
 
 export default function AdminPage() {
@@ -12,7 +13,6 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState('users');
   const [users, setUsers] = useState([]);
-  const [logs, setLogs] = useState([]);
   const [searchQ, setSearchQ] = useState('');
   const [editUser, setEditUser] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -33,10 +33,6 @@ export default function AdminPage() {
     setUsers(data || []);
   };
 
-  const loadLogs = async () => {
-    const { data } = await supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(300);
-    setLogs(data || []);
-  };
 
   const filteredUsers = users.filter(u => !searchQ || (u.display_name||'').toLowerCase().includes(searchQ.toLowerCase()) || (u.username||'').toLowerCase().includes(searchQ.toLowerCase()));
 
@@ -103,7 +99,7 @@ export default function AdminPage() {
         {/* Tabs */}
         <ul className="nav nav-tabs mb-3">
           {[{k:'users',label:'ผู้ใช้งาน',icon:'users'},{k:'nhso',label:'เชื่อมต่อ NHSO API',icon:'cloud'},{k:'logs',label:'บันทึก',icon:'clipboard-list'},{k:'password',label:'เปลี่ยนรหัส',icon:'key'}].map(({k,label,icon}) => (
-            <li className="nav-item" key={k}><a className={`nav-link ${tab===k?'active':''}`} href="#" onClick={e=>{e.preventDefault();setTab(k);if(k==='logs'&&logs.length===0)loadLogs();}} style={{fontWeight:600}}><i className={`fa-solid fa-${icon} me-1`}/>{label}</a></li>
+            <li className="nav-item" key={k}><a className={`nav-link ${tab===k?'active':''}`} href="#" onClick={e=>{e.preventDefault();setTab(k);}} style={{fontWeight:600}}><i className={`fa-solid fa-${icon} me-1`}/>{label}</a></li>
           ))}
         </ul>
 
@@ -145,25 +141,7 @@ export default function AdminPage() {
         )}
 
         {/* Logs Tab */}
-        {tab === 'logs' && (
-          <div className="card shadow-sm border-0" style={{borderRadius:14,overflow:'hidden'}}>
-            <div className="table-responsive" style={{maxHeight:520,overflowY:'auto'}}>
-              <table className="table table-sm align-middle mb-0">
-                <thead className="table-light" style={{position:'sticky',top:0}}><tr><th style={{width:160}}>เวลา</th><th style={{width:130}}>ผู้ใช้</th><th style={{width:160}}>Action</th><th>รายละเอียด</th></tr></thead>
-                <tbody>
-                  {logs.map((log,i) => (
-                    <tr key={i} style={{fontSize:'.82rem'}}>
-                      <td className="text-muted">{log.created_at ? new Date(log.created_at).toLocaleString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-'}</td>
-                      <td><strong>{log.username||'-'}</strong></td>
-                      <td><span className={`action-badge action-${log.action||''}`}>{log.action||'-'}</span></td>
-                      <td className="text-muted">{log.details||'-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        {tab === 'logs' && <ActivityLogPanel />}
 
         {/* Password Tab */}
         {tab === 'password' && (
