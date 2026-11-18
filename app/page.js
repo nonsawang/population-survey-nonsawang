@@ -49,6 +49,8 @@ export default function SurveyPage() {
     return () => { active = false; };
   }, [results, progressRetry]);
   const [showGuide, setShowGuide] = useState(false);
+  const [showSearchPanel, setShowSearchPanel] = useState(false);
+  const [searchTab, setSearchTab] = useState('house');
   const [vhvData, setVhvData] = useState({});
   const [moveTarget, setMoveTarget] = useState(null);
   const [moveMoo, setMoveMoo] = useState('');
@@ -165,6 +167,7 @@ export default function SurveyPage() {
     const mapped = (data || []).map(mapPopulationRow);
     setResults(mapped);
     setShowGuide(false);
+    setShowSearchPanel(false);
   };
   // ✅ Refresh เงียบๆ — ไม่แสดง Swal loading (ใช้หลังบันทึก Type)
 const searchDataSilent = async () => {
@@ -555,20 +558,126 @@ const submitVhvChange = async () => {
   if (loading) return <div className="text-center py-5"><span className="spinner-border text-primary" /></div>;
   if (!user) return null;
 
+  const isVhv = user.role === 'vhv';
+  const validRelations = ['เจ้าบ้าน', 'ผู้อาศัย', 'บุตร/หลาน', 'บิดา/มารดา', 'เขย/สะใภ้', 'เช่าอาศัย', 'อื่นๆ'];
+  const isMemberComplete = (p) =>
+    validRelations.includes(String(p.relation || '').trim()) &&
+    p.chronic &&
+    !['-', 'ไม่ระบุ', 'ยังไม่ระบุ'].includes(String(p.chronic).trim()) &&
+    p.residencyType &&
+    !p.needsStatusReview;
+
+  const completedCount = (results || []).filter(isMemberComplete).length;
+  const remainingCount = (results || []).length - completedCount;
+
+  const renderHouseSearchBox = () => (
+    <div id="survey-house-search" className="card survey-search border-0 shadow-sm mb-4 fade-in" style={{ borderRadius: 16 }}>
+      <div className="card-body p-3 p-md-4">
+        <h2 className="h5 fw-bold mb-1">🏠 ค้นหาตามเลขที่บ้าน</h2>
+        <p className="text-muted small mb-3">เลือกหมู่บ้านและพิมพ์เลขที่บ้านที่ต้องการสำรวจ</p>
+        <div className="row g-2 align-items-end">
+          <div className="col-5">
+            <label htmlFor="survey-moo" className="form-label fw-bold">หมู่ที่</label>
+            <select
+              id="survey-moo"
+              className="form-select text-center fw-bold"
+              style={{ minHeight: 52, fontSize: '1.1rem', borderRadius: 12 }}
+              value={moo}
+              onChange={e => setMoo(e.target.value)}
+            >
+              <option value="" disabled>เลือก</option>
+              {visibleMoos.map(m => <option key={m} value={m}>หมู่ {m}</option>)}
+            </select>
+          </div>
+          <div className="col-7">
+            <label htmlFor="survey-house" className="form-label fw-bold">เลขที่บ้าน</label>
+            <input
+              id="survey-house"
+              type="text"
+              inputMode="tel"
+              className="form-control fw-bold text-center"
+              style={{ minHeight: 52, fontSize: '1.25rem', borderRadius: 12 }}
+              placeholder="เช่น 24/1"
+              value={house}
+              onChange={e => setHouse(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && searchData()}
+            />
+          </div>
+          <div className="col-12 mt-3">
+            <button
+              onClick={() => searchData()}
+              className="btn w-100 rounded-pill text-white fw-bold shadow-sm"
+              style={{ background: 'var(--primary)', minHeight: 52, fontSize: '1.08rem' }}
+              disabled={searching}
+            >
+              {searching ? (
+                <><span className="spinner-border spinner-border-sm me-2" />กำลังค้นหา...</>
+              ) : (
+                <><i className="fa-solid fa-magnifying-glass me-2" />เปิดดูบ้านเลขที่นี้</>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <TopBar showAdmin />
-      <div className="container survey-page py-4">
-        <header className="survey-heading"><div><p className="survey-eyebrow">รพ.สต.บ้านโนนสว่าง</p><h1>ระบบสุขภาพโนนสว่าง</h1><p>สำรวจรายครัวเรือน • คัดกรองสุขภาพ • เชื่อมโยง HOSxP</p></div><a className="btn btn-primary" href="#survey-house-search"><i className="fa-solid fa-magnifying-glass me-2" aria-hidden="true"/>ค้นหาบ้าน</a></header>
+      <div className="container survey-page py-3 py-md-4">
+        {/* สำหรับเจ้าหน้าที่ (staff / admin): แสดงหัวข้อ ปุ่มอ่านบัตรประชาชน และลิงก์ติดตามงานครบเหมือนเดิม */}
+        {!isVhv ? (
+          <>
+            <header className="survey-heading">
+              <div>
+                <p className="survey-eyebrow">รพ.สต.บ้านโนนสว่าง</p>
+                <h1>ระบบสุขภาพโนนสว่าง</h1>
+                <p>สำรวจรายครัวเรือน • คัดกรองสุขภาพ • เชื่อมโยง HOSxP</p>
+              </div>
+              <a className="btn btn-primary" href="#survey-house-search">
+                <i className="fa-solid fa-magnifying-glass me-2" aria-hidden="true" />ค้นหาบ้าน
+              </a>
+            </header>
 
-<div className="card p-3 mb-3">
-          <button type="button" className="btn btn-outline-primary" disabled={readingCard} onClick={handleReadCard}><i className="fa-solid fa-id-card me-2" />{readingCard ? 'กำลังอ่านและค้นหา…' : 'อ่านบัตรประชาชน'}</button>
-          <small className="text-muted mt-2">เสียบบัตร เปิด E-Form Agent แล้วกดปุ่ม “อ่านบัตรประชาชน” — ระบบยังไม่อ่านอัตโนมัติเมื่อเสียบบัตร</small>
-          {cardNotice && <p className="alert alert-info mb-0 mt-2" role="status" aria-live="polite">{cardNotice}</p>}
-        </div>
-<nav className="survey-navigation" aria-label="งานติดตาม"><a href="/tracking" className="survey-nav-link"><i className="fa-solid fa-list-check" aria-hidden="true" /> ติดตามงานสำรวจ</a></nav>
+            <div className="card p-3 mb-3">
+              <button type="button" className="btn btn-outline-primary" disabled={readingCard} onClick={handleReadCard}>
+                <i className="fa-solid fa-id-card me-2" />{readingCard ? 'กำลังอ่านและค้นหา…' : 'อ่านบัตรประชาชน'}
+              </button>
+              <small className="text-muted mt-2">
+                เสียบบัตร เปิด E-Form Agent แล้วกดปุ่ม “อ่านบัตรประชาชน” — ระบบยังไม่อ่านอัตโนมัติเมื่อเสียบบัตร
+              </small>
+              {cardNotice && <p className="alert alert-info mb-0 mt-2" role="status" aria-live="polite">{cardNotice}</p>}
+            </div>
 
-
+            <nav className="survey-navigation" aria-label="งานติดตาม">
+              <a href="/tracking" className="survey-nav-link">
+                <i className="fa-solid fa-list-check" aria-hidden="true" /> ติดตามงานสำรวจ
+              </a>
+            </nav>
+          </>
+        ) : (
+          /* สำหรับ อสม. สูงอายุ (โหมดมือถือใช้งานง่าย): แถบปุ่มใหญ่ด้านบนสุด ไม่รก ไม่หลงทาง */
+          <div className="d-flex gap-2 mb-3">
+            <a
+              href="/my-houses"
+              className="btn btn-outline-primary fw-bold flex-grow-1 d-flex align-items-center justify-content-center"
+              style={{ minHeight: 48, fontSize: '.96rem', borderRadius: 14, background: 'white' }}
+            >
+              ⬅️ กลับหน้ารายชื่อบ้านของฉัน
+            </a>
+            <button
+              type="button"
+              onClick={() => setShowSearchPanel(v => !v)}
+              className={`btn fw-bold d-flex align-items-center justify-content-center px-3 ${
+                showSearchPanel || results === null ? 'btn-primary text-white' : 'btn-light border text-dark'
+              }`}
+              style={{ minHeight: 48, fontSize: '.96rem', borderRadius: 14 }}
+            >
+              🔍 {showSearchPanel ? 'ปิดช่องค้นหา' : 'ค้นหาบ้านอื่น'}
+            </button>
+          </div>
+        )}
 
         {/* คิวยืนยันย้ายบ้านข้ามหมู่ */}
         <PendingTransfersBanner
@@ -579,32 +688,45 @@ const submitVhvChange = async () => {
           onOpenHouse={(targetMoo, targetHouse) => searchData(targetMoo, targetHouse)}
         />
 
-        {/* Search */}
-        <PersonSearch onOpenHouse={searchData} busy={searching || readingCard} />
-        <div id="survey-house-search" className="card survey-search border-0 shadow-sm mb-4 fade-in" style={{borderRadius:16}}>
-          <div className="card-body p-4">
-            <h2 className="h5 fw-bold mb-1">ค้นหาบ้านเพื่อสำรวจ</h2><p className="text-muted small mb-3">เลือกหมู่และกรอกเลขที่บ้าน เพื่อดูรายชื่อผู้อาศัย</p>
-            <div className="row g-2">
-              <div className="col-5">
-                <label htmlFor="survey-moo" className="form-label fw-bold">หมู่ที่</label>
-                <select id="survey-moo" className="form-select text-center" value={moo} onChange={e => setMoo(e.target.value)}>
-                  <option value="" disabled>เลือก</option>
-                  {/* ✅ แสดงเฉพาะหมู่ที่มีสิทธิ์ */}
-                  {visibleMoos.map(m => <option key={m} value={m}>หมู่ {m}</option>)}
-                </select>
-              </div>
-              <div className="col-7">
-                <label htmlFor="survey-house" className="form-label fw-bold">เลขที่บ้าน</label>
-                <input id="survey-house" type="text" className="form-control" placeholder="เช่น 24/1" value={house} onChange={e => setHouse(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchData()} />
-              </div>
-              <div className="col-12 mt-3">
-                <button onClick={() => searchData()} className="btn w-100 rounded-pill text-white fw-bold" style={{background:'var(--primary)',padding:10}} disabled={searching}>
-                  {searching ? <><span className="spinner-border spinner-border-sm me-1"/>ค้นหา...</> : <><i className="fa-solid fa-magnifying-glass me-1"/> ค้นหาข้อมูล</>}
+        {/* ส่วนค้นหา: เจ้าหน้าที่แสดงครบ / อสม. ซ่อนอัตโนมัติเมื่อเปิดบ้านแล้ว เพื่อโชว์ป้ายบ้านบนสุด */}
+        {!isVhv ? (
+          <>
+            <PersonSearch onOpenHouse={searchData} busy={searching || readingCard} />
+            {renderHouseSearchBox()}
+          </>
+        ) : (
+          (showSearchPanel || results === null) && (
+            <div className="mb-3 fade-in">
+              <div className="d-flex gap-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setSearchTab('house')}
+                  className={`btn fw-bold flex-grow-1 ${
+                    searchTab === 'house' ? 'btn-primary' : 'btn-outline-primary bg-white'
+                  }`}
+                  style={{ minHeight: 46, borderRadius: 12, fontSize: '.96rem' }}
+                >
+                  🏠 ค้นตามเลขที่บ้าน
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchTab('person')}
+                  className={`btn fw-bold flex-grow-1 ${
+                    searchTab === 'person' ? 'btn-primary' : 'btn-outline-primary bg-white'
+                  }`}
+                  style={{ minHeight: 46, borderRadius: 12, fontSize: '.96rem' }}
+                >
+                  👤 ค้นตามชื่อคน
                 </button>
               </div>
+              {searchTab === 'house' ? (
+                renderHouseSearchBox()
+              ) : (
+                <PersonSearch onOpenHouse={searchData} busy={searching || readingCard} />
+              )}
             </div>
-          </div>
-        </div>
+          )
+        )}
 
         {/* ✅ คู่มือการใช้งาน — ครบ 4 ขั้นตอน + ปุ่มซ่อน/แสดง */}
         {showGuide && (
@@ -660,11 +782,13 @@ const submitVhvChange = async () => {
             </div>
           </div>
         )}
-        <div className="text-center mt-3 mb-3">
-          <button aria-expanded={showGuide} onClick={() => setShowGuide(!showGuide)} className={`btn btn-sm ${showGuide ? 'btn-outline-primary' : 'btn-primary'} rounded-pill px-4`}>
-            <i className={`fa-solid fa-eye${showGuide ? '-slash' : ''} me-1`}/> {showGuide ? 'ซ่อนคู่มือ' : 'แสดงคู่มือ'}
-          </button>
-        </div>
+        {!isVhv && (
+          <div className="text-center mt-3 mb-3">
+            <button aria-expanded={showGuide} onClick={() => setShowGuide(!showGuide)} className={`btn btn-sm ${showGuide ? 'btn-outline-primary' : 'btn-primary'} rounded-pill px-4`}>
+              <i className={`fa-solid fa-eye${showGuide ? '-slash' : ''} me-1`}/> {showGuide ? 'ซ่อนคู่มือ' : 'แสดงคู่มือ'}
+            </button>
+          </div>
+        )}
 
         {/* Results */}
         {results !== null && (
@@ -674,67 +798,189 @@ const submitVhvChange = async () => {
                 <i className="fa-solid fa-house-chimney-crack fa-4x text-secondary mb-3"/>
                 <h5 className="fw-bold">ไม่พบข้อมูล</h5>
                 <p className="text-muted">บ้านเลขที่ {house} หมู่ {moo}</p>
-                <button onClick={() => openAddModal(house, moo, 'ไม่ระบุ')} className="btn btn-primary mt-2 rounded-pill px-4"><i className="fa-solid fa-plus-circle me-1"/> เพิ่มบ้านใหม่</button>
+                <button onClick={() => openAddModal(house, moo, 'ไม่ระบุ')} className="btn btn-primary mt-2 rounded-pill px-4" style={{ minHeight: 48 }}><i className="fa-solid fa-plus-circle me-1"/> เพิ่มคนเข้าบ้านใหม่หลังนี้</button>
               </div>
             ) : (
               <>
-                {/* 🟢 อัปเดตส่วนหัวข้อบ้าน พร้อมปุ่มบันทึก GPS */}
-                <div className="alert border-0 shadow-sm mb-3" style={{background:'white',borderRadius:12}}>
-                  <div className="d-flex justify-content-between align-items-start mb-2">
-                    <div>
-                      <div className="small text-muted"><i className="fa-solid fa-house text-primary me-1"/> ม.{moo} บ้านเลขที่ <span className="fw-bold text-dark">{house}</span></div>
-                      <div className="mt-1"><i className="fa-solid fa-user-nurse text-success me-1"/> อสม: <strong>{results[0]?.vhv || 'ไม่ระบุ'}</strong></div>
+                {/* 🟢 ป้ายหน้าบ้านขนาดใหญ่ ชัดเจน อ่านง่ายสำหรับ อสม. สูงอายุ */}
+                <div className="card border-0 shadow-sm mb-3" style={{ background: 'white', borderRadius: 16 }}>
+                  <div className="card-body p-3">
+                    <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+                      <div>
+                        <div className="fw-bold text-dark" style={{ fontSize: '1.25rem' }}>
+                          🏡 บ้านเลขที่ <span className="text-primary">{house}</span>{' '}
+                          <span className="badge bg-primary-subtle text-primary border border-primary-subtle" style={{ fontSize: '.9rem' }}>
+                            หมู่ที่ {moo}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-muted" style={{ fontSize: '.95rem' }}>
+                          👩‍⚕️ อสม.ผู้รับผิดชอบ: <strong className="text-dark">{results[0]?.vhv || 'ไม่ระบุ'}</strong>
+                        </div>
+                      </div>
+                      <button
+                        onClick={openVhvModal}
+                        className="btn btn-sm btn-light border rounded-pill px-3 fw-semibold"
+                        style={{ minHeight: 38, fontSize: '.85rem' }}
+                      >
+                        ✏️ เปลี่ยนชื่อ อสม.
+                      </button>
                     </div>
-                    <button onClick={openVhvModal} className="btn btn-sm btn-light border rounded-pill text-muted" style={{fontSize: '.75rem'}}>เปลี่ยน อสม.</button>
-                  </div>
 
-                  <hr className="my-2" style={{opacity: 0.1}}/>
+                    {/* แถบสรุปความคืบหน้าของสมาชิกในบ้านหลังนี้ */}
+                    <div
+                      className={`p-2 px-3 rounded-3 border mb-2 ${
+                        remainingCount === 0
+                          ? 'bg-success-subtle text-success border-success-subtle'
+                          : 'bg-warning-subtle text-warning-emphasis border-warning-subtle'
+                      }`}
+                    >
+                      {remainingCount === 0 ? (
+                        <div className="fw-bold" style={{ fontSize: '.96rem' }}>
+                          ✅ บ้านนี้กรอกข้อมูลสำรวจครบทุกคนแล้ว ({results.length}/{results.length} คน)
+                        </div>
+                      ) : (
+                        <>
+                          <div className="fw-bold" style={{ fontSize: '.96rem' }}>
+                            ⏳ สมาชิกในบ้าน {results.length} คน — ข้อมูลครบแล้ว {completedCount} คน • เหลืออีก{' '}
+                            <span className="text-danger">{remainingCount} คน</span>
+                          </div>
+                          <div className="small mt-1">
+                            👆 แตะปุ่ม <strong>“เปิดดู ▾”</strong> ที่รายชื่อด้านล่างเพื่อตรวจและบันทึกข้อมูลทีละคน
+                          </div>
+                        </>
+                      )}
+                    </div>
 
-                  {results.some(p => p.latitude !== null && p.longitude !== null) ? (
-                    <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 rounded-3" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
-                      <span className="small fw-bold text-success">
-                        <i className="fa-solid fa-location-dot me-1" /> ✓ มีพิกัดบ้านแล้ว
-                      </span>
+                    {/* ส่วนบันทึกพิกัด GPS บ้าน */}
+                    {results.some(p => p.latitude !== null && p.longitude !== null) ? (
+                      <div className="px-3 py-2 rounded-3" style={{ background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+                        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                          <span className="fw-bold text-success" style={{ fontSize: '.95rem' }}>
+                            📍 บ้านหลังนี้ปักหมุดพิกัดแผนที่แล้ว
+                          </span>
+                          {!isVhv && (
+                            <div className="d-flex gap-2 flex-wrap">
+                              <button
+                                onClick={handleSaveGPS}
+                                disabled={savingGps}
+                                className="btn btn-sm btn-outline-success rounded-pill px-3 fw-semibold"
+                              >
+                                {savingGps ? 'กำลังหาพิกัด...' : 'อัปเดตพิกัด'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleClearGPS}
+                                disabled={savingGps}
+                                className="btn btn-sm btn-outline-danger rounded-pill"
+                              >
+                                ลบพิกัดบนเว็บเพื่อปักใหม่
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {isVhv && (
+                          <details className="mt-1 small">
+                            <summary className="text-muted" style={{ cursor: 'pointer' }}>
+                              ⚙️ ต้องการปักหมุดพิกัดบ้านนี้ใหม่ (แตะที่นี่)
+                            </summary>
+                            <div className="d-flex flex-wrap gap-2 mt-2 pt-2 border-top">
+                              <button
+                                type="button"
+                                onClick={handleSaveGPS}
+                                disabled={savingGps}
+                                className="btn btn-sm btn-outline-success rounded-pill px-3 fw-bold"
+                                style={{ minHeight: 40 }}
+                              >
+                                {savingGps ? 'กำลังหาพิกัด...' : '📍 จับพิกัดปัจจุบันใหม่'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleClearGPS}
+                                disabled={savingGps}
+                                className="btn btn-sm btn-outline-danger rounded-pill px-3"
+                                style={{ minHeight: 40 }}
+                              >
+                                ล้างพิกัดเดิม
+                              </button>
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    ) : (
                       <button
                         onClick={handleSaveGPS}
                         disabled={savingGps}
-                        className="btn btn-sm btn-outline-success rounded-pill px-3 fw-semibold"
-                        style={{ fontSize: '.75rem' }}
+                        className="btn w-100 rounded-pill fw-bold d-flex align-items-center justify-content-center shadow-sm"
+                        style={{
+                          background: '#0284c7',
+                          color: 'white',
+                          minHeight: 52,
+                          fontSize: '1.02rem',
+                        }}
                       >
-                        {savingGps ? 'กำลังหาพิกัด...' : 'อัปเดตพิกัด'}
+                        {savingGps ? (
+                          <><span className="spinner-border spinner-border-sm me-2"/> กำลังค้นหาสัญญาณดาวเทียม GPS...</>
+                        ) : isVhv ? (
+                          <>📍 กดปักหมุดพิกัดบ้านนี้ (ยืนที่ตัวบ้านแล้วกด)</>
+                        ) : (
+                          <><i className="fa-solid fa-location-crosshairs fa-lg me-2"/> 📍 บันทึกพิกัดบ้าน / เข้าคิว HOSxP</>
+                        )}
                       </button>
-                      <button type="button" onClick={handleClearGPS} disabled={savingGps} className="btn btn-sm btn-outline-danger rounded-pill">ลบพิกัดบนเว็บเพื่อปักใหม่</button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={handleSaveGPS}
-                      disabled={savingGps}
-                      className="btn w-100 rounded-pill fw-bold d-flex align-items-center justify-content-center"
-                      style={{background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', minHeight: '46px'}}
-                    >
-                      {savingGps ? (
-                        <><span className="spinner-border spinner-border-sm me-2"/> กำลังหาพิกัด...</>
-                      ) : (
-                        <><i className="fa-solid fa-location-crosshairs fa-lg me-2"/> 📍 บันทึกพิกัดบ้าน / เข้าคิว HOSxP</>
-                      )}
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </div>
                 {/* 🟢 จบส่วนหัวข้อบ้าน */}
 
-                <div className="mb-2 text-muted small">พบ <strong>{results.length}</strong> คน</div>
-               {results.map(p => <PersonCard key={p.personId} person={p} pendingTransfer={pendingTransfersMap[p.personId]} onSave={handleSave} onMove={openMoveModal} onRefresh={searchDataSilent} user={user}
-                 surveyProgress={surveyProgress[p.personId]} progressError={progressError} progressLoading={progressLoading}
-                 focused={String(p.personId) === targetPerson}
-                 onSurveyConfirmed={() => setProgressRetry(v => v + 1)}
-                 onNextPending={Object.values(surveyProgress).some(r => String(r.person_id)!==String(p.personId) && inProgressScope(r) && r.status!=='complete') ? () => {
-                   const next = Object.values(surveyProgress).find(r => String(r.person_id)!==String(p.personId) && inProgressScope(r) && r.status!=='complete');
-                   if(next) setTargetPerson(String(next.person_id));
-                 } : null} />)}
-                <div className="mt-4 border-top pt-3 fade-in">
-                  <button onClick={() => openAddModal(house, moo, results[0]?.vhv || 'ไม่ระบุ')} className="btn btn-outline-primary w-100 dashed-border rounded-pill">
-                    <i className="fa-solid fa-user-plus me-1"/> เพิ่มผู้อาศัย
+                <div className="mb-2 fw-bold text-dark" style={{ fontSize: '1rem' }}>
+                  👨‍👩‍👧‍👦 รายชื่อสมาชิกในบ้าน ({results.length} คน)
+                </div>
+
+                {results.map(p => (
+                  <PersonCard
+                    key={p.personId}
+                    person={p}
+                    pendingTransfer={pendingTransfersMap[p.personId]}
+                    onSave={handleSave}
+                    onMove={openMoveModal}
+                    onRefresh={searchDataSilent}
+                    user={user}
+                    surveyProgress={surveyProgress[p.personId]}
+                    progressError={progressError}
+                    progressLoading={progressLoading}
+                    focused={String(p.personId) === targetPerson}
+                    onSurveyConfirmed={() => setProgressRetry(v => v + 1)}
+                    onNextPending={
+                      Object.values(surveyProgress).some(
+                        r => String(r.person_id) !== String(p.personId) && inProgressScope(r) && r.status !== 'complete'
+                      )
+                        ? () => {
+                            const next = Object.values(surveyProgress).find(
+                              r => String(r.person_id) !== String(p.personId) && inProgressScope(r) && r.status !== 'complete'
+                            );
+                            if (next) setTargetPerson(String(next.person_id));
+                          }
+                        : null
+                    }
+                  />
+                ))}
+
+                <div className="mt-4 border-top pt-3 fade-in d-flex flex-column gap-2">
+                  <button
+                    onClick={() => openAddModal(house, moo, results[0]?.vhv || 'ไม่ระบุ')}
+                    className="btn btn-outline-primary w-100 dashed-border rounded-pill fw-bold"
+                    style={{ minHeight: 50, fontSize: '1rem' }}
+                  >
+                    ➕ เพิ่มคนเข้าบ้านนี้ (กรณีตกหล่น / ย้ายมาอยู่ใหม่)
                   </button>
+                  {isVhv && (
+                    <a
+                      href="/my-houses"
+                      className="btn btn-success w-100 rounded-pill fw-bold d-flex align-items-center justify-content-center shadow-sm mt-1"
+                      style={{ minHeight: 52, fontSize: '1.02rem' }}
+                    >
+                      ⬅️ สำรวจบ้านนี้เสร็จแล้ว — กลับไปเลือกบ้านหลังถัดไป
+                    </a>
+                  )}
                 </div>
               </>
             )}
