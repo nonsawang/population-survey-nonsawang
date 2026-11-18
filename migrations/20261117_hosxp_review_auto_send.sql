@@ -1,5 +1,5 @@
 -- Zero-new-tables migration for [สำรวจบ้าน] (hosxp_review_approvals).
--- Adds 'processing' state, claimed_at, write_stamp, and error_code to existing hosxp_review_approvals table.
+-- Adds 'processing' state, claimed_at, write_stamp, error_code, and high-speed indexing/materialization.
 BEGIN;
 
 ALTER TABLE public.hosxp_review_approvals
@@ -19,7 +19,23 @@ CREATE UNIQUE INDEX hosxp_review_approval_unique
   ON public.hosxp_review_approvals(population_id, batch_id, fingerprint)
   WHERE state IN ('approved', 'processing');
 
+CREATE INDEX IF NOT EXISTS hosxp_review_approvals_lookup_idx
+  ON public.hosxp_review_approvals(batch_id, population_id, fingerprint, approved_at DESC, id DESC);
+
 GRANT SELECT, UPDATE ON public.hosxp_review_approvals TO service_role;
+
+-- Pure SQL immutable CID checksum (eliminates 12-iteration PL/pgSQL loop overhead across thousands of rows)
+CREATE OR REPLACE FUNCTION public.hosxp_review_valid_cid(value text) RETURNS boolean
+LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$
+  SELECT CASE WHEN value IS NULL OR value !~ '^[0-9]{13}$' THEN false ELSE
+    ((11 - (
+      substring(value,1,1)::int*13 + substring(value,2,1)::int*12 + substring(value,3,1)::int*11 +
+      substring(value,4,1)::int*10 + substring(value,5,1)::int*9  + substring(value,6,1)::int*8  +
+      substring(value,7,1)::int*7  + substring(value,8,1)::int*6  + substring(value,9,1)::int*5  +
+      substring(value,10,1)::int*4 + substring(value,11,1)::int*3 + substring(value,12,1)::int*2
+    ) % 11) % 10) = substring(value,13,1)::int
+  END;
+$$;
 
 CREATE OR REPLACE VIEW public.hosxp_review_candidates AS
 WITH latest AS MATERIALIZED (
@@ -27,6 +43,14 @@ WITH latest AS MATERIALIZED (
 ), latest_snapshot AS MATERIALIZED (
   SELECT s.* FROM public.hosxp_review_snapshot s
   WHERE s.batch_id = (SELECT id FROM latest)
+), latest_approvals AS MATERIALIZED (
+  SELECT DISTINCT ON (ap.population_id, ap.batch_id, ap.fingerprint)
+    ap.id, ap.population_id, ap.batch_id, ap.fingerprint, ap.state, ap.approved_at, ap.error_code
+  FROM public.hosxp_review_approvals ap
+  WHERE ap.batch_id = (SELECT id FROM latest)
+    AND ap.state IN ('approved', 'processing', 'sent', 'failed')
+  ORDER BY ap.population_id, ap.batch_id, ap.fingerprint,
+    (ap.state = 'approved') DESC, ap.approved_at DESC, ap.id DESC
 ), source_counts AS (
   SELECT trim(cid) cid, count(*) n FROM public.population GROUP BY trim(cid)
 ), target_counts AS (
@@ -68,41 +92,31 @@ WITH latest AS MATERIALIZED (
   FROM prepared x
 )
 SELECT c.*,
-  a.id approval_id,
-  coalesce(a.approved_at, last_a.approved_at) approved_at,
-  CASE WHEN base_status = 'ready' AND a.id IS NOT NULL THEN 'approved' ELSE base_status END review_status,
+  CASE WHEN la.state = 'approved' THEN la.id END approval_id,
+  la.approved_at,
+  CASE WHEN base_status = 'ready' AND la.state = 'approved' THEN 'approved' ELSE base_status END review_status,
   CASE
-    WHEN last_a.state = 'sent' THEN 'sent'
-    WHEN last_a.state = 'failed' THEN 'failed'
-    WHEN base_status = 'ready' AND last_a.state = 'processing' THEN 'processing'
-    WHEN base_status = 'ready' AND a.id IS NOT NULL THEN 'approved'
+    WHEN la.state = 'sent' THEN 'sent'
+    WHEN la.state = 'failed' THEN 'failed'
+    WHEN base_status = 'ready' AND la.state = 'processing' THEN 'processing'
+    WHEN base_status = 'ready' AND la.state = 'approved' THEN 'approved'
     ELSE base_status
   END display_status,
-  last_a.error_code
+  la.error_code
 FROM classified c
-LEFT JOIN public.hosxp_review_approvals a
-  ON a.population_id = c.population_id
-  AND a.batch_id = c.batch_id
-  AND a.fingerprint = c.fingerprint
-  AND a.state = 'approved'
-LEFT JOIN LATERAL (
-  SELECT * FROM public.hosxp_review_approvals ap
-  WHERE ap.population_id = c.population_id
-    AND ap.batch_id = c.batch_id
-    AND ap.fingerprint = c.fingerprint
-    AND ap.state IN ('approved', 'processing', 'sent', 'failed')
-  ORDER BY ap.approved_at DESC, ap.id DESC
-  LIMIT 1
-) last_a ON true;
+LEFT JOIN latest_approvals la
+  ON la.population_id = c.population_id
+  AND la.batch_id = c.batch_id
+  AND la.fingerprint = c.fingerprint;
 
 REVOKE ALL ON public.hosxp_review_candidates FROM anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.hosxp_review_list(p_token text,p_moo text DEFAULT '',p_search text DEFAULT '',p_status text DEFAULT 'ready',p_page integer DEFAULT 1) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public SET statement_timeout='20s' AS $$
 DECLARE result jsonb;
 BEGIN
  PERFORM public.hosxp_review_actor(p_token);
- WITH filtered AS (
+ WITH filtered AS MATERIALIZED (
   SELECT * FROM public.hosxp_review_candidates
   WHERE (coalesce(p_moo,'')='' OR moo=p_moo)
   AND (coalesce(p_search,'')='' OR strpos(lower(full_name),lower(p_search))>0 OR strpos(coalesce(cid,''),p_search)>0 OR population_id=p_search OR target_id=p_search)
@@ -126,7 +140,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION public.hosxp_review_approve(p_token text,p_items jsonb) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public SET statement_timeout='20s' AS $$
 DECLARE actor text; item jsonb; candidate record; added integer := 0; n integer;
 BEGIN
  actor := public.hosxp_review_actor(p_token);
@@ -152,7 +166,6 @@ BEGIN
  RETURN jsonb_build_object('approved',added,'message','บันทึกการอนุมัติแล้ว ยังไม่ส่งเข้า HOSxP');
 END $$;
 
--- Atomically claim an approved item, transitioning state to 'processing' and recording write_stamp
 CREATE OR REPLACE FUNCTION public.hosxp_review_claim(p_id uuid, p_write_stamp text DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE a public.hosxp_review_approvals%ROWTYPE; c record; v_stamp text;
@@ -171,7 +184,6 @@ BEGIN
     v_stamp := to_char(clock_timestamp() AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM-DD HH24:MI:SS');
   END IF;
 
-  -- Ensure write_stamp is always distinct from old_values.last_update so reconciliation can distinguish pre/post write
   IF v_stamp = coalesce(a.old_values->>'last_update', '') THEN
     v_stamp := to_char((v_stamp::timestamp + interval '1 second'), 'YYYY-MM-DD HH24:MI:SS');
   END IF;
@@ -184,7 +196,6 @@ BEGIN
   RETURN to_jsonb(a) || jsonb_build_object('cid', c.cid);
 END $$;
 
--- Complete or reconcile an item in hosxp_review_approvals
 CREATE OR REPLACE FUNCTION public.hosxp_review_complete(p_id uuid, p_outcome text, p_error_code text DEFAULT NULL) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE a public.hosxp_review_approvals%ROWTYPE;
@@ -211,6 +222,7 @@ END $$;
 
 REVOKE ALL ON FUNCTION public.hosxp_review_claim(uuid, text), public.hosxp_review_complete(uuid, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.hosxp_review_claim(uuid, text), public.hosxp_review_complete(uuid, text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.hosxp_review_open_session(text, text), public.hosxp_review_list(text, text, text, text, integer), public.hosxp_review_approve(text, jsonb) TO anon, authenticated, service_role;
 
 NOTIFY pgrst, 'reload schema';
 COMMIT;

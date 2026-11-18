@@ -6,20 +6,85 @@ import {
   loadSurveyProgress,
   surveyHouses,
   surveyLink,
-  SURVEY_LABELS,
   summarizeSurveyMembers,
-  isLegacyOrMissingStatus,
 } from '@/lib/survey-progress.mjs';
 
-const HOUSE_FILTERS = [
-  { key: 'pending', label: '🔥 บ้านที่มีคนค้างทุกประเภท' },
-  { key: 'notStarted', label: '⚪ ยังไม่เริ่มทั้งบ้าน' },
-  { key: 'partial', label: '🟠 สำรวจบางส่วน / รอยืนยัน' },
-  { key: 'complete', label: '✅ สำรวจครบทั้งบ้าน' },
-  { key: 'all', label: '🏠 บ้านทั้งหมด' },
-];
+const VALID_RELATIONS = new Set([
+  'เจ้าบ้าน',
+  'ผู้อาศัย',
+  'บิดา/มารดา',
+  'เขย/สะใภ้',
+  'บุตร/หลาน',
+  'เช่าอาศัย',
+  'อื่นๆ',
+]);
 
-export default function MyHouseSurveyProgress({ refreshKey }) {
+function computeFallbackMissing(p) {
+  const missing = [];
+  if (!VALID_RELATIONS.has(String(p.relation || '').trim())) {
+    missing.push('สถานะในบ้าน');
+  }
+  const ch = String(p.chronic || '').trim();
+  if (!ch || ['-', 'ไม่ระบุ', 'ยังไม่ระบุ'].includes(ch)) {
+    missing.push('โรคประจำตัว');
+  }
+  if (
+    !['0', '1', '2', '3', '4'].includes(String(p.residency_type || '').trim()) ||
+    Number(p.status_model_version) !== 1
+  ) {
+    missing.push('การอยู่อาศัย');
+  }
+  if (![1, 2, 3, 9].includes(Number(p.person_discharge_id))) {
+    missing.push('สถานะบุคคล');
+  }
+  return missing;
+}
+
+async function loadFallbackFromPopulation(user) {
+  const moos = String(user?.moo || '')
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean);
+  const vhvName = String(user?.displayName || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (!moos.length || !vhvName) return [];
+
+  const collected = [];
+  let afterId = null;
+  for (;;) {
+    let q = supabase
+      .from('population')
+      .select(
+        'person_id,moo,house,vhv,title,fname,lname,latitude,longitude,relation,chronic,residency_type,person_discharge_id,status_model_version'
+      )
+      .in('moo', moos)
+      .order('person_id', { ascending: true })
+      .limit(1000);
+    if (afterId) q = q.gt('person_id', afterId);
+    const { data, error } = await q;
+    if (error) throw new Error('โหลดรายชื่อบ้านไม่สำเร็จ กรุณากดโหลดใหม่อีกครั้ง');
+    const batch = data || [];
+    for (const r of batch) {
+      const rowVhv = String(r.vhv || '')
+        .trim()
+        .replace(/\s+/g, ' ');
+      if (rowVhv !== vhvName) continue;
+      const missing = computeFallbackMissing(r);
+      collected.push({
+        ...r,
+        missing,
+        status: missing.length === 0 ? 'complete' : 'partial',
+      });
+    }
+    if (batch.length < 1000) break;
+    afterId = batch[batch.length - 1]?.person_id;
+    if (!afterId) break;
+  }
+  return collected;
+}
+
+export default function MyHouseSurveyProgress({ user, refreshKey }) {
   const [rows, setRows] = useState([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -36,7 +101,18 @@ export default function MyHouseSurveyProgress({ refreshKey }) {
       .then((data) => {
         if (active) setRows(data);
       })
-      .catch((e) => {
+      .catch(async (e) => {
+        // หากยังไม่ได้ติดตั้ง migration ยืนยันสำรวจ ให้ดึงข้อมูลจากตาราง population อัตโนมัติโดยไม่โชว์ Error เทคนิคให้ อสม. ตกใจ
+        if (String(e?.message || '').includes('20261113_survey_confirmation.sql') && user) {
+          try {
+            const fallbackRows = await loadFallbackFromPopulation(user);
+            if (active) setRows(fallbackRows);
+            return;
+          } catch (fallbackErr) {
+            if (active) setError(fallbackErr.message);
+            return;
+          }
+        }
         if (active) setError(e.message);
       })
       .finally(() => {
@@ -45,9 +121,17 @@ export default function MyHouseSurveyProgress({ refreshKey }) {
     return () => {
       active = false;
     };
-  }, [refreshKey, retry]);
+  }, [refreshKey, retry, user]);
 
   const houses = useMemo(() => surveyHouses(rows), [rows]);
+
+  const houseCounts = useMemo(() => {
+    const total = houses.length;
+    const pending = houses.filter((h) => h.pending > 0).length;
+    const complete = total - pending;
+    const pct = total > 0 ? Math.round((complete / total) * 100) : 0;
+    return { total, pending, complete, pct };
+  }, [houses]);
 
   const totals = useMemo(() => {
     const allMembers = houses.flatMap((h) => h.members);
@@ -57,6 +141,7 @@ export default function MyHouseSurveyProgress({ refreshKey }) {
   const matchHouseFilter = (h, key) => {
     if (key === 'all') return true;
     if (key === 'pending') return h.pending > 0;
+    if (key === 'complete') return h.pending === 0;
     return h.status === key;
   };
 
@@ -72,314 +157,383 @@ export default function MyHouseSurveyProgress({ refreshKey }) {
   const pages = Math.max(1, Math.ceil(visible.length / 20));
   const current = Math.min(page, pages);
 
-  const renderPersonBadge = (p) => {
-    if (p.status === 'complete') {
-      return (
-        <span className="badge bg-success-subtle text-success border border-success-subtle">
-          ✅ ยืนยันสำรวจแล้ว
-        </span>
-      );
-    }
-    const hasMissing = Array.isArray(p.missing) && p.missing.length > 0;
-    if (p.status === 'notStarted') {
-      return (
-        <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">
-          {hasMissing ? '⚪ ยังไม่เริ่ม (ข้อมูลไม่ครบ)' : '⚪ ยังไม่เริ่ม (ข้อมูลเดิมครบ รอกดยืนยัน)'}
-        </span>
-      );
-    }
-    if (hasMissing) {
-      return (
-        <span className="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">
-          🟠 ข้อมูลไม่ครบ
-        </span>
-      );
-    }
-    return (
-      <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle">
-        🔵 กรอกครบแล้ว รอกดยืนยัน
-      </span>
-    );
-  };
-
   return (
-    <section className="card border-0 shadow-sm my-3" style={{ borderRadius: 16 }}>
-      <div className="card-body p-3 p-md-4">
-        <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-          <h2 className="h5 fw-bold mb-0">สถานะยืนยันสำรวจรายคน (บ้านของฉัน)</h2>
+    <section className="my-3">
+      {busy ? (
+        <div className="card border-0 shadow-sm p-4 text-center" style={{ borderRadius: 16 }}>
+          <div role="status" className="py-3">
+            <span className="spinner-border text-primary me-2" />
+            <span className="fw-bold" style={{ fontSize: '1.05rem' }}>
+              กำลังโหลดรายชื่อบ้านที่คุณรับผิดชอบ…
+            </span>
+          </div>
+        </div>
+      ) : error ? (
+        <div role="alert" className="alert alert-warning p-3" style={{ borderRadius: 14 }}>
+          <div className="fw-bold mb-2">{error}</div>
           <button
-            className="btn btn-sm btn-outline-primary rounded-pill px-3"
-            disabled={busy}
+            type="button"
+            className="btn btn-primary rounded-pill px-4 fw-bold"
             onClick={() => setRetry((v) => v + 1)}
           >
-            <i className="fa-solid fa-rotate me-1" /> โหลดใหม่
+            🔄 กดโหลดใหม่อีกครั้ง
           </button>
         </div>
-
-        <div className="alert alert-light border small py-2 px-3 mb-3" style={{ borderRadius: 12 }}>
-          <div className="fw-semibold text-dark mb-1">
-            <i className="fa-solid fa-circle-info text-primary me-1" /> คำอธิบายการนับยอดยืนยันสำรวจ:
-          </div>
-          <ul className="mb-0 ps-3 text-muted">
-            <li>
-              <strong>ยังไม่เริ่ม</strong> = ยังไม่มีประวัติกดยืนยันในระบบยืนยันสำรวจใหม่ (คนที่เคยบันทึกข้อมูลไว้ก่อนติดตั้งระบบนี้จะแสดงในกลุ่มนี้ ต้องเปิดตรวจและกดปุ่ม <em>“ยืนยันตรวจสอบแล้ว”</em>)
-            </li>
-            <li>
-              <strong>ข้อมูลไม่ครบ</strong> = ขาดข้อมูลบังคับ (สถานะในบ้าน, โรคประจำตัว, ประเภทอยู่อาศัย Type 0–3 หรือสถานะจำหน่าย/สถานะเดิมยังไม่อัปเดต)
-            </li>
-            <li>
-              <strong>รอยืนยัน</strong> = ข้อมูลทั้ง 4 ช่องครบแล้ว แต่ยังไม่ได้กดปุ่มยืนยันสำรวจ (รวมถึงกรณีแก้ไขข้อมูลใหม่หลังเคยยืนยันแล้ว)
-            </li>
-            <li>
-              <strong>ต่างจาก “ใบงานเดิมด้านล่าง”</strong> เพราะใบงานเดิมนับเฉพาะผู้ที่ยังไม่ระบุ Type แต่ส่วนนี้นับหลักฐานการกดยืนยันสำรวจรายคนและรวมผู้ที่ยังไม่ระบุสถานะจำหน่ายด้วย
-            </li>
-          </ul>
-        </div>
-
-        {busy ? (
-          <p role="status" className="text-center py-4">
-            <span className="spinner-border spinner-border-sm text-primary me-2" />
-            กำลังโหลดหลักฐานสำรวจ…
-          </p>
-        ) : error ? (
-          <p role="alert" className="alert alert-warning">
-            {error}
-          </p>
-        ) : (
-          <>
-            {/* สรุปยอดรายคนแยกชัดเจน */}
-            <div className="row g-2 mb-3">
-              <div className="col-6 col-md-3">
-                <div className="border rounded-3 p-2 h-100 bg-success-subtle border-success-subtle">
-                  <div className="small text-success fw-semibold">✅ ยืนยันสำรวจครบ</div>
-                  <div className="fs-5 fw-bold text-success">
-                    {totals.done} <span className="fs-6 fw-normal">คน</span>
+      ) : (
+        <>
+          {/* 1. กล่องสรุปความคืบหน้าแบบหลอดพลัง (Progress Bar) เข้าใจใน 1 วินาที */}
+          <div
+            className="card border-0 shadow-sm mb-3"
+            style={{
+              borderRadius: 16,
+              background: 'linear-gradient(135deg, #f0fdf4 0%, #eff6ff 100%)',
+            }}
+          >
+            <div className="card-body p-3 p-md-4">
+              <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <div>
+                  <div className="fw-bold text-dark" style={{ fontSize: '1.15rem' }}>
+                    🏡 บ้านในความรับผิดชอบทั้งหมด {houseCounts.total} หลัง
                   </div>
-                  <div className="text-muted" style={{ fontSize: '.72rem' }}>
-                    จากทั้งหมด {totals.total} คน
+                  <div className="mt-1" style={{ fontSize: '1rem' }}>
+                    <span className="text-success fw-bold">
+                      ✅ สำรวจครบแล้ว {houseCounts.complete} หลัง
+                    </span>
+                    {' • '}
+                    <span
+                      className={
+                        houseCounts.pending > 0 ? 'text-danger fw-bold' : 'text-muted'
+                      }
+                    >
+                      ⏳ เหลือต้องสำรวจอีก {houseCounts.pending} หลัง
+                    </span>
                   </div>
                 </div>
-              </div>
-              <div className="col-6 col-md-3">
-                <div className="border rounded-3 p-2 h-100 bg-light">
-                  <div className="small text-secondary-emphasis fw-semibold">⚪ ยังไม่เริ่ม</div>
-                  <div className="fs-5 fw-bold text-dark">
-                    {totals.notStarted} <span className="fs-6 fw-normal">คน</span>
-                  </div>
-                  <div className="text-muted" style={{ fontSize: '.72rem' }}>
-                    ยังไม่เคยบันทึกในระบบยืนยันใหม่
-                  </div>
-                </div>
-              </div>
-              <div className="col-6 col-md-3">
-                <div className="border rounded-3 p-2 h-100 bg-info-subtle border-info-subtle">
-                  <div className="small text-info-emphasis fw-semibold">🔵 ข้อมูลครบ รอยืนยัน</div>
-                  <div className="fs-5 fw-bold text-info-emphasis">
-                    {totals.awaitingConfirm} <span className="fs-6 fw-normal">คน</span>
-                  </div>
-                  <div className="text-muted" style={{ fontSize: '.72rem' }}>
-                    ข้อมูลครบแล้ว เหลือกดปุ่มยืนยัน
-                  </div>
-                </div>
-              </div>
-              <div className="col-6 col-md-3">
-                <div className="border rounded-3 p-2 h-100 bg-warning-subtle border-warning-subtle">
-                  <div className="small text-warning-emphasis fw-semibold">🟠 ข้อมูลไม่ครบ</div>
-                  <div className="fs-5 fw-bold text-warning-emphasis">
-                    {totals.incomplete} <span className="fs-6 fw-normal">คน</span>
-                  </div>
-                  <div className="text-muted" style={{ fontSize: '.72rem' }}>
-                    {totals.needsStatusReview > 0
-                      ? `รวมรอตรวจสถานะจำหน่าย/แบบเก่า ${totals.needsStatusReview} คน`
-                      : 'ขาดโรคประจำตัว / Type / สถานะในบ้าน'}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ช่องค้นหาบ้านเลขที่ด่วน */}
-            <div className="input-group mb-3">
-              <span className="input-group-text bg-white border-end-0">
-                <i className="fa-solid fa-magnifying-glass text-muted" />
-              </span>
-              <input
-                type="search"
-                className="form-control border-start-0"
-                placeholder="พิมพ์เลขที่บ้านเพื่อค้นหาด่วน เช่น 24/1..."
-                value={searchHouse}
-                onChange={(e) => {
-                  setSearchHouse(e.target.value);
-                  setPage(1);
-                }}
-              />
-              {searchHouse && (
                 <button
                   type="button"
-                  className="btn btn-outline-secondary"
-                  onClick={() => {
-                    setSearchHouse('');
+                  className="btn btn-sm btn-white bg-white border rounded-pill px-3 fw-bold"
+                  style={{ minHeight: 38 }}
+                  disabled={busy}
+                  onClick={() => setRetry((v) => v + 1)}
+                >
+                  🔄 โหลดข้อมูลใหม่
+                </button>
+              </div>
+
+              {/* หลอดความคืบหน้า */}
+              <div
+                className="progress bg-white border"
+                style={{ height: 18, borderRadius: 999 }}
+                role="progressbar"
+                aria-label="ความคืบหน้าการสำรวจบ้าน"
+                aria-valuenow={houseCounts.pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className="progress-bar bg-success fw-bold"
+                  style={{ width: `${houseCounts.pct}%`, fontSize: '.78rem' }}
+                >
+                  {houseCounts.pct >= 15 ? `${houseCounts.pct}%` : ''}
+                </div>
+              </div>
+
+              {/* รายละเอียดจำนวนรายคน (พับเก็บไว้ให้ไม่รก แต่กดดูได้) */}
+              <details className="mt-2 small">
+                <summary className="text-muted fw-semibold" style={{ cursor: 'pointer' }}>
+                  📊 ดูยอดสรุปรายคน (ทั้งหมด {totals.total} คน — ครบแล้ว {totals.done} คน • ค้าง{' '}
+                  {totals.pending} คน)
+                </summary>
+                <div className="row g-2 mt-1">
+                  <div className="col-6 col-sm-3">
+                    <div className="p-2 rounded-3 bg-white border">
+                      <div className="text-success fw-bold">✅ ยืนยันครบ</div>
+                      <div className="fs-6 fw-bold">{totals.done} คน</div>
+                    </div>
+                  </div>
+                  <div className="col-6 col-sm-3">
+                    <div className="p-2 rounded-3 bg-white border">
+                      <div className="text-secondary fw-bold">⚪ ยังไม่เริ่ม</div>
+                      <div className="fs-6 fw-bold">{totals.notStarted} คน</div>
+                    </div>
+                  </div>
+                  <div className="col-6 col-sm-3">
+                    <div className="p-2 rounded-3 bg-white border">
+                      <div className="text-info-emphasis fw-bold">🔵 รอกดยืนยัน</div>
+                      <div className="fs-6 fw-bold">{totals.awaitingConfirm} คน</div>
+                    </div>
+                  </div>
+                  <div className="col-6 col-sm-3">
+                    <div className="p-2 rounded-3 bg-white border">
+                      <div className="text-warning-emphasis fw-bold">🟠 ข้อมูลไม่ครบ</div>
+                      <div className="fs-6 fw-bold">{totals.incomplete} คน</div>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          {/* 2. ช่องพิมพ์เลขที่บ้านตัวใหญ่ + แป้นตัวเลขด่วน */}
+          <div
+            className="card border-0 shadow-sm mb-3"
+            style={{ borderRadius: 16 }}
+          >
+            <div className="card-body p-3">
+              <label
+                htmlFor="quick-house-search"
+                className="fw-bold text-dark mb-2 d-block"
+                style={{ fontSize: '1rem' }}
+              >
+                🔍 ค้นหาเลขที่บ้านด่วน (พิมพ์เลขบ้านแล้วแตะเข้าบ้านได้เลย)
+              </label>
+              <div className="input-group">
+                <input
+                  id="quick-house-search"
+                  type="search"
+                  inputMode="tel"
+                  className="form-control fw-bold"
+                  style={{
+                    minHeight: 52,
+                    fontSize: '1.2rem',
+                    borderRadius: searchHouse ? '12px 0 0 12px' : 12,
+                  }}
+                  placeholder="พิมพ์เลขที่บ้าน เช่น 24/1..."
+                  value={searchHouse}
+                  onChange={(e) => {
+                    setSearchHouse(e.target.value);
                     setPage(1);
                   }}
-                >
-                  ล้าง
-                </button>
-              )}
-            </div>
-
-            {/* ปุ่มกรองระดับบ้าน */}
-            <div className="d-flex flex-wrap gap-2 mb-3">
-              {HOUSE_FILTERS.map((item) => {
-                const count = houses.filter((h) => matchHouseFilter(h, item.key)).length;
-                const active = filter === item.key;
-                return (
+                />
+                {searchHouse && (
                   <button
-                    key={item.key}
                     type="button"
-                    className={`btn btn-sm rounded-pill px-3 fw-semibold ${
-                      active ? 'btn-primary' : 'btn-outline-primary'
-                    }`}
+                    className="btn btn-outline-secondary fw-bold px-3"
+                    style={{ minHeight: 52, borderRadius: '0 12px 12px 0' }}
+                    onClick={() => {
+                      setSearchHouse('');
+                      setPage(1);
+                    }}
+                  >
+                    ✖ ล้าง
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 3. ปุ่มกรองใหญ่ 3 ปุ่ม เข้าใจง่าย */}
+          <div className="row g-2 mb-3" role="group" aria-label="ตัวกรองบ้าน">
+            {[
+              {
+                key: 'pending',
+                label: '🟠 ยังทำไม่เสร็จ',
+                count: houseCounts.pending,
+                activeClass: 'btn-warning text-dark border-warning shadow-sm',
+              },
+              {
+                key: 'complete',
+                label: '🟢 ทำเสร็จครบแล้ว',
+                count: houseCounts.complete,
+                activeClass: 'btn-success text-white border-success shadow-sm',
+              },
+              {
+                key: 'all',
+                label: '🏠 ดูทั้งหมด',
+                count: houseCounts.total,
+                activeClass: 'btn-primary text-white border-primary shadow-sm',
+              },
+            ].map((item) => {
+              const active = filter === item.key;
+              return (
+                <div key={item.key} className="col-4">
+                  <button
+                    type="button"
                     aria-pressed={active}
                     onClick={() => {
                       setFilter(item.key);
                       setPage(1);
                     }}
+                    className={`btn w-100 fw-bold py-2 px-1 h-100 d-flex flex-column align-items-center justify-content-center ${
+                      active ? item.activeClass : 'bg-white border text-dark'
+                    }`}
+                    style={{ minHeight: 60, borderRadius: 14, fontSize: '.92rem' }}
                   >
-                    {item.label} ({count} หลัง)
+                    <span>{item.label}</span>
+                    <span className="fs-6 fw-bold mt-1">({item.count} หลัง)</span>
                   </button>
-                );
-              })}
-            </div>
-
-            {!visible.length && (
-              <p className="text-muted py-3 mb-0">
-                ไม่พบบ้านตามตัวกรอง หรือยังไม่ได้ผูกชื่อ อสม. กับบัญชีของคุณ
-              </p>
-            )}
-
-            {visible.slice((current - 1) * 20, current * 20).map((h) => (
-              <article
-                key={h.key}
-                className="border rounded-3 p-3 mb-3 bg-white"
-                style={{ borderRadius: 14 }}
-              >
-                <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
-                  <div>
-                    <h3 className="h6 fw-bold mb-1">
-                      บ้านเลขที่ {h.house || 'ไม่ระบุ'} หมู่ {h.moo}
-                    </h3>
-                    <div className="small text-muted">
-                      สมาชิก {h.members.length} คน • ยืนยันครบ <strong>{h.done}</strong> • ค้างรวม{' '}
-                      <strong className={h.pending > 0 ? 'text-danger' : 'text-success'}>
-                        {h.pending}
-                      </strong>{' '}
-                      คน
-                      {h.pending > 0 && (
-                        <span>
-                          {' '}
-                          (ยังไม่เริ่ม {h.notStartedCount} • ข้อมูลไม่ครบ {h.incompleteCount} • รอยืนยัน{' '}
-                          {h.awaitingConfirmCount})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-end">
-                    <strong>{SURVEY_LABELS[h.status]}</strong>
-                    <div className="small mt-1">
-                      {h.pinned ? (
-                        <span className="text-success">📍 มีพิกัดแล้ว</span>
-                      ) : (
-                        <span className="text-warning-emphasis">⚠️ ยังไม่มีพิกัด</span>
-                      )}
-                    </div>
-                  </div>
                 </div>
+              );
+            })}
+          </div>
 
-                <ul className="list-unstyled mb-2 mt-2">
-                  {h.members.map((p) => {
-                    const hasMissing = Array.isArray(p.missing) && p.missing.length > 0;
-                    const legacyStatus = isLegacyOrMissingStatus(p);
-                    return (
-                      <li key={p.person_id} className="border-top py-2">
-                        <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                          {h.house && h.house !== '-' ? (
+          {/* 4. รายการการ์ดบ้านแบบแตะง่ายทั้งใบ */}
+          {!visible.length ? (
+            <div
+              className="card border-0 shadow-sm p-4 text-center bg-white"
+              style={{ borderRadius: 16 }}
+            >
+              <div className="fs-1 mb-2">{filter === 'pending' && houseCounts.total > 0 ? '🎉' : '🏡'}</div>
+              <div className="fw-bold text-dark" style={{ fontSize: '1.1rem' }}>
+                {filter === 'pending' && houseCounts.total > 0 && !searchHouse
+                  ? 'ยอดเยี่ยมมาก! คุณสำรวจบ้านครบทุกหลังแล้ว'
+                  : 'ไม่พบบ้านตามคำค้นหาหรือตัวกรองที่เลือก'}
+              </div>
+              {filter === 'pending' && houseCounts.complete > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-outline-primary rounded-pill px-4 fw-bold mt-3 align-self-center"
+                  style={{ minHeight: 46 }}
+                  onClick={() => setFilter('all')}
+                >
+                  🏠 กดดูบ้านทั้งหมด ({houseCounts.total} หลัง)
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="d-flex flex-column gap-3 mb-3">
+                {visible.slice((current - 1) * 20, current * 20).map((h) => {
+                  const pendingMembers = h.members.filter((p) => p.status !== 'complete');
+                  const firstPendingId = pendingMembers[0]?.person_id;
+                  const targetUrl = surveyLink(h.moo, h.house, firstPendingId);
+                  const canOpen = Boolean(h.house && h.house !== '-');
+
+                  const pendingNames = pendingMembers
+                    .slice(0, 3)
+                    .map((p) => `${p.title || ''}${p.fname || ''}`.trim())
+                    .filter(Boolean);
+
+                  return (
+                    <article
+                      key={h.key}
+                      className="card border-0 shadow-sm bg-white overflow-hidden"
+                      style={{
+                        borderRadius: 16,
+                        borderLeft: h.pending > 0 ? '6px solid #f59e0b' : '6px solid #16a34a',
+                      }}
+                    >
+                      <div className="card-body p-3">
+                        {/* แถวบน: เลขที่บ้านตัวใหญ่ + ป้ายสถานะ */}
+                        <div className="d-flex justify-content-between align-items-start gap-2">
+                          <div>
+                            <h3 className="fw-bold text-dark mb-1" style={{ fontSize: '1.25rem' }}>
+                              🏡 บ้านเลขที่{' '}
+                              <span className="text-primary">{h.house || 'ไม่ระบุ'}</span>{' '}
+                              <span className="fs-6 fw-normal text-muted">(หมู่ {h.moo})</span>
+                            </h3>
+                            <div className="d-flex align-items-center gap-2 flex-wrap mt-1">
+                              <span
+                                className="badge bg-light text-dark border px-2 py-1"
+                                style={{ fontSize: '.85rem' }}
+                              >
+                                👨‍👩‍👧‍👦 สมาชิก {h.members.length} คน
+                              </span>
+                              {h.pinned ? (
+                                <span
+                                  className="badge bg-success-subtle text-success border border-success-subtle px-2 py-1"
+                                  style={{ fontSize: '.85rem' }}
+                                >
+                                  📍 มีพิกัดบ้านแล้ว
+                                </span>
+                              ) : (
+                                <span
+                                  className="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1"
+                                  style={{ fontSize: '.85rem' }}
+                                >
+                                  ⚠️ ยังไม่ได้ปักหมุดพิกัด
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="text-end" style={{ flexShrink: 0 }}>
+                            {h.pending > 0 ? (
+                              <span
+                                className="badge bg-warning text-dark px-3 py-2 rounded-pill fw-bold"
+                                style={{ fontSize: '.9rem' }}
+                              >
+                                ⏳ เหลือ {h.pending} คน
+                              </span>
+                            ) : (
+                              <span
+                                className="badge bg-success text-white px-3 py-2 rounded-pill fw-bold"
+                                style={{ fontSize: '.9rem' }}
+                              >
+                                ✅ ครบแล้ว
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* แสดงรายชื่อคนที่ยังค้างสั้นๆ อ่านง่าย */}
+                        {pendingMembers.length > 0 && (
+                          <div
+                            className="mt-2 p-2 px-3 rounded-3 bg-warning-subtle text-dark"
+                            style={{ fontSize: '.92rem' }}
+                          >
+                            <strong>👉 คนที่ยังต้องตรวจ:</strong> {pendingNames.join(', ')}
+                            {pendingMembers.length > 3 &&
+                              ` และอีก ${pendingMembers.length - 3} คน`}
+                          </div>
+                        )}
+
+                        {/* ปุ่มใหญ่เต็มความกว้าง กดเข้าบ้านได้ทันที */}
+                        <div className="mt-3">
+                          {canOpen ? (
                             <Link
-                              className="fw-semibold text-decoration-none"
-                              href={surveyLink(h.moo, h.house, p.person_id)}
+                              href={targetUrl}
+                              className={`btn w-100 fw-bold d-flex align-items-center justify-content-center shadow-sm ${
+                                h.pending > 0 ? 'btn-primary text-white' : 'btn-outline-success'
+                              }`}
+                              style={{ minHeight: 50, fontSize: '1.02rem', borderRadius: 12 }}
                             >
-                              {p.title}
-                              {p.fname} {p.lname} ›
+                              {h.pending > 0
+                                ? `🏠 แตะเพื่อเข้าสำรวจบ้านนี้ (เหลือ ${h.pending} คน) ›`
+                                : '🏠 เปิดดูข้อมูลบ้านนี้ ›'}
                             </Link>
                           ) : (
-                            <span className="fw-semibold">
-                              {p.title}
-                              {p.fname} {p.lname}
-                            </span>
+                            <div className="text-muted small">
+                              กรุณาแจ้งเจ้าหน้าที่ให้ระบุบ้านเลขที่ก่อน
+                            </div>
                           )}
-                          {renderPersonBadge(p)}
                         </div>
-                        {hasMissing && (
-                          <small className="d-block text-warning-emphasis mt-1">
-                            ขาดข้อมูล: {p.missing.join(', ')}
-                            {legacyStatus && ' (กรุณาตรวจสถานะจำหน่าย/สถานะแบบเก่า)'}
-                          </small>
-                        )}
-                        {!hasMissing && p.status !== 'complete' && (
-                          <small className="d-block text-info-emphasis mt-1">
-                            {p.status === 'notStarted'
-                              ? 'มีข้อมูลเดิมครบแล้ว — กดเปิดการ์ดเพื่อตรวจและกดยืนยันสำรวจ'
-                              : 'แก้ไขข้อมูลแล้ว — กรุณากดยืนยันตรวจสอบอีกครั้ง'}
-                          </small>
-                        )}
-                        {p.reviewed_at && (
-                          <small className="d-block text-muted">
-                            บันทึกล่าสุด {new Date(p.reviewed_at).toLocaleString('th-TH')} •{' '}
-                            {p.reviewed_by}
-                          </small>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
 
-                {h.house && h.house !== '-' ? (
-                  <Link
-                    className="btn btn-primary btn-sm rounded-pill px-3 fw-semibold"
-                    href={surveyLink(
-                      h.moo,
-                      h.house,
-                      h.members.find((p) => p.status !== 'complete')?.person_id
-                    )}
+              {/* ปุ่มเปลี่ยนหน้า ขนาดใหญ่ */}
+              {pages > 1 && (
+                <div className="d-flex justify-content-between align-items-center bg-white p-2 rounded-3 shadow-sm border">
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary fw-bold px-3"
+                    style={{ minHeight: 46, borderRadius: 12 }}
+                    disabled={current === 1}
+                    onClick={() => setPage(current - 1)}
                   >
-                    {h.pending ? `สำรวจสมาชิกที่ค้าง (${h.pending} คน)` : 'เปิดดูข้อมูลบ้าน'}
-                  </Link>
-                ) : (
-                  <small className="text-muted">กรุณาให้เจ้าหน้าที่ระบุบ้านเลขที่ก่อน</small>
-                )}
-              </article>
-            ))}
-
-            <div className="d-flex justify-content-between align-items-center">
-              <button
-                className="btn btn-outline-secondary btn-sm rounded-pill px-3"
-                disabled={current === 1}
-                onClick={() => setPage(current - 1)}
-              >
-                ก่อนหน้า
-              </button>
-              <span className="small text-muted">
-                หน้า {current} / {pages}
-              </span>
-              <button
-                className="btn btn-outline-secondary btn-sm rounded-pill px-3"
-                disabled={current === pages}
-                onClick={() => setPage(current + 1)}
-              >
-                ถัดไป
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+                    ⬅️ หน้าก่อน
+                  </button>
+                  <span className="fw-bold text-dark" style={{ fontSize: '.98rem' }}>
+                    หน้า {current} / {pages}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary fw-bold px-3"
+                    style={{ minHeight: 46, borderRadius: 12 }}
+                    disabled={current === pages}
+                    onClick={() => setPage(current + 1)}
+                  >
+                    หน้าถัดไป ➡️
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
     </section>
   );
 }

@@ -3,6 +3,7 @@ import { isReadOnly, dataAllowed, readOnlyResponse } from '@/lib/server-auth';
 export const dynamic = 'force-dynamic';
 const tables = new Set(['population', 'vhv_data', 'app_users', 'activity_logs']);
 const rpc = new Set(['survey_progress_list','survey_confirm_person','house_gps_clear_web','house_gps_request','house_gps_refresh_request','house_gps_refresh_status','screening_registration_status','screening_register_person','dashboard_summary','hosxp_registry_status','person_identity_search','person_identity_preview','person_identity_request','person_identity_status','authen_report_list','authen_report_accept','authen_report_refresh','hosxp_fit_import_status','hosxp_fit_preview','hosxp_fit_prepare','screening_history_list','screening_overview','screening_review_list','screening_review_approve','screening_search', 'hosxp_review_list', 'hosxp_review_open_session', 'hosxp_review_approve', 'app_admin_save_user', 'app_change_password']);
+const staffReviewRpc = new Set(['hosxp_review_list', 'hosxp_review_open_session', 'hosxp_review_approve']);
 async function handle(request, { params }) {
   const parts = (await params).path || [];
   if (isReadOnly() && !dataAllowed(request.method, parts)) return readOnlyResponse();
@@ -14,7 +15,8 @@ async function handle(request, { params }) {
     const token = await getSessionToken();
     const user = await currentUser(token);
     if (!user) return authResponse({ message: 'กรุณาเข้าสู่ระบบใหม่', code: 'AUTH_REQUIRED' }, 401);
-    const { url, key } = databaseConfig();
+    const useStaffReviewRole = isRpc && staffReviewRpc.has(parts[1]) && ['staff', 'admin'].includes(user.role);
+    const { url, key } = databaseConfig(useStaffReviewRole);
     const headers = { apikey: key, Authorization: `Bearer ${key}`, 'x-app-session': token, 'Content-Type': 'application/json' };
     for (const name of ['accept', 'prefer', 'range', 'range-unit']) {
       if (request.headers.has(name)) headers[name] = request.headers.get(name);
