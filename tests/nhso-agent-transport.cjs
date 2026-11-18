@@ -1,0 +1,12 @@
+const assert=require('node:assert/strict'),{sendAgent,readAgent,agentBody}=require('../scripts/nhso-agent-transport.cjs');
+(async()=>{const now=Date.parse('2026-11-16T03:00:00Z'),input={intentId:'i',personalId:'1234567890123',visitNumber:'vn',claimServiceCode:'PG0060001',invoiceDateTime:now,totalAmount:60,paidAmount:0,privilegeAmount:60},e={pid:input.personalId,mainInscl:'LGO',correlationId:'fixture',claimTypes:['PG0060001'],expiresAt:now+60000};
+assert.equal(agentBody(input,e,now).invoiceTime,'10:00:00');assert.throws(()=>agentBody(input,{...e,pid:'9999999999999'},now));assert.throws(()=>agentBody(input,{...e,expiresAt:now},now));assert.throws(()=>agentBody({...input,paidAmount:1},e,now));
+let sends=0,acquired=false,saved,recorded;const ledger={reserveManualIntent:async()=>{if(acquired)return {acquired:false};acquired=true;return {id:'c',acquired:true};},record:async r=>{recorded=r;}};const receipts={save:async r=>{saved=r;}};
+const fetchImpl=async(url,opts)=>{sends++;assert.equal(url,'http://127.0.0.1:8189/api/nhso-service/save-endpoint');assert.equal(opts.redirect,'error');assert.equal(JSON.parse(opts.body).correlationId,'fixture');return Response.json({seq:'123',authenCode:'EP123'});};
+await assert.rejects(sendAgent(input,e,{ledger,receipts,fetchImpl,now}),/DISABLED/);assert.equal(sends,0);
+let r=await sendAgent(input,e,{enabled:true,ledger,receipts,fetchImpl,now});assert.equal(r.status,'confirmed');assert.equal(saved.code,'EP123');assert.equal(recorded.code,'EP123');
+await sendAgent(input,e,{enabled:true,ledger,receipts,fetchImpl,now});assert.equal(sends,1);
+acquired=false;r=await sendAgent(input,e,{enabled:true,ledger,receipts,fetchImpl:async()=>{sends++;throw Error('response lost');},now});assert.equal(r.status,'outcome_unknown');await sendAgent(input,e,{enabled:true,ledger,receipts,fetchImpl,now});assert.equal(sends,2);
+acquired=false;r=await sendAgent(input,e,{enabled:true,ledger,receipts:{save:async()=>{throw Error()}},fetchImpl,now});assert.equal(r.status,'receipt_storage_failed');await sendAgent(input,e,{enabled:true,ledger,receipts,fetchImpl,now});assert.equal(sends,3);
+await assert.rejects(readAgent(async()=>Response.json({pid:input.personalId})),/INVALID_ENTITLEMENT/);
+console.log('PASS Agent manual gate, payload, identity/expiry/amounts, one send, response loss, receipt failure, no retry, read-only not entitlement');})().catch(e=>{console.error(e);process.exitCode=1});

@@ -46,20 +46,25 @@ node scripts/refresh-hosxp-review.cjs
 
 ฐานข้อมูลใหม่ปิดการอ่านตารางตรงของ anon/authenticated ให้ใช้ RPC ที่มี review token เท่านั้น ระบบล็อกอินเดิมของแอปยังเป็น custom login; ฟีเจอร์นี้ไม่ได้เปลี่ยนเป็น Supabase Auth ทั้งระบบ
 
-## ตัวส่งคิวรุ่นทดสอบ (2026-10-22)
+## ตัวส่งคิวอัตโนมัติฝั่ง LAN (เหมือนระบบพิกัดบ้าน)
 
-- Supabase: ติดตั้ง `20261022_hosxp_review_dispatch.sql` หลัง migration review เดิม
-- MySQL แยก: ติดตั้ง `scripts/hosxp-review-receipts.sql`; person และ receipt ต้องเป็น InnoDB
-- `send-hosxp-review.cjs <test-config-file> <approval-uuid>` ส่งทีละรายการที่อนุมัติแล้ว
-- ตั้ง HOSXP_REVIEW_ZONE=test, HOSXP_REVIEW_ENABLE=true, HOSXP_DB_HOST=127.0.0.1 และฐานชื่อ person_review_test_<ตัวเลข> ตัว CLI ปฏิเสธ production เสมอในรุ่นนี้
-- ใช้ Supabase ฐานทดสอบและ service role ฝั่ง LAN เท่านั้น ไม่ใช้รายการ production กับฐานจำลอง
-- ก่อนจองตรวจ fingerprint, ชุดอ้างอิงล่าสุด, อายุ snapshot และสถานะอนุมัติจากข้อมูลปัจจุบัน จองได้ครั้งเดียว
-- ก่อนเขียนล็อกแถว MySQL และตรวจ CID checksum/ความเป็นเอกลักษณ์, person_id, ประเภทอยู่อาศัย, สถานะจำหน่าย และ last_update ต้องตรงค่าเดิมทั้งหมด
-- เขียนเฉพาะ house_regist_type_id/person_discharge_id ที่อนุมัติ และ last_update พร้อม receipt ใน transaction เดียวกัน
-- ผลสำเร็จแจ้ง sent กลับ Supabase หากมีข้อผิดพลาดหลังจองให้คง reserved เพื่อ reconciliation ไม่มี retry อัตโนมัติ
-- ถ้ามี receipt ใช้คำสั่งเดิมเพิ่ม fingerprint เป็นอาร์กิวเมนต์สุดท้ายเพื่อแจ้งผลกลับเท่านั้น ไม่ UPDATE person ซ้ำ
-- ถ้าไม่มี receipt ต้องตรวจ transaction ที่อาจยังค้างและข้อมูลล่าสุดด้วยเจ้าหน้าที่ก่อนสรุป failed ห้ามลบ reservation แล้วส่งใหม่อัตโนมัติ
-- การจองและการเขียนอยู่คนละฐาน จึงไม่ใช่ distributed transaction; การแก้ข้อมูลสำรวจหลังจองไม่สามารถยกเลิก transaction ปลายทางที่เริ่มแล้วได้ ต้องตรวจนโยบาย freeze/ยกเลิกก่อน production
+1. **ติดตั้ง SQL Migration ใน Supabase SQL Editor**:
+   - รัน `migrations/20261022_hosxp_review_dispatch.sql` (หากยังไม่เคยรัน)
+   - รัน `migrations/20261117_hosxp_review_auto_send.sql` เพื่อเปิด RPC `hosxp_review_pending_queue` และแสดงสถานะ `เขียนเข้า HOSxP แล้ว (sent)` / `เครื่อง LAN กำลังส่ง (processing)` / `ต้องตรวจสอบ (failed)` บนหน้าเว็บ `/hosxp-review`
+2. **สร้างตารางใบเสร็จใน MySQL HOSxP**:
+   - รัน `scripts/hosxp-review-receipts.sql` ในฐานข้อมูล HOSxP (สร้างตาราง `survey_person_review_receipts` แบบ InnoDB เพื่อป้องกันการเขียนซ้ำ)
+3. **เปิดใช้งานในไฟล์ `.env.sync` บนเครื่อง LAN**:
+   ```dotenv
+   HOSXP_REVIEW_WRITE_ENABLED=true
+   ```
+4. **คำสั่งรันด้วยมือ หรือตั้งเวลาอัตโนมัติ (Scheduled Task ทุก 1 นาที)**:
+   - ดึง Snapshot ทะเบียนบุคคลจาก HOSxP ใหม่: `node scripts/hosxp-review-lan.cjs snapshot`
+   - ส่งคิวเฉพาะรายการ: `node scripts/hosxp-review-lan.cjs send <approval-uuid>`
+   - กู้คืนการแจ้งผลจากใบเสร็จ (กรณีเขียนสำเร็จแต่เน็ตหลุดก่อนแจ้งกลับ Supabase): `node scripts/hosxp-review-lan.cjs recover <approval-uuid>`
+   - รันรอบอัตโนมัติ (ส่งครั้งละไม่เกิน 10 รายการที่อนุมัติแล้ว): `node scripts/hosxp-review-auto.cjs`
+   - ติดตั้ง Windows Scheduled Task (`Nonsawang-Population-Review-Send`) ให้รันอัตโนมัติทุก 1 นาทีเหมือนคิวพิกัดบ้าน:
+     ```powershell
+     powershell -ExecutionPolicy Bypass -File scripts/install-hosxp-review-auto.ps1
+     ```
 
 ทดสอบ: `node tests/hosxp-review-dispatch.cjs` (PostgreSQL semantics ผ่าน PGlite) และ `node tests/hosxp-review-writer-mysql.cjs` (MariaDB 127.0.0.1:33317 fixture เท่านั้น)
-ยังไม่ติดตั้ง migration จริง ไม่เปิด Scheduled Task และไม่เขียน HOSxP จริง

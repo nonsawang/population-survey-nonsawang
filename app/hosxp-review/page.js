@@ -13,9 +13,18 @@ import AuthenReportImport from '@/components/AuthenReportImport';
 import NhsoApiSettingsCard from '@/components/NhsoApiSettingsCard';
 
 const STATES = {
-  ready: 'พร้อมตรวจอนุมัติ', approved: 'อนุมัติแล้ว / รอส่ง', no_change: 'ข้อมูลตรงกัน',
+  ready: 'พร้อมตรวจอนุมัติ', approved: 'อนุมัติแล้ว / รอเครื่อง LAN ส่ง', processing: 'เครื่อง LAN กำลังส่ง',
+  sent: 'เขียนเข้า HOSxP แล้ว', failed: 'ส่งไม่สำเร็จ / ต้องตรวจสอบ', no_change: 'ข้อมูลตรงกัน',
   invalid_cid: 'เลขบัตรไม่ถูกต้อง', duplicate: 'เลขบัตรซ้ำ', id_conflict: 'รหัสบุคคลขัดกัน',
   unmatched: 'ไม่พบใน HOSxP', needs_review: 'สถานะต้นทางไม่ครบ', stale_snapshot: 'ข้อมูล HOSxP เกิน 24 ชม.', no_snapshot: 'ยังไม่มีข้อมูล HOSxP',
+};
+const ERROR_LABELS = {
+  BASELINE_CHANGED: 'ข้อมูลใน HOSxP เปลี่ยนก่อนเขียน — กรุณาดึงข้อมูลอ้างอิงใหม่แล้วตรวจอีกครั้ง',
+  IDENTITY_CONFLICT: 'รหัสบุคคลหรือเลขบัตรใน HOSxP ไม่ตรงกับตอนอนุมัติ',
+  NEEDS_MANUAL_REVIEW: 'ต้องตรวจสอบด้วยเจ้าหน้าที่ (ข้อมูลใน HOSxP เปลี่ยนระหว่างส่ง)',
+  REVIEW_CHANGED_REFRESH: 'ข้อมูลสำรวจเปลี่ยนหลังอนุมัติ — กรุณาตรวจและอนุมัติใหม่',
+  ROLLBACK_RECOVERED: 'คืนคิวส่งใหม่หลังการเชื่อมต่อสะดุด',
+  RECOVERED_UNWRITTEN: 'ยังไม่ถูกเขียนเข้า HOSxP — คืนสถานะรอส่ง',
 };
 const typeLabel = code => RESIDENCY_TYPES.find(v => v.code === String(code)) ? `${code} — ${RESIDENCY_TYPES.find(v => v.code === String(code)).label}` : 'ไม่ระบุ';
 const dischargeLabel = code => DISCHARGE_TYPES.find(v => v.code === String(code)) ? `${code} — ${DISCHARGE_TYPES.find(v => v.code === String(code)).label}` : 'ไม่ระบุ';
@@ -137,7 +146,7 @@ export default function HosxpReviewPage() {
           <div className="col-12 col-md-5"><label htmlFor="review-search" className="form-label">ชื่อ เลขบัตร หรือรหัสบุคคล</label><div className="input-group"><input id="review-search" className="form-control" value={searchDraft} onChange={e => setSearchDraft(e.target.value)} disabled={saving} /><button className="btn btn-outline-primary" disabled={saving}>ค้นหา</button></div></div></div>
         </form>
         {busy ? <p className="p-4 text-center" role="status">กำลังจับคู่และเปรียบเทียบข้อมูล...</p> : data && <>
-          <div className="review-metrics mb-3" aria-live="polite">{[['ready','พร้อมตรวจ'],['approved','อนุมัติ / รอส่ง'],['no_change','ข้อมูลตรงกัน']].map(([key,label]) => <div key={key}><span className="small text-muted">{label}</span><strong>{(data.counts?.[key] || 0).toLocaleString('th-TH')}</strong></div>)}</div>
+          <div className="review-metrics mb-3" aria-live="polite">{[['ready','พร้อมตรวจ'],['approved','อนุมัติ / รอส่ง'],['sent','ส่ง HOSxP แล้ว'],['failed','ต้องตรวจสอบ'],['no_change','ข้อมูลตรงกัน']].map(([key,label]) => <div key={key}><span className="small text-muted">{label}</span><strong>{(data.counts?.[key] || 0).toLocaleString('th-TH')}</strong></div>)}</div>
           <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3"><label className="staff-pending-toggle"><input type="checkbox" checked={readyRows.length>0 && readyRows.every(row => selected.includes(row.population_id))} disabled={!readyRows.length || saving} onChange={e => setSelected(e.target.checked ? readyRows.map(row => row.population_id) : [])} /> เลือกที่พร้อมอนุมัติในหน้านี้</label><button className="btn btn-primary" disabled={!selected.length || saving} onClick={approve}>{saving ? 'กำลังบันทึก...' : `อนุมัติ ${selected.length} รายการ`}</button></div>
           <p className="small text-muted">เลขบัตรต้องถูกต้องและจับคู่ได้เพียงคนเดียว รหัสบุคคลเดิมต้องไม่ชี้ไปยังคนอื่น • ประเภทอยู่อาศัยที่เว้นว่างในรายการเสียชีวิตจะคงค่า HOSxP ไว้</p>
           {!rows.length ? <div className="card border-0 p-4 text-center" role="status">ไม่พบรายการตามเงื่อนไขที่เลือก</div> : <div className="card border-0 shadow-sm p-3"><div className="table-responsive survey-work-table review-table"><table className="table align-middle"><caption>พบ {data.total.toLocaleString('th-TH')} รายการ • หน้า {filters.page} / {Math.max(1, Math.ceil(data.total/25))}</caption><thead><tr><th scope="col">เลือก / บุคคล</th><th scope="col">รหัสจับคู่</th><th scope="col">เดิมใน HOSxP</th><th scope="col">ข้อมูลสำรวจใหม่</th><th scope="col">ผลตรวจ</th></tr></thead><tbody>{rows.map(row => <tr key={row.population_id}>
@@ -145,7 +154,7 @@ export default function HosxpReviewPage() {
             <td data-label="รหัสจับคู่"><div><div className="small">สำรวจ: {row.population_id}</div><div className="small">HOSxP: {row.target_id || 'ยังจับคู่ไม่ได้'}</div></div></td>
             <td data-label="เดิม HOSxP"><div>{row.target_id ? <><div className="review-field"><small>ประเภทอยู่อาศัย</small>{typeLabel(row.old_type)}</div><div className="review-field"><small>สถานะจำหน่าย</small>{dischargeLabel(row.old_discharge)}</div></> : '—'}</div></td>
             <td data-label="สำรวจใหม่"><div><div className={`review-field ${row.changes?.house_regist_type_id !== undefined ? 'review-changed' : ''}`}><small>ประเภทอยู่อาศัย</small>{row.new_type ? typeLabel(row.new_type) : row.new_discharge==='1' ? 'คงค่าเดิมใน HOSxP' : 'ยังไม่ระบุ'}</div><div className={`review-field ${row.changes?.person_discharge_id !== undefined ? 'review-changed' : ''}`}><small>สถานะจำหน่าย</small>{dischargeLabel(row.new_discharge)}</div></div></td>
-            <td data-label="ผลตรวจ"><div><span className={`badge ${row.status==='ready' ? 'bg-primary' : row.status==='approved' ? 'bg-success' : 'bg-secondary'}`}>{STATES[row.status]}</span>{row.approved_at && <div className="small mt-2">{formatTime(row.approved_at)}</div>}</div></td>
+            <td data-label="ผลตรวจ"><div><span className={`badge ${row.status==='ready' ? 'bg-primary' : row.status==='approved' || row.status==='processing' ? 'bg-info text-dark' : row.status==='sent' ? 'bg-success' : row.status==='failed' ? 'bg-danger' : 'bg-secondary'}`}>{STATES[row.status] || row.status}</span>{row.error_code && <div className="small text-danger mt-1">{ERROR_LABELS[row.error_code] || row.error_code}</div>}{row.approved_at && <div className="small mt-2">{formatTime(row.approved_at)}</div>}</div></td>
           </tr>)}</tbody></table></div></div>}
           <div className="d-flex justify-content-between align-items-center gap-2 mt-3"><button className="btn btn-outline-secondary" disabled={filters.page===1 || saving} onClick={() => setFilters(f => ({...f,page:f.page-1}))}>ก่อนหน้า</button><span className="small">เลือกได้ครั้งละ 25 รายการ</span><button className="btn btn-outline-secondary" disabled={filters.page*25>=data.total || saving} onClick={() => setFilters(f => ({...f,page:f.page+1}))}>ถัดไป</button></div>
         </>}

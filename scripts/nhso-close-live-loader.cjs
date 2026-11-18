@@ -1,7 +1,7 @@
 const path=require('node:path');
 const {requestFor}=require('./nhso-close-rights.cjs');
 async function rpc(client,name,args){const r=await client.rpc(name,args);if(r.error||!r.data)throw Error('CLOSE_DATABASE_UNAVAILABLE');return r.data;}
-async function loadCloseInput({client,db,intentId,config,now=Date.now(),allowPatientEntitlementFallback=false}){
+async function loadCloseInput({client,db,intentId,config,now=Date.now(),allowPatientEntitlementFallback=false,agentEvidence=null}){
  const snapshot=await rpc(client,'fit_close_load',{p_intent:intentId});
  const [rows]=await db.execute(`SELECT l.vn,l.screen_date,l.lab_result,p.cid,o.vsttime,
  (SELECT COUNT(*) FROM lab_order b WHERE b.lab_order_number=l.lab_order_number AND b.lab_items_code=10214 AND b.lab_order_result=l.lab_result) labs,
@@ -14,7 +14,7 @@ async function loadCloseInput({client,db,intentId,config,now=Date.now(),allowPat
  const row=rows[0],result=snapshot.result==='ปกติ'?'Negative':'Positive';
  if(rows.length!==1||row.vn!==snapshot.vn||row.cid!==snapshot.cid||String(row.screen_date)!==snapshot.screen_date||row.lab_result!==result||Number(row.labs)!==1||Number(row.fees)!==1||Number(row.total)!==60||Number(row.rights)!==1||Number(row.closed)!==0)throw Error('LIVE_VISIT_MISMATCH_OR_ALREADY_CLOSED');
  // Require actual same-day entitlement evidence; PP is not an insurance code.
- let [rights]=await db.execute("SELECT DISTINCT maininscl FROM nhso_authencode WHERE pid=? AND created_date>=? AND created_date<DATE_ADD(?,INTERVAL 1 DAY) AND maininscl IS NOT NULL AND maininscl<>''",[snapshot.cid,snapshot.screen_date,snapshot.screen_date]);
+ let rights;if(agentEvidence){if(agentEvidence.pid!==snapshot.cid||!Number.isFinite(Date.parse(agentEvidence.expires_at))||Date.parse(agentEvidence.expires_at)<=now||agentEvidence.state!=='ready')throw Error('FRESH_ENTITLEMENT_REQUIRED');rights=[{maininscl:agentEvidence.main_inscl}];}else [rights]=await db.execute("SELECT DISTINCT maininscl FROM nhso_authencode WHERE pid=? AND created_date>=? AND created_date<DATE_ADD(?,INTERVAL 1 DAY) AND maininscl IS NOT NULL AND maininscl<>''",[snapshot.cid,snapshot.screen_date,snapshot.screen_date]);
  if((!rights||rights.length===0)&&allowPatientEntitlementFallback){
   const [ptRows]=await db.execute("SELECT DISTINCT COALESCE(NULLIF(TRIM(t.nhso_code),''),TRIM(p.pttype)) AS maininscl FROM patient p LEFT JOIN pttype t ON t.pttype=p.pttype WHERE p.cid=?",[snapshot.cid]);
   if(ptRows?.length===1&&['UCS','WEL','OFC','LGO','SSS','OTH','COR'].includes(ptRows[0].maininscl))rights=ptRows;
@@ -27,7 +27,7 @@ async function loadCloseInput({client,db,intentId,config,now=Date.now(),allowPat
  // Verify paid/privilege amounts in this visit, not just the site fee catalogue.
  const [amounts]=await db.execute('SELECT paid_money,uc_money FROM vn_stat WHERE vn=?',[snapshot.vn]);
  if(amounts.length!==1||Number(amounts[0].paid_money)!==0||Number(amounts[0].uc_money)!==60)throw Error('LIVE_AMOUNT_SPLIT_MISMATCH');
- requestFor({...input,transactionId:config.hcode+'validation'},{allowProduction:true,now});
+ if(!agentEvidence)requestFor({...input,transactionId:config.hcode+'validation'},{allowProduction:true,now});
  return {input,snapshot};
 }
 function productionLedger(client,snapshot,input){return {
@@ -88,12 +88,17 @@ async function reconcile({source,db,config}={}){
   const key=protectedKey(keyFile);
   const receipts=receiptStore(receiptsDir,key,{production:true});
 
-  const {data:pendingIntents}=await source
+  let pendingQuery=source
    .from('fit_close_intents')
    .select('id,preparation_id,vn,state')
    .eq('state','pending')
+   .eq('transport','direct')
    .order('requested_at',{ascending:true})
    .limit(3);
+  let pendingResult=await pendingQuery;
+  if(['42703','PGRST204'].includes(pendingResult.error?.code)){pendingResult=await source.from('fit_close_intents').select('id,preparation_id,vn,state').eq('state','pending').order('requested_at',{ascending:true}).limit(3);}
+  if(pendingResult.error)throw Error('CLOSE_QUEUE_READ_FAILED');
+  const pendingIntents=pendingResult.data;
 
   for(const intent of pendingIntents||[]){
    try{

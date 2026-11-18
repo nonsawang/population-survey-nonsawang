@@ -14,6 +14,7 @@ const ERROR_MESSAGES={
 
 export async function POST(request){
  if(!sameOrigin(request)||isReadOnly())return authResponse({error:'ไม่อนุญาตให้ส่งรายการ'},403);
+ if(process.env.NHSO_AGENT_QUEUE_ENABLED==='true')return authResponse({error:'กรุณาอ่านบัตรและยืนยันผ่านเส้นทาง Agent'},409);
  // Deployment flag is not permission to transmit: only records staff intent.
  if(process.env.NHSO_CLOSE_MANUAL_QUEUE_ENABLED!=='true')return authResponse({error:'ระบบรับคำสั่งปิดสิทธิ์ยังไม่เปิดใช้งาน'},503);
  let body;

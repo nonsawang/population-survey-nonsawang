@@ -33,7 +33,8 @@ export async function POST(request){
   if(isReadOnly()){
    blockers.push({code:'READ_ONLY_MODE',message:'ระบบกำลังอยู่ในโหมดอ่านอย่างเดียว'});
   }
-  const queueEnabled=process.env.NHSO_CLOSE_MANUAL_QUEUE_ENABLED==='true';
+  const agentEnabled=process.env.NHSO_AGENT_QUEUE_ENABLED==='true';
+  const queueEnabled=agentEnabled||process.env.NHSO_CLOSE_MANUAL_QUEUE_ENABLED==='true';
   if(!queueEnabled){
    blockers.push({code:'QUEUE_DISABLED',message:'ยังไม่ได้เปิดใช้งาน NHSO_CLOSE_MANUAL_QUEUE_ENABLED ในระบบ'});
   }
@@ -136,6 +137,7 @@ export async function POST(request){
   return authResponse({
    canSubmit:false,
    canRequest:readyToQueue,
+   transport:agentEnabled?'agent':'direct',
    queueEnabled,
    manualOnly:true,
    patientVerified:Boolean(statusDetail?.isImported),

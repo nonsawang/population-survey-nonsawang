@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { closeRightsPrice } from '@/lib/close-rights-prices.mjs';
+import AgentCloseReview from './AgentCloseReview';
 import { readCard } from '@/lib/eform-card.mjs';
 import { validateCID } from '@/lib/utils';
 import { maskedScreeningCid } from '@/lib/screening-search';
@@ -169,6 +170,7 @@ export default function CloseRightsReview({ person, kpi, serviceName, date, resu
   const intent = detail?.intent;
   const intentMeta = intent ? (INTENT_STATE_LABELS[intent.state] || { badge: 'text-bg-secondary', text: intent.state }) : null;
 
+  if(readiness?.transport==='agent')return <AgentCloseReview key={[person?.personId,kpi,date,result].join(':')} {...{person,kpi,date,result,saved,busy,readiness}} onRefresh={checkReadiness}/>;
   return (
     <section className="card border-warning mt-3" aria-label="ตรวจรายการก่อนปิดสิทธิ์">
       <div className="card-body">
