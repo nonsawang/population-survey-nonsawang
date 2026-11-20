@@ -7,6 +7,16 @@ import TopBar from '@/components/TopBar';
 import ActivityLogPanel from '@/components/ActivityLogPanel';
 import NhsoApiSettingsCard from '@/components/NhsoApiSettingsCard';
 
+const ADMIN_ERROR_LABELS = {
+  PASSWORD_TOO_SHORT: 'รหัสผ่านต้องมีความยาวอย่างน้อย 8 ตัวอักษร',
+  VILLAGE_REQUIRED: 'กรุณาระบุหมู่รับผิดชอบของ อสม. เป็นตัวเลขเท่านั้น (เช่น 1 หรือ 1,2)',
+  USERNAME_EXISTS: 'Username นี้มีผู้ใช้งานในระบบแล้ว กรุณาใช้ชื่ออื่น',
+  INVALID_USER: 'ข้อมูลไม่ครบหรือไม่ถูกต้อง (Username ต้องเป็นภาษาอังกฤษ/ตัวเลข 3 ตัวขึ้นไป ห้ามเว้นวรรค และต้องกรอกรหัสผ่าน)',
+  ADMIN_REQUIRED: 'ต้องเข้าสู่ระบบด้วยบัญชี Admin เท่านั้น',
+  LAST_ADMIN: 'ไม่สามารถปิดใช้งานหรือเปลี่ยนสิทธิ์ Admin คนสุดท้ายของระบบได้',
+  USER_NOT_FOUND: 'ไม่พบบัญชีผู้ใช้งานนี้ในระบบ',
+};
+
 export default function AdminPage() {
   const { user, loading, refreshUser } = useAuth();
   const router = useRouter();
@@ -16,6 +26,7 @@ export default function AdminPage() {
   const [searchQ, setSearchQ] = useState('');
   const [editUser, setEditUser] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [formError, setFormError] = useState('');
   const [form, setForm] = useState({ displayName:'', username:'', password:'', role:'vhv', moo:'', isActive:true });
   const [oldPwd, setOldPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
@@ -33,29 +44,75 @@ export default function AdminPage() {
     setUsers(data || []);
   };
 
-
   const filteredUsers = users.filter(u => !searchQ || (u.display_name||'').toLowerCase().includes(searchQ.toLowerCase()) || (u.username||'').toLowerCase().includes(searchQ.toLowerCase()));
 
   const roleCounts = users.reduce((c, u) => { c[u.role] = (c[u.role]||0) + 1; return c; }, {});
 
-  const openCreate = () => { setEditUser(null); setForm({ displayName:'', username:'', password:'', role:'vhv', moo:'', isActive:true }); setShowModal(true); };
-  const openEdit = (u) => { setEditUser(u); setForm({ displayName:u.display_name||'', username:u.username||'', password:'', role:u.role||'vhv', moo:u.moo||'', isActive:u.is_active!==false }); setShowModal(true); };
+  const openCreate = () => {
+    setEditUser(null);
+    setFormError('');
+    setForm({ displayName:'', username:'', password:'', role:'vhv', moo:'', isActive:true });
+    setShowModal(true);
+  };
+  const openEdit = (u) => {
+    setEditUser(u);
+    setFormError('');
+    setForm({ displayName:u.display_name||'', username:u.username||'', password:'', role:u.role||'vhv', moo:u.moo||'', isActive:u.is_active!==false });
+    setShowModal(true);
+  };
 
   const submitUser = async () => {
     if (saving) return;
+    setFormError('');
+    const cleanName = form.displayName.trim();
+    const cleanUser = form.username.trim();
+    const cleanMoo = form.moo.trim();
+
+    if (!cleanName) {
+      setFormError('กรุณากรอกชื่อ-สกุล');
+      return;
+    }
+    if (!editUser) {
+      if (!/^[a-zA-Z0-9_.-]{3,150}$/.test(cleanUser)) {
+        setFormError('Username ต้องเป็นภาษาอังกฤษ ตัวเลข หรือ _ . - ความยาวอย่างน้อย 3 ตัวอักษร (ห้ามเว้นวรรคหรือภาษาไทย)');
+        return;
+      }
+      if (!form.password || form.password.length < 8) {
+        setFormError('รหัสผ่านสำหรับผู้ใช้ใหม่ต้องมีความยาวอย่างน้อย 8 ตัวอักษร');
+        return;
+      }
+    } else if (form.password && form.password.length < 8) {
+      setFormError('รหัสผ่านใหม่ต้องมีความยาวอย่างน้อย 8 ตัวอักษร');
+      return;
+    }
+    if (form.role === 'vhv' && !/^[0-9]+(\s*,\s*[0-9]+)*$/.test(cleanMoo)) {
+      setFormError('สำหรับบทบาท อสม. กรุณาระบุหมู่รับผิดชอบเป็นตัวเลขเท่านั้น (เช่น 1 หรือ 1,2)');
+      return;
+    }
+
     setSaving(true);
     try {
       const { data, error } = await supabase.rpc('app_admin_save_user', {
-        p_id: editUser?.id || null, p_username: form.username, p_display_name: form.displayName,
-        p_role: form.role, p_moo: form.moo, p_active: form.isActive, p_password: form.password || null,
+        p_id: editUser?.id || null,
+        p_username: cleanUser,
+        p_display_name: cleanName,
+        p_role: form.role,
+        p_moo: cleanMoo,
+        p_active: form.isActive,
+        p_password: form.password || null,
       });
       if (error || data?.error) throw new Error(error?.message || data.error);
       setShowModal(false);
       if (editUser?.id === user.userId) await refreshUser();
       else await loadUsers();
-    } catch (error) { alert('บันทึกไม่สำเร็จ: ' + error.message); }
-    finally { setSaving(false); }
+    } catch (error) {
+      const msg = ADMIN_ERROR_LABELS[error.message] || error.message || 'เกิดข้อผิดพลาดในการบันทึก';
+      setFormError(msg);
+    } finally {
+      setSaving(false);
+    }
   };
+
   const doChangePassword = async () => {
     if (saving) return;
     if (!oldPwd || newPwd.length < 8 || newPwd !== confirmPwd) { alert('ตรวจสอบรหัสผ่านเดิมและรหัสผ่านใหม่อย่างน้อย 8 ตัวให้ตรงกัน'); return; }
@@ -162,18 +219,61 @@ export default function AdminPage() {
         <div className="modal fade show d-block" style={{background:'rgba(0,0,0,.5)'}}>
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content border-0 shadow-lg" style={{borderRadius:16,overflow:'hidden'}}>
-              <div className="modal-header text-white" style={{background:'var(--primary)'}}><h5 className="modal-title fw-bold"><i className={`fa-solid fa-${editUser?'user-pen':'user-plus'} me-2`}/>{editUser?'แก้ไขผู้ใช้':'เพิ่มผู้ใช้ใหม่'}</h5><button className="btn-close btn-close-white" onClick={()=>setShowModal(false)}/></div>
-              <div className="modal-body p-4">
-                <div className="mb-3"><label className="small fw-bold">ชื่อ-สกุล *</label><input type="text" className="form-control" value={form.displayName} onChange={e=>setForm({...form,displayName:e.target.value})}/></div>
-                <div className="mb-3"><label className="small fw-bold">Username *</label><input type="text" className="form-control" value={form.username} onChange={e=>setForm({...form,username:e.target.value})} disabled={!!editUser} autoCapitalize="none"/></div>
-                <div className="mb-3"><label className="small fw-bold">รหัสผ่าน {editUser ? '(เว้นว่างถ้าไม่เปลี่ยน)' : '*'}</label><input type="password" className="form-control" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></div>
-                <div className="row g-2 mb-3">
-                  <div className="col-6"><label className="small fw-bold">บทบาท</label><select className="form-select" value={form.role} onChange={e=>setForm({...form,role:e.target.value})}><option value="vhv">อสม.</option><option value="staff">เจ้าหน้าที่</option><option value="manager">ผู้บริหาร</option><option value="admin">Admin</option></select></div>
-                  {form.role === 'vhv' && <div className="col-6"><label className="small fw-bold">หมู่รับผิดชอบ</label><input type="text" className="form-control" value={form.moo} onChange={e=>setForm({...form,moo:e.target.value})} placeholder="1,2,3"/></div>}
-                </div>
-                {editUser && <div className="form-check"><input className="form-check-input" type="checkbox" checked={form.isActive} onChange={e=>setForm({...form,isActive:e.target.checked})}/><label className="form-check-label small">เปิดใช้งาน</label></div>}
+              <div className="modal-header text-white" style={{background:'var(--primary)'}}>
+                <h5 className="modal-title fw-bold">
+                  <i className={`fa-solid fa-${editUser?'user-pen':'user-plus'} me-2`}/>
+                  {editUser?'แก้ไขผู้ใช้':'เพิ่มผู้ใช้ใหม่'}
+                </h5>
+                <button className="btn-close btn-close-white" onClick={()=>setShowModal(false)}/>
               </div>
-              <div className="modal-footer bg-light"><button className="btn btn-outline-secondary rounded-pill" onClick={()=>setShowModal(false)}>ยกเลิก</button><button className="btn btn-primary fw-bold rounded-pill px-4" disabled={saving} onClick={submitUser}><i className="fa-solid fa-save me-1"/>บันทึก</button></div>
+              <div className="modal-body p-4">
+                {formError && (
+                  <div role="alert" className="alert alert-danger py-2 px-3 small fw-semibold mb-3">
+                    ⚠️ {formError}
+                  </div>
+                )}
+                <div className="mb-3">
+                  <label className="small fw-bold">ชื่อ-สกุล *</label>
+                  <input type="text" className="form-control" placeholder="เช่น นางสมศรี ใจดี" value={form.displayName} onChange={e=>{setFormError(''); setForm({...form,displayName:e.target.value});}}/>
+                </div>
+                <div className="mb-3">
+                  <label className="small fw-bold">Username * <span className="text-muted fw-normal">(ภาษาอังกฤษ/ตัวเลข ≥ 3 ตัว ห้ามเว้นวรรค)</span></label>
+                  <input type="text" className="form-control" placeholder="เช่น vhv01 หรือ somchai" value={form.username} onChange={e=>{setFormError(''); setForm({...form,username:e.target.value});}} disabled={!!editUser} autoCapitalize="none"/>
+                </div>
+                <div className="mb-3">
+                  <label className="small fw-bold">รหัสผ่าน {editUser ? '(เว้นว่างถ้าไม่เปลี่ยน, ≥ 8 ตัว)' : '* (ต้องอย่างน้อย 8 ตัวอักษร)'}</label>
+                  <input type="password" className="form-control" placeholder="อย่างน้อย 8 ตัวอักษร" value={form.password} onChange={e=>{setFormError(''); setForm({...form,password:e.target.value});}}/>
+                </div>
+                <div className="row g-2 mb-3">
+                  <div className="col-6">
+                    <label className="small fw-bold">บทบาท</label>
+                    <select className="form-select" value={form.role} onChange={e=>{setFormError(''); setForm({...form,role:e.target.value});}}>
+                      <option value="vhv">อสม.</option>
+                      <option value="staff">เจ้าหน้าที่</option>
+                      <option value="manager">ผู้บริหาร</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                  {form.role === 'vhv' && (
+                    <div className="col-6">
+                      <label className="small fw-bold">หมู่รับผิดชอบ * <span className="text-muted fw-normal">(ตัวเลขเท่านั้น)</span></label>
+                      <input type="text" className="form-control" value={form.moo} onChange={e=>{setFormError(''); setForm({...form,moo:e.target.value});}} placeholder="เช่น 1 หรือ 1,2"/>
+                    </div>
+                  )}
+                </div>
+                {editUser && (
+                  <div className="form-check">
+                    <input className="form-check-input" type="checkbox" checked={form.isActive} onChange={e=>setForm({...form,isActive:e.target.checked})}/>
+                    <label className="form-check-label small">เปิดใช้งาน</label>
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer bg-light">
+                <button className="btn btn-outline-secondary rounded-pill" onClick={()=>setShowModal(false)}>ยกเลิก</button>
+                <button className="btn btn-primary fw-bold rounded-pill px-4" disabled={saving} onClick={submitUser}>
+                  <i className="fa-solid fa-save me-1"/>{saving ? 'กำลังบันทึก...' : 'บันทึก'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
