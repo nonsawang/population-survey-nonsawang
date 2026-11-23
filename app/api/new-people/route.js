@@ -31,6 +31,26 @@ function isActiveRecord(row) {
   return true;
 }
 
+async function fetchAllPages(url, basePath, keyCol, headers, pageSize = 1000) {
+  const all = [];
+  let offset = 0;
+  for (let i = 0; i < 15; i++) {
+    const sep = basePath.includes('?') ? '&' : '?';
+    const res = await fetch(`${url}${basePath}${sep}limit=${pageSize}&offset=${offset}`, {
+      headers,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) break;
+    const chunk = await res.json();
+    if (!Array.isArray(chunk) || !chunk.length) break;
+    all.push(...chunk);
+    if (chunk.length < pageSize) break;
+    offset += pageSize;
+  }
+  return all;
+}
+
 export async function GET() {
   try {
     const user = await currentUser();
@@ -42,7 +62,7 @@ export async function GET() {
     const popQuery = new URLSearchParams({
       person_id: 'like.P-*',
       select:
-        'person_id,cid,title,fname,lname,birth_date,moo,house,vhv,relation,residency_type,person_discharge_id,status_model_version,chronic,updated_at',
+        'person_id,cid,title,fname,lname,birth_date,moo,house,vhv,relation,residency_type,person_discharge_id,status_model_version,chronic,latitude,longitude,updated_at',
       order: 'moo.asc,house.asc,fname.asc',
       limit: '5000',
     });
@@ -60,7 +80,14 @@ export async function GET() {
       limit: '1',
     });
 
-    const [popRes, candRes, batchRes] = await Promise.all([
+    const houseBatchQuery = new URLSearchParams({
+      completed_at: 'not.is.null',
+      select: 'id,captured_at',
+      order: 'captured_at.desc',
+      limit: '1',
+    });
+
+    const [popRes, candRes, batchRes, houseBatchRes] = await Promise.all([
       fetch(`${url}/rest/v1/population?${popQuery}`, {
         headers,
         cache: 'no-store',
@@ -76,6 +103,11 @@ export async function GET() {
         cache: 'no-store',
         signal: AbortSignal.timeout(10000),
       }).catch(() => null),
+      fetch(`${url}/rest/v1/house_gps_batches?${houseBatchQuery}`, {
+        headers,
+        cache: 'no-store',
+        signal: AbortSignal.timeout(10000),
+      }).catch(() => null),
     ]);
 
     if (!popRes.ok) {
@@ -85,7 +117,26 @@ export async function GET() {
     const rawPop = await popRes.json();
     const rawCands = candRes && candRes.ok ? await candRes.json() : [];
     const rawBatches = batchRes && batchRes.ok ? await batchRes.json() : [];
+    const rawHouseBatches = houseBatchRes && houseBatchRes.ok ? await houseBatchRes.json() : [];
     const snapshot = rawBatches?.[0] || null;
+    const houseBatch = rawHouseBatches?.[0] || null;
+
+    // Load HOSxP house snapshot addresses to detect newly added houses on web that don't exist in HOSxP house table
+    const hosxpHouseSet = new Set();
+    if (houseBatch?.id) {
+      const snapHouses = await fetchAllPages(
+        url,
+        `/rest/v1/house_gps_snapshot?batch_id=eq.${encodeURIComponent(
+          houseBatch.id
+        )}&select=moo,address,house_id&order=house_id.asc`,
+        'house_id',
+        headers,
+        1000
+      );
+      for (const sh of snapHouses) {
+        hosxpHouseSet.add(`${String(sh.moo || '').trim()}|${String(sh.address || '').trim()}`);
+      }
+    }
 
     const candMap = new Map();
     if (Array.isArray(rawCands)) {
@@ -94,7 +145,6 @@ export async function GET() {
       }
     }
 
-    // Also count duplicate CIDs among P- rows in case snapshot is missing
     const cidCounts = new Map();
     for (const r of rawPop || []) {
       const c = String(r.cid || '').trim();
@@ -118,15 +168,18 @@ export async function GET() {
       missing_cid: 0,
       duplicate: 0,
       matched_in_hosxp: 0,
+      new_houses: 0,
     };
 
     const villagesSet = new Set();
     const ownersSet = new Set();
     const rows = [];
+    const newHousesMap = new Map();
 
     for (const r of rawPop || []) {
       if (!isActiveRecord(r)) continue;
       const rowMoo = String(r.moo || '').trim();
+      const rowHouse = String(r.house || '').trim();
       const rowVhv = normName(r.vhv);
 
       if (allowedMoos) {
@@ -153,12 +206,15 @@ export async function GET() {
         category = 'ready_for_hosxp';
       }
 
+      const houseKey = `${rowMoo}|${rowHouse}`;
+      const houseInHosxp = hosxpHouseSet.size > 0 ? hosxpHouseSet.has(houseKey) : true;
+
       counts.total += 1;
       counts[category] += 1;
       if (rowMoo) villagesSet.add(rowMoo);
       if (rowVhv) ownersSet.add(rowVhv);
 
-      rows.push({
+      const personObj = {
         person_id: r.person_id,
         cid: validCid ? cid : cid && cid !== '-' ? cid : '',
         valid_cid: validCid,
@@ -168,7 +224,7 @@ export async function GET() {
         fullname: `${r.title || ''}${r.fname || ''} ${r.lname || ''}`.trim(),
         birth_date: r.birth_date || null,
         moo: rowMoo,
-        house: String(r.house || '').trim(),
+        house: rowHouse,
         vhv: rowVhv || 'ไม่ระบุ',
         relation: r.relation || 'ผู้อาศัย',
         residency_type: String(r.residency_type ?? ''),
@@ -176,12 +232,49 @@ export async function GET() {
         chronic: r.chronic || '-',
         updated_at: r.updated_at || null,
         category,
+        house_in_hosxp: houseInHosxp,
         hosxp_person_id: cand?.target_id || null,
         hosxp_status: cand?.display_status || cand?.base_status || null,
-      });
+      };
+      rows.push(personObj);
+
+      // Group newly added houses (houses containing P-... members that do NOT exist in HOSxP house_gps_snapshot)
+      if (!houseInHosxp && rowMoo && rowHouse && rowHouse !== '-') {
+        if (!newHousesMap.has(houseKey)) {
+          newHousesMap.set(houseKey, {
+            key: houseKey,
+            moo: rowMoo,
+            house: rowHouse,
+            vhv: rowVhv || 'ไม่ระบุ',
+            has_gps: false,
+            latitude: null,
+            longitude: null,
+            members: [],
+            ready_members: 0,
+            missing_cid_members: 0,
+            latest_updated_at: r.updated_at || null,
+          });
+        }
+        const hEntry = newHousesMap.get(houseKey);
+        hEntry.members.push(personObj);
+        if (validCid) hEntry.ready_members += 1;
+        else hEntry.missing_cid_members += 1;
+        const lat = Number(r.latitude);
+        const lng = Number(r.longitude);
+        if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) {
+          hEntry.has_gps = true;
+          hEntry.latitude = lat;
+          hEntry.longitude = lng;
+        }
+      }
     }
 
     const collator = new Intl.Collator('th', { numeric: true });
+    const newHouses = [...newHousesMap.values()].sort(
+      (a, b) => collator.compare(a.moo, b.moo) || collator.compare(a.house, b.house)
+    );
+    counts.new_houses = newHouses.length;
+
     const villages = [...villagesSet].sort(collator.compare);
     const owners = [...ownersSet].sort(collator.compare);
 
@@ -189,9 +282,11 @@ export async function GET() {
       ok: true,
       counts,
       snapshot,
+      houseSnapshotAt: houseBatch?.captured_at || null,
       villages,
       owners,
       rows,
+      newHouses,
     });
   } catch {
     return authResponse({ error: 'เชื่อมต่อฐานข้อมูลไม่สำเร็จ' }, 503);
@@ -213,18 +308,21 @@ export async function POST(request) {
       'Content-Type': 'application/json',
     };
 
-    // 1. ตรวจสอบเลขบัตร 13 หลักทั่วทั้งตำบล เพื่อป้องกันการเพิ่มคนซ้ำ
     if (action === 'check_cid') {
       const cleanCid = String(body.cid || '')
         .replace(/[๐-๙]/g, (c) => String(c.charCodeAt(0) - 3664))
         .replace(/\D/g, '');
       if (!isValidThaiCid(cleanCid)) {
-        return authResponse({ ok: false, error: 'เลขบัตรประชาชนไม่ถูกต้อง (ตรวจ 13 หลักและ Checksum)' }, 400);
+        return authResponse(
+          { ok: false, error: 'เลขบัตรประชาชนไม่ถูกต้อง (ตรวจ 13 หลักและ Checksum)' },
+          400
+        );
       }
 
       const q = new URLSearchParams({
         cid: `eq.${cleanCid}`,
-        select: 'person_id,title,fname,lname,birth_date,moo,house,vhv,chronic,residency_type,person_discharge_id',
+        select:
+          'person_id,title,fname,lname,birth_date,moo,house,vhv,chronic,residency_type,person_discharge_id',
         limit: '5',
       });
       const res = await fetch(`${url}/rest/v1/population?${q}`, {
@@ -259,7 +357,6 @@ export async function POST(request) {
       return authResponse({ ok: true, exists: false });
     }
 
-    // 2. บันทึกหรือแก้ไขเลขบัตรประชาชน 13 หลัก และวันเกิด ของผู้ที่ถูกเพิ่มใหม่ (P-...)
     if (action === 'update_identity') {
       if (isReadOnly()) return readOnlyResponse();
       if (!['admin', 'staff', 'vhv'].includes(user.role)) {
@@ -285,7 +382,6 @@ export async function POST(request) {
         return authResponse({ ok: false, error: 'รูปแบบวันเกิดไม่ถูกต้อง' }, 400);
       }
 
-      // Load target person
       const targetQuery = new URLSearchParams({
         person_id: `eq.${personId}`,
         select: 'person_id,moo,house,vhv,fname,lname',
@@ -301,7 +397,6 @@ export async function POST(request) {
         return authResponse({ ok: false, error: 'ไม่พบรายชื่อนี้ในระบบ' }, 404);
       }
 
-      // Check VHV scope
       if (user.role === 'vhv') {
         const allowedMoos = String(user.moo || '')
           .split(',')
@@ -312,7 +407,6 @@ export async function POST(request) {
         }
       }
 
-      // Check duplicate CID across entire population
       const dupQuery = new URLSearchParams({
         cid: `eq.${cleanCid}`,
         person_id: `neq.${personId}`,
@@ -357,7 +451,6 @@ export async function POST(request) {
         return authResponse({ ok: false, error: 'บันทึกเลขบัตรไม่สำเร็จ' }, 503);
       }
 
-      // Log activity
       await fetch(`${url}/rest/v1/activity_logs`, {
         method: 'POST',
         headers,
