@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { readCard } from '@/lib/eform-card.mjs';
-import { calculateAge, validateCID } from '@/lib/utils';
+import { calculateAge, validateCID, VALID_MOOS } from '@/lib/utils';
 import { createScreeningSaver, screeningToday } from '@/lib/screening-save';
 import { ScreeningHistory, ScreeningOverview } from '@/components/ScreeningWorkflow';
 import RegistrationStatus from '@/components/RegistrationStatus';
@@ -29,10 +29,11 @@ export default function ScreeningPage() {
   const [currentKPI, setCurrentKPI] = useState('ANNUAL2570');
   const [annualModalPerson, setAnnualModalPerson] = useState(null);
   const [annualQuery, setAnnualQuery] = useState('');
-  const [annualAppliedQuery, setAnnualAppliedQuery] = useState('');
   const [annualMoo, setAnnualMoo] = useState('');
   const [annualFilter, setAnnualFilter] = useState('all');
   const [annualAgeGroup, setAnnualAgeGroup] = useState('all');
+  const [annualCriteria, setAnnualCriteria] = useState({ q: '', moo: '', filter: 'all', ageGroup: 'all' });
+  const [annualSearched, setAnnualSearched] = useState(false);
   const [annualPage, setAnnualPage] = useState(1);
   const [annualData, setAnnualData] = useState(null);
   const [annualLoading, setAnnualLoading] = useState(false);
@@ -65,6 +66,18 @@ export default function ScreeningPage() {
   const searching = searchTerm !== appliedTerm;
   const filtered = candidates;
   const worksheetName = useRef('');
+  const annualVillageOptions = useMemo(() => {
+    const allowed =
+      user?.role === 'vhv'
+        ? String(user.moo || '')
+            .split(',')
+            .map((m) => m.trim())
+            .filter(Boolean)
+        : VALID_MOOS;
+    const merged = Array.from(new Set([...(allowed || []), ...(annualData?.villages || [])]));
+    const collator = new Intl.Collator('th', { numeric: true });
+    return (user?.role === 'vhv' ? allowed : merged).sort(collator.compare);
+  }, [user, annualData?.villages]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const kpi = params.get('kpi');
@@ -79,24 +92,46 @@ export default function ScreeningPage() {
       setSearchTerm(name);
       setAppliedTerm(name);
       setAnnualQuery(name);
-      setAnnualAppliedQuery(name);
+      setAnnualCriteria({ q: name, moo: '', filter: 'all', ageGroup: 'all' });
+      setAnnualSearched(true);
     }
   }, []);
   const doSearch = () => { setAppliedTerm(searchTerm); setPage(1); setRetry(n=>n+1); };
+  const handleAnnualSearch = () => {
+    setAnnualCriteria({
+      q: annualQuery.trim(),
+      moo: annualMoo,
+      filter: annualFilter,
+      ageGroup: annualAgeGroup,
+    });
+    setAnnualPage(1);
+    setAnnualSearched(true);
+    setAnnualRefresh((n) => n + 1);
+  };
+  const resetAnnualSearch = () => {
+    setAnnualQuery('');
+    setAnnualMoo('');
+    setAnnualFilter('all');
+    setAnnualAgeGroup('all');
+    setAnnualCriteria({ q: '', moo: '', filter: 'all', ageGroup: 'all' });
+    setAnnualPage(1);
+    setAnnualSearched(false);
+    setAnnualData(null);
+    setAnnualError('');
+  };
   useEffect(() => { const timer=setTimeout(()=>setAppliedTerm(searchTerm),300);return ()=>clearTimeout(timer); },[searchTerm]);
-  useEffect(() => { const timer=setTimeout(()=>setAnnualAppliedQuery(annualQuery),320);return ()=>clearTimeout(timer); },[annualQuery]);
   useEffect(() => {
-    if (!user || currentKPI !== 'ANNUAL2570') return;
+    if (!user || currentKPI !== 'ANNUAL2570' || !annualSearched) return;
     let active = true;
     const controller = new AbortController();
     setAnnualLoading(true);
     setAnnualError('');
     const qs = new URLSearchParams({
       mode: 'search',
-      q: annualAppliedQuery,
-      moo: annualMoo,
-      filter: annualFilter,
-      ageGroup: annualAgeGroup,
+      q: annualCriteria.q,
+      moo: annualCriteria.moo,
+      filter: annualCriteria.filter,
+      ageGroup: annualCriteria.ageGroup,
       page: String(annualPage),
     });
     fetch(`/api/health-screening-2570?${qs.toString()}`, {
@@ -121,7 +156,7 @@ export default function ScreeningPage() {
       active = false;
       controller.abort();
     };
-  }, [user, currentKPI, annualAppliedQuery, annualMoo, annualFilter, annualAgeGroup, annualPage, annualRefresh]);
+  }, [user, currentKPI, annualSearched, annualCriteria, annualPage, annualRefresh]);
 
   useEffect(() => { if (!loading && !user) router.push('/login'); }, [user, loading, router]);
   const dirty=selected && (result!==(selected.hasResult?selected.status:'') || screenDate!==(selected.screenDate && selected.screenDate!=='-'?selected.screenDate:screeningToday()));
@@ -138,8 +173,14 @@ export default function ScreeningPage() {
       setSelected(null);setSaveMessage('');setSaveOk(false);
       if (currentKPI === 'ANNUAL2570') {
         setAnnualQuery(card.cid);
-        setAnnualAppliedQuery(card.cid);
+        setAnnualCriteria({
+          q: card.cid,
+          moo: annualMoo,
+          filter: annualFilter,
+          ageGroup: annualAgeGroup,
+        });
         setAnnualPage(1);
+        setAnnualSearched(true);
         setAnnualRefresh(n=>n+1);
       } else {
         setSearchMode('cid');setSearchTerm(card.cid);setAppliedTerm(card.cid);setPage(1);setRetry(n=>n+1);
@@ -241,7 +282,7 @@ export default function ScreeningPage() {
 
         {currentKPI === 'ANNUAL2570' && (
           <div className="fade-in">
-            {annualData?.stats && (
+            {annualSearched && annualData?.stats && (
               <div className="row text-center g-2 mb-3">
                 {[
                   { label: 'กลุ่มเป้าหมายทั้งหมด', val: annualData.stats.total, color: '#2563eb' },
@@ -285,89 +326,119 @@ export default function ScreeningPage() {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    setAnnualAppliedQuery(annualQuery);
-                    setAnnualPage(1);
-                    setAnnualRefresh((n) => n + 1);
+                    document.activeElement?.blur();
+                    handleAnnualSearch();
                   }}
-                  className="row g-2 mb-3"
+                  className="mb-3"
                 >
-                  <div className="col-12 col-md-4">
-                    <input
-                      type="search"
-                      className="form-control"
-                      style={{ minHeight: 44 }}
-                      placeholder="ค้นหาชื่อ เลขบัตร บ้านเลขที่..."
-                      value={annualQuery}
-                      onChange={(e) => {
-                        setAnnualQuery(e.target.value);
-                        setAnnualPage(1);
-                      }}
-                    />
+                  <div className="row g-2">
+                    <div className="col-12 col-md-4">
+                      <input
+                        type="search"
+                        className="form-control"
+                        style={{ minHeight: 44 }}
+                        placeholder="ค้นหาชื่อ เลขบัตร บ้านเลขที่..."
+                        value={annualQuery}
+                        onChange={(e) => setAnnualQuery(e.target.value)}
+                      />
+                    </div>
+                    <div className="col-6 col-md-2">
+                      <select
+                        className="form-select"
+                        style={{ minHeight: 44 }}
+                        value={annualMoo}
+                        onChange={(e) => setAnnualMoo(e.target.value)}
+                      >
+                        <option value="">ทุกหมู่</option>
+                        {annualVillageOptions.map((m) => (
+                          <option key={m} value={m}>หมู่ {m}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-6 col-md-3">
+                      <select
+                        className="form-select"
+                        style={{ minHeight: 44 }}
+                        value={annualAgeGroup}
+                        onChange={(e) => setAnnualAgeGroup(e.target.value)}
+                      >
+                        <option value="all">ทุกช่วงอายุ</option>
+                        <option value="elderly60">ผู้สูงอายุ 60+ (22 หมวด)</option>
+                        <option value="35plus">อายุ 35 ปีขึ้นไป</option>
+                        <option value="working15_59">วัยทำงาน 15–59 ปี</option>
+                        <option value="child0_14">เด็ก 0–14 ปี</option>
+                      </select>
+                    </div>
+                    <div className="col-12 col-md-3">
+                      <select
+                        className="form-select"
+                        style={{ minHeight: 44 }}
+                        value={annualFilter}
+                        onChange={(e) => setAnnualFilter(e.target.value)}
+                      >
+                        <option value="all">สถานะ: ทั้งหมด</option>
+                        <option value="pending">ยังไม่คัดกรองปี 70</option>
+                        <option value="screened">คัดกรองปี 70 แล้ว</option>
+                        <option value="risk">พบความเสี่ยง</option>
+                      </select>
+                    </div>
                   </div>
-                  <div className="col-6 col-md-2">
-                    <select
-                      className="form-select"
-                      style={{ minHeight: 44 }}
-                      value={annualMoo}
-                      onChange={(e) => {
-                        setAnnualMoo(e.target.value);
-                        setAnnualPage(1);
-                      }}
+                  <div className="d-flex flex-wrap gap-2 mt-2">
+                    <button
+                      type="submit"
+                      className="btn btn-primary fw-bold px-4"
+                      style={{ minHeight: 44, borderRadius: 10 }}
+                      disabled={annualLoading}
                     >
-                      <option value="">ทุกหมู่</option>
-                      {(annualData?.villages || []).map((m) => (
-                        <option key={m} value={m}>หมู่ {m}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="col-6 col-md-3">
-                    <select
-                      className="form-select"
-                      style={{ minHeight: 44 }}
-                      value={annualAgeGroup}
-                      onChange={(e) => {
-                        setAnnualAgeGroup(e.target.value);
-                        setAnnualPage(1);
-                      }}
+                      {annualLoading ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-1" /> กำลังค้นหา...
+                        </>
+                      ) : (
+                        '🔍 ค้นหา'
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary px-3"
+                      style={{ minHeight: 44, borderRadius: 10 }}
+                      disabled={!annualSearched && !annualQuery && !annualMoo && annualFilter === 'all' && annualAgeGroup === 'all'}
+                      onClick={resetAnnualSearch}
                     >
-                      <option value="all">ทุกช่วงอายุ</option>
-                      <option value="elderly60">ผู้สูงอายุ 60+ (22 หมวด)</option>
-                      <option value="35plus">อายุ 35 ปีขึ้นไป</option>
-                      <option value="working15_59">วัยทำงาน 15–59 ปี</option>
-                      <option value="child0_14">เด็ก 0–14 ปี</option>
-                    </select>
-                  </div>
-                  <div className="col-12 col-md-3">
-                    <select
-                      className="form-select"
-                      style={{ minHeight: 44 }}
-                      value={annualFilter}
-                      onChange={(e) => {
-                        setAnnualFilter(e.target.value);
-                        setAnnualPage(1);
-                      }}
-                    >
-                      <option value="all">สถานะ: ทั้งหมด</option>
-                      <option value="pending">ยังไม่คัดกรองปี 70</option>
-                      <option value="screened">คัดกรองปี 70 แล้ว</option>
-                      <option value="risk">พบความเสี่ยง</option>
-                    </select>
+                      ล้างคำค้น
+                    </button>
                   </div>
                 </form>
 
-                {annualLoading && (
+                {!annualSearched && !annualLoading && !annualError && (
+                  <div className="text-center py-4 px-3 bg-light rounded-3 border">
+                    <div className="fw-bold text-primary mb-1" style={{ fontSize: '1.02rem' }}>
+                      🔍 กรุณาระบุคำค้นหาหรือเลือกตัวกรอง แล้วกดปุ่ม ค้นหา เพื่อแสดงรายชื่อ
+                    </div>
+                    <div className="small text-muted">
+                      ค้นหาได้จาก ชื่อ–นามสกุล เลขบัตรประชาชน บ้านเลขที่ หรือเลือกหมู่บ้าน / ช่วงอายุ / สถานะที่ต้องการ
+                    </div>
+                  </div>
+                )}
+
+                {annualSearched && annualLoading && (
                   <div className="text-center py-4">
                     <span className="spinner-border text-primary me-2" /> กำลังโหลดรายชื่อคัดกรองปี 2570...
                   </div>
                 )}
                 {annualError && <div className="alert alert-danger">{annualError}</div>}
 
-                {!annualLoading && !annualError && (
+                {annualSearched && !annualLoading && !annualError && (
                   <>
                     <div className="small text-muted mb-2">
                       แสดง {(annualData?.rows || []).length} จาก {(annualData?.totalFiltered || 0).toLocaleString('th-TH')} คน • หน้า {annualPage}
                     </div>
-                    <div className="row g-2">
+                    {(annualData?.rows || []).length === 0 ? (
+                      <div className="alert alert-warning mb-0">
+                        ไม่พบรายชื่อตามคำค้นหรือเงื่อนไขที่เลือก กรุณาลองปรับคำค้นแล้วกดค้นหาอีกครั้ง
+                      </div>
+                    ) : (
+                      <div className="row g-2">
                       {(annualData?.rows || []).map((p) => {
                         const age = Number(p.profile?.age ?? p.age ?? 0);
                         const groupLabel =
@@ -423,7 +494,8 @@ export default function ScreeningPage() {
                           </div>
                         );
                       })}
-                    </div>
+                      </div>
+                    )}
 
                     {(annualData?.totalFiltered || 0) > (annualData?.pageSize || 24) && (
                       <div className="d-flex justify-content-between mt-3">
