@@ -11,6 +11,7 @@ import TopBar from '@/components/TopBar';
 import PersonIdentity from '@/components/PersonIdentity';
 import AuthenReportImport from '@/components/AuthenReportImport';
 import NhsoApiSettingsCard from '@/components/NhsoApiSettingsCard';
+import NewPeopleTracker from '@/components/NewPeopleTracker';
 
 const STATES = {
   ready: 'พร้อมตรวจอนุมัติ', approved: 'อนุมัติแล้ว / รอเครื่อง LAN ส่ง', processing: 'เครื่อง LAN กำลังส่ง',
@@ -38,7 +39,7 @@ export default function HosxpReviewPage() {
   useEffect(() => {
     const sync = () => {
       const hash = window.location.hash.slice(1);
-      setSection(['screening-review', 'authen-report'].includes(hash) ? 'screening-review' : ['house-gps', 'nhso-api'].includes(hash) ? hash : 'population-review');
+      setSection(['screening-review', 'authen-report'].includes(hash) ? 'screening-review' : ['house-gps', 'nhso-api', 'new-people'].includes(hash) ? hash : 'population-review');
     };
     sync();
     window.addEventListener('hashchange', sync);
@@ -123,9 +124,10 @@ export default function HosxpReviewPage() {
   return <><TopBar showAdmin /><main className="container survey-page py-4 hosxp-workspace">
     <header className="survey-heading"><div><p className="survey-eyebrow">สำหรับเจ้าหน้าที่</p><h1>ตรวจสอบก่อนส่ง HOSxP</h1><p>จับคู่บุคคล ตรวจค่าเดิม–ใหม่ และอนุมัติรายการรอส่ง</p></div><a href="/" className="btn btn-outline-secondary">กลับหน้าสำรวจ</a></header>
     {allowed && <><HosxpSyncStatus/><nav className="nav nav-pills gap-2 mb-4" aria-label="ประเภทงานตรวจสอบ">
-      {[['population-review','สำรวจบ้าน'],['screening-review','คัดกรอง'],['house-gps','พิกัดบ้าน'],['nhso-api','เชื่อมต่อ NHSO API']].map(([id,label]) =>
+      {[['population-review','สำรวจบ้าน'],['new-people','ผู้ที่เพิ่มใหม่ (นอก HOSxP)'],['screening-review','คัดกรอง'],['house-gps','พิกัดบ้าน'],['nhso-api','เชื่อมต่อ NHSO API']].map(([id,label]) =>
         <a key={id} href={'#'+id} aria-current={section===id?'page':undefined} className={'nav-link '+(section===id?'active':'')}>{label}</a>)}
     </nav>
+    {section==='new-people' && <NewPeopleTracker key={identity+':new'} user={user} onOpenHouse={(m, h) => router.push('/?' + new URLSearchParams({ moo: String(m), house: String(h) }).toString())}/>}
     {section==='screening-review' && <><ScreeningReview/><AuthenReportImport key={identity}/><NhsoApiSettingsCard key={identity+':nhso'}/></>}
     {section==='nhso-api' && <NhsoApiSettingsCard key={identity+':nhso-tab'}/>}
     {section==='house-gps' && <HouseGpsReview key={identity}/>}

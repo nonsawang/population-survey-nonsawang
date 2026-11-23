@@ -37,8 +37,14 @@ export default function PersonCard({
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState(defaultExpanded || focused);
   const [highlight, setHighlight] = useState(false);
+  const [editingIdentity, setEditingIdentity] = useState(false);
+  const [cidDraft, setCidDraft] = useState(person.cid && person.cid !== '-' ? person.cid : '');
+  const [birthDraft, setBirthDraft] = useState(person.birthDate ? String(person.birthDate).slice(0, 10) : '');
+  const [identityError, setIdentityError] = useState('');
 
   const isStaff = user && ['admin', 'staff'].includes(user.role);
+  const isNewWebPerson = String(person.personId || '').startsWith('P-');
+  const hasValidCid = /^\d{13}$/.test(String(person.cid || '').trim());
 
   useEffect(() => {
     if (!focused) {
@@ -53,7 +59,52 @@ export default function PersonCard({
 
   useEffect(() => {
     setRelValue(person.relation);
-  }, [person.personId, person.relation]);
+    setCidDraft(person.cid && person.cid !== '-' ? person.cid : '');
+    setBirthDraft(person.birthDate ? String(person.birthDate).slice(0, 10) : '');
+  }, [person.personId, person.relation, person.cid, person.birthDate]);
+
+  const saveNewPersonIdentity = async () => {
+    if (saving) return;
+    setIdentityError('');
+    const cleanCid = String(cidDraft || '')
+      .replace(/[๐-๙]/g, (c) => String(c.charCodeAt(0) - 3664))
+      .replace(/\D/g, '');
+    if (cleanCid.length !== 13) {
+      setIdentityError('กรุณากรอกเลขบัตรประชาชนให้ครบ 13 หลัก');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch('/api/new-people', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_identity',
+          personId: person.personId,
+          cid: cleanCid,
+          birthDate: birthDraft || null,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) {
+        setIdentityError(json.error || 'บันทึกเลขบัตรไม่สำเร็จ');
+        return;
+      }
+      setEditingIdentity(false);
+      await onRefresh?.();
+      swal({
+        icon: 'success',
+        title: 'บันทึกเลขบัตรเรียบร้อย',
+        text: 'บันทึกเลขบัตร 13 หลักและวันเกิดเข้าสู่คิวขึ้นทะเบียน HOSxP แล้ว',
+        timer: 1600,
+        showConfirmButton: false,
+      });
+    } catch {
+      setIdentityError('เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const doSave = async (type, discharge = person.dischargeCode, changes = {}) => {
     if (!person.statusSchemaReady) {
@@ -240,6 +291,24 @@ export default function PersonCard({
                   🚚 รอย้ายเข้า ม.{activeTransfer.toMoo} บ้าน {activeTransfer.toHouse}
                 </span>
               )}
+
+              {isNewWebPerson && !hasValidCid && (
+                <span
+                  className="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-2"
+                  style={{ fontSize: '.78rem', borderRadius: 10 }}
+                >
+                  🪪 คนเพิ่มใหม่: รอกรอกเลขบัตร 13 หลัก
+                </span>
+              )}
+
+              {isNewWebPerson && hasValidCid && (
+                <span
+                  className="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-2"
+                  style={{ fontSize: '.78rem', borderRadius: 10 }}
+                >
+                  🆕 คนเพิ่มใหม่ (มีเลขบัตรแล้ว)
+                </span>
+              )}
             </div>
           </button>
 
@@ -260,6 +329,114 @@ export default function PersonCard({
         {/* เนื้อหา 3 ขั้นตอน เมื่อกางการ์ดออก */}
         {expanded && (
           <div className="mt-3 pt-3 border-top fade-in">
+            {/* กล่องกรอกเลขบัตร 13 หลักและวันเกิด สำหรับผู้ที่ถูกเพิ่มใหม่ (P-...) หรือผู้ที่ยังไม่มีเลขบัตร */}
+            {(isNewWebPerson || !hasValidCid) && (
+              <div
+                className={`p-3 rounded-3 mb-3 border ${
+                  !hasValidCid
+                    ? 'bg-danger-subtle border-danger-subtle'
+                    : 'bg-primary-subtle border-primary-subtle'
+                }`}
+                style={{ borderRadius: 14 }}
+              >
+                <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                  <div>
+                    <div className="fw-bold text-dark" style={{ fontSize: '.98rem' }}>
+                      🪪 ข้อมูลขึ้นทะเบียนคนเพิ่มใหม่ (สำหรับส่งเจ้าหน้าที่คีย์เข้า HOSxP)
+                    </div>
+                    <div className="small mt-1 text-dark">
+                      เลขบัตร 13 หลัก:{' '}
+                      {hasValidCid ? (
+                        <strong className="text-success">✅ ระบุครบ 13 หลักแล้ว</strong>
+                      ) : (
+                        <strong className="text-danger">⚠️ ยังไม่ระบุเลขบัตร 13 หลัก</strong>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className={`btn fw-bold ${
+                      editingIdentity
+                        ? 'btn-secondary'
+                        : !hasValidCid
+                        ? 'btn-danger text-white'
+                        : 'btn-outline-primary bg-white'
+                    }`}
+                    style={{ minHeight: 44, borderRadius: 12, fontSize: '.92rem' }}
+                    onClick={() => {
+                      setIdentityError('');
+                      setEditingIdentity((v) => !v);
+                    }}
+                  >
+                    {editingIdentity
+                      ? 'ปิดช่องแก้ไข ▲'
+                      : !hasValidCid
+                      ? '✏️ กดกรอกเลขบัตร 13 หลัก'
+                      : '✏️ แก้ไขเลขบัตร / วันเกิด'}
+                  </button>
+                </div>
+
+                {editingIdentity && (
+                  <div className="mt-3 p-3 bg-white rounded-3 border shadow-sm">
+                    <label className="fw-bold small d-block mb-1">
+                      เลขบัตรประชาชน 13 หลัก *
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={13}
+                      className="form-control fw-bold mb-2"
+                      style={{ minHeight: 48, fontSize: '1.15rem', borderRadius: 10 }}
+                      placeholder="พิมพ์เลขบัตร 13 หลัก..."
+                      value={cidDraft}
+                      onChange={(e) => {
+                        setIdentityError('');
+                        setCidDraft(
+                          e.target.value
+                            .replace(/[๐-๙]/g, (c) => String(c.charCodeAt(0) - 3664))
+                            .replace(/\D/g, '')
+                        );
+                      }}
+                    />
+                    <label className="fw-bold small d-block mb-1">
+                      วันเดือนปีเกิด (ถ้าทราบ)
+                    </label>
+                    <input
+                      type="date"
+                      className="form-control mb-2"
+                      style={{ minHeight: 46, borderRadius: 10 }}
+                      value={birthDraft}
+                      onChange={(e) => setBirthDraft(e.target.value)}
+                    />
+                    {identityError && (
+                      <div className="alert alert-danger py-2 px-3 small fw-semibold mb-2">
+                        ⚠️ {identityError}
+                      </div>
+                    )}
+                    <div className="d-flex gap-2 mt-2">
+                      <button
+                        type="button"
+                        className="btn btn-primary fw-bold flex-grow-1"
+                        style={{ minHeight: 48, borderRadius: 12 }}
+                        disabled={saving}
+                        onClick={saveNewPersonIdentity}
+                      >
+                        {saving ? 'กำลังบันทึก…' : '💾 บันทึกเลขบัตรและวันเกิด'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary px-3"
+                        style={{ minHeight: 48, borderRadius: 12 }}
+                        onClick={() => setEditingIdentity(false)}
+                      >
+                        ยกเลิก
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ขั้นตอนที่ 1: สถานะในบ้าน */}
             <div
               className="p-3 rounded-3 mb-3 border"

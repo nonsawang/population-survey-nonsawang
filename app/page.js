@@ -130,6 +130,7 @@ export default function SurveyPage() {
       personId: r.person_id,
       surveyExpected: Object.fromEntries(['moo','house','vhv','relation','chronic','residency_type','person_discharge_id','status_model_version'].map(key => [key,r[key] ?? null])),
       cid: r.cid||'-',
+      birthDate: r.birth_date||'',
       fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''),
       age: calculateAge(r.birth_date),
       relation: r.relation||'ไม่ระบุ',
@@ -520,15 +521,33 @@ const submitVhvChange = async () => {
   };
 
   const searchCidAuto = async () => {
-    const cid = (addForm.cid || '').replace(/\D/g, '');
+    const cid = (addForm.cid || '')
+      .replace(/[๐-๙]/g, c => String(c.charCodeAt(0) - 3664))
+      .replace(/\D/g, '');
     if (cid.length !== 13) { swal({icon:'warning',title:'เลขบัตรต้องครบ 13 หลัก'}); return; }
-    showLoading('กำลังค้นหา...');
-    const { data } = await supabase.from('population').select('*').eq('cid', cid);
+    showLoading('กำลังตรวจเลขบัตรในระบบ...');
+    let foundPerson = null;
+    try {
+      const res = await fetch('/api/new-people', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'check_cid', cid }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.exists && json.person) {
+        foundPerson = json.person;
+      }
+    } catch {
+      const { data } = await supabase.from('population').select('*').eq('cid', cid);
+      if (data && data.length > 0) foundPerson = data[0];
+    }
     closeLoading();
-    if (data && data.length > 0) {
-      const r = data[0]; const bd = r.birth_date ? new Date(r.birth_date) : null;
+    if (foundPerson) {
+      const r = foundPerson;
+      const bd = r.birth_date ? new Date(r.birth_date) : null;
       // ✅ เก็บ person_id เดิมไว้ — เมื่อบันทึกจะ update แทน insert ใหม่
       setAddForm(prev => ({...prev,
+        cid,
         existingPersonId: r.person_id,
         title: r.title||prev.title, fname: r.fname||'', lname: r.lname||'',
         birth_day: bd ? String(bd.getDate()).padStart(2,'0') : '',
@@ -536,11 +555,11 @@ const submitVhvChange = async () => {
         birth_year: bd ? String(bd.getFullYear()+543) : '',
         chronic: r.chronic||'ปกติ (ไม่มีโรค)'
       }));
-      swal({icon:'success',title:'พบข้อมูลเก่า',text:`เคยอยู่บ้าน ${r.house} ม.${r.moo}\nกดบันทึกเพื่อย้ายมาบ้านนี้`,timer:3000,showConfirmButton:false});
+      swal({icon:'success',title:'พบรายชื่อเดิมในระบบ',text:`${r.title||''}${r.fname||''} ${r.lname||''} เคยอยู่บ้าน ${r.house} ม.${r.moo}\nกดปุ่มบันทึกเพื่อย้ายเข้าบ้านนี้โดยไม่สร้างชื่อซ้ำ`,timer:3500,showConfirmButton:false});
     } else {
       // ✅ ไม่พบ → ล้าง existingPersonId
-      setAddForm(prev => ({...prev, existingPersonId: null}));
-      swal({icon:'info',title:'ไม่พบข้อมูล',text:'เป็นรายชื่อใหม่',timer:1500,showConfirmButton:false});
+      setAddForm(prev => ({...prev, cid, existingPersonId: null}));
+      swal({icon:'info',title:'ไม่พบรายชื่อเดิม',text:'เป็นรายชื่อใหม่ในระบบ กรุณากรอกชื่อ-นามสกุลและวันเกิดด้านล่าง',timer:2000,showConfirmButton:false});
     }
   };
 

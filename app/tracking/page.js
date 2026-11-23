@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import TopBar from '@/components/TopBar';
 import SurveyWorkPanel from '@/components/SurveyWorkPanel';
 import PendingTransfersBanner from '@/components/PendingTransfersBanner';
+import NewPeopleTracker from '@/components/NewPeopleTracker';
 
 export default function TrackingPage() {
   const { user, loading } = useAuth();
@@ -29,7 +30,7 @@ export default function TrackingPage() {
           <div>
             <p className="survey-eyebrow">ระบบสุขภาพโนนสว่าง</p>
             <h1>ติดตามงานสำรวจ</h1>
-            <p>ดูความก้าวหน้าและบ้านที่ยังสำรวจไม่ครบ แล้วเลือกบ้านเพื่อดำเนินการต่อ</p>
+            <p>ดูความก้าวหน้า บ้านที่ยังสำรวจไม่ครบ และรายชื่อผู้ที่ถูกเพิ่มใหม่นอกเหนือจากฐาน HOSxP</p>
           </div>
           <a className="btn btn-primary" href={user.role === 'vhv' ? '/?survey=1' : '/'}>
             ค้นหาบ้านเพื่อสำรวจ
@@ -38,6 +39,11 @@ export default function TrackingPage() {
         <PendingTransfersBanner
           user={user}
           onResolved={() => setRefreshKey((k) => k + 1)}
+          onOpenHouse={openHouse}
+        />
+        <NewPeopleTracker
+          user={user}
+          refreshKey={refreshKey}
           onOpenHouse={openHouse}
         />
         <SurveyWorkPanel
