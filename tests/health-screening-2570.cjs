@@ -209,6 +209,8 @@ const { pathToFileURL } = require('node:url');
   fullForm.s2 = { sbp1: '146', dbp1: '86', pulse1: '78', sbp2: '132', dbp2: '76', pulse2: '74' };
   fullForm.s3 = { fastingType: 'fasting', dtxMgDl: '108' };
   fullForm.personalChronic.other = '<script>alert(1)</script>';
+  const sampleClockPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+  fullForm.s16.clockDrawingDataUrl = sampleClockPng;
   fullForm.consent.staffName = 'อสม.ใจดี <b>รักชุมชน</b>';
   fullForm.consent.patientSignatureDataUrl = 'javascript:alert(1)';
   const fullEval = evaluateFullScreening2570(fullForm, elderMan);
@@ -228,6 +230,7 @@ const { pathToFileURL } = require('node:url');
   assert.ok(html.includes('<span class="val-hit">132</span>'));
   assert.ok(html.includes('<span class="val-hit">108</span>'));
   assert.ok(html.includes('class="clock-circle"'));
+  assert.ok(html.includes(`<img class="clock-draw-img" src="${sampleClockPng}"`));
   assert.ok(html.includes('<svg viewBox="0 0 460') && html.includes('เดินไประยะ 3 เมตร'));
   assert.ok(html.includes('class="nbox is-on"'));
   assert.ok(html.includes('class="adl-tbl"'));
@@ -235,10 +238,19 @@ const { pathToFileURL } = require('node:url');
   assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
   assert.ok(!html.includes('javascript:alert(1)'));
 
+  // Reject unsafe clockDrawingDataUrl
+  const unsafeClockForm = createDefaultScreening2570Form(elderMan, '2026-11-23');
+  unsafeClockForm.s16.clockDrawingDataUrl = 'javascript:alert(1)';
+  const unsafeClockHtml = buildScreening2570PrintHtml(unsafeClockForm, elderMan);
+  assert.ok(!unsafeClockHtml.includes('<img class="clock-draw-img"'));
+  assert.ok(!unsafeClockHtml.includes('javascript:alert(1)'));
+
   // Under-60 person should NOT have elderly sections 13-22 pre-checked when showAll22 is false
   const youngForm = createDefaultScreening2570Form(youngMan, '2026-11-23');
+  youngForm.s16.clockDrawingDataUrl = sampleClockPng;
   const youngHtml = buildScreening2570PrintHtml(youngForm, youngMan);
   assert.equal((youngHtml.match(/class="a4-page"/g) || []).length, 4);
+  assert.ok(!youngHtml.includes('<img class="clock-draw-img"'), 'คนอายุ < 60 ปี (ไม่เปิด showAll22) ต้องไม่แสดงภาพวาดนาฬิกา');
   const page4Start = youngHtml.lastIndexOf('class="a4-page"');
   const youngPage4 = youngHtml.slice(page4Start);
   assert.ok(!youngPage4.includes('class="nbox is-on"'), 'คนอายุ < 60 ปีต้องไม่ติ๊กช่องคะแนน MNA แทน');

@@ -96,6 +96,217 @@ function ChoiceButton({ active, variant = 'primary', onClick, children, classNam
   );
 }
 
+function MiniCogClockPad({ value, readOnly, onChange }) {
+  const [expanded, setExpanded] = useState(false);
+  const [undoCount, setUndoCount] = useState(0);
+  const canvasRef = useRef(null);
+  const drawingRef = useRef(false);
+  const historyRef = useRef([]);
+  const lastEmittedRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (value && value === lastEmittedRef.current) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!value || !/^data:image\/(png|jpeg|webp);base64,/.test(value)) return;
+    let active = true;
+    const img = new Image();
+    img.onload = () => {
+      if (!active || !canvasRef.current) return;
+      const c = canvasRef.current.getContext('2d');
+      c.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      c.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
+    };
+    img.src = value;
+    return () => {
+      active = false;
+    };
+  }, [value, expanded]);
+
+  const getPt = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) * canvas.width) / rect.width,
+      y: ((e.clientY - rect.top) * canvas.height) / rect.height,
+    };
+  };
+
+  const handleDown = (e) => {
+    if (readOnly) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    historyRef.current.push(lastEmittedRef.current || value || '');
+    if (historyRef.current.length > 30) historyRef.current.shift();
+    setUndoCount(historyRef.current.length);
+    canvas.setPointerCapture?.(e.pointerId);
+    const ctx = canvas.getContext('2d');
+    const pt = getPt(e);
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = 3.2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pt.x, pt.y);
+    ctx.lineTo(pt.x + 0.01, pt.y + 0.01);
+    ctx.stroke();
+    drawingRef.current = true;
+  };
+
+  const handleMove = (e) => {
+    if (!drawingRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const pt = getPt(e);
+    ctx.lineTo(pt.x, pt.y);
+    ctx.stroke();
+  };
+
+  const handleUp = () => {
+    if (!drawingRef.current) return;
+    drawingRef.current = false;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const url = canvas.toDataURL('image/png');
+    lastEmittedRef.current = url;
+    onChange(url);
+  };
+
+  const handleUndo = () => {
+    if (readOnly || historyRef.current.length === 0) return;
+    const prev = historyRef.current.pop() || '';
+    setUndoCount(historyRef.current.length);
+    lastEmittedRef.current = null;
+    onChange(prev);
+  };
+
+  const handleClear = () => {
+    if (readOnly) return;
+    historyRef.current = [];
+    setUndoCount(0);
+    lastEmittedRef.current = '';
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    }
+    onChange('');
+  };
+
+  const renderSurface = (isLarge) => (
+    <div className="d-flex flex-column align-items-center gap-2">
+      <div
+        className="position-relative d-flex align-items-center justify-content-center shadow-sm"
+        style={{
+          width: isLarge ? 'min(85vw, 380px)' : 220,
+          height: isLarge ? 'min(85vw, 380px)' : 220,
+          borderRadius: '50%',
+          border: '3px solid #111827',
+          background: '#fff',
+          overflow: 'hidden',
+        }}
+      >
+        {!value && (
+          <div
+            className="position-absolute text-center text-muted pe-none px-3"
+            style={{ fontSize: isLarge ? '.92rem' : '.76rem', opacity: 0.7 }}
+          >
+            ให้ผู้สูงอายุวาดตัวเลข 1–12 และเข็มนาฬิกาเวลา 11.10 น. ในวงกลมนี้
+          </div>
+        )}
+        <canvas
+          ref={canvasRef}
+          width={280}
+          height={280}
+          onPointerDown={handleDown}
+          onPointerMove={handleMove}
+          onPointerUp={handleUp}
+          onPointerCancel={handleUp}
+          style={{
+            width: '100%',
+            height: '100%',
+            touchAction: 'none',
+            cursor: readOnly ? 'default' : 'crosshair',
+            display: 'block',
+          }}
+        />
+      </div>
+
+      <div className="d-flex flex-wrap justify-content-center gap-2">
+        {!readOnly && (
+          <>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary fw-semibold"
+              disabled={undoCount === 0}
+              onClick={handleUndo}
+            >
+              ↩️ ย้อนเส้นล่าสุด
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-danger fw-semibold"
+              disabled={!value && undoCount === 0}
+              onClick={handleClear}
+            >
+              🧹 ล้างรูปนาฬิกา
+            </button>
+          </>
+        )}
+        {!isLarge ? (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-primary fw-bold"
+            onClick={() => {
+              lastEmittedRef.current = null;
+              setExpanded(true);
+            }}
+          >
+            🔍 ขยายจอใหญ่ให้ผู้สูงอายุวาด
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-success fw-bold px-4"
+            style={{ minHeight: 46, borderRadius: 12 }}
+            onClick={() => {
+              lastEmittedRef.current = null;
+              setExpanded(false);
+            }}
+          >
+            ✅ เสร็จสิ้นการวาด
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  if (expanded) {
+    return (
+      <div
+        className="position-fixed top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center p-3"
+        style={{ background: 'rgba(15, 23, 42, 0.88)', zIndex: 1080 }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="กระดานวาดรูปนาฬิกาขนาดใหญ่ Mini-Cog"
+      >
+        <div className="bg-white rounded-4 p-3 p-md-4 shadow-lg text-center" style={{ maxWidth: '96vw' }}>
+          <h6 className="fw-bold mb-1">🕒 ทดสอบวาดรูปนาฬิกา (Mini-Cog)</h6>
+          <p className="small text-muted mb-3">
+            ให้ผู้ถูกทดสอบใส่ตัวเลข 1–12 และเข็มนาฬิกาที่เวลา <strong>11.10 น.</strong>
+          </p>
+          {renderSurface(true)}
+        </div>
+      </div>
+    );
+  }
+
+  return renderSurface(false);
+}
+
 export default function AnnualHealthScreening2570Modal({
   person,
   user,
@@ -266,6 +477,7 @@ export default function AnnualHealthScreening2570Modal({
       s16: {
         repeatWords: { w1: true, w2: true, w3: true },
         clockScore: 2,
+        clockDrawingDataUrl: prev.s16?.clockDrawingDataUrl || '',
         recallWords: { w1: true, w2: true, w3: true },
       },
       s17: {
@@ -1570,15 +1782,36 @@ export default function AnnualHealthScreening2570Modal({
                       ))}
                     </div>
                   </div>
-                  <div className="mb-2">
-                    <div className="small fw-bold mb-1">2. วาดรูปนาฬิกาเวลา 11.10 น. (2 คะแนน)</div>
-                    <div className="d-flex gap-2">
-                      <ChoiceButton active={Number(formData.s16.clockScore) === 2} variant="success" onClick={() => updateSection('s16', { clockScore: 2 })}>
-                        วาดถูกต้อง (2 คะแนน)
-                      </ChoiceButton>
-                      <ChoiceButton active={Number(formData.s16.clockScore) === 0} variant="danger" onClick={() => updateSection('s16', { clockScore: 0 })}>
-                        ไม่ถูกต้อง (0 คะแนน)
-                      </ChoiceButton>
+                  <div className="mb-3 p-3 bg-light rounded-3 border">
+                    <div className="small fw-bold mb-2">
+                      2. ให้ผู้ถูกทดสอบ วาดรูปนาฬิกา โดยใส่ตัวเลข และเข็มนาฬิกาที่เวลา 11.10 น. (2 คะแนน)
+                    </div>
+                    <div className="row g-3 align-items-center">
+                      <div className="col-md-6 d-flex justify-content-center">
+                        <MiniCogClockPad
+                          value={formData.s16.clockDrawingDataUrl || ''}
+                          readOnly={readOnlyUser}
+                          onChange={(url) => updateSection('s16', { clockDrawingDataUrl: url })}
+                        />
+                      </div>
+                      <div className="col-md-6">
+                        <div className="small text-muted mb-2 p-2 bg-white rounded-3 border">
+                          <strong>เกณฑ์ตรวจให้ 2 คะแนน:</strong>
+                          <div>• ใส่ตัวเลข 1–12 ครบและวางถูกตำแหน่ง</div>
+                          <div>• เข็มสั้นชี้เลข 11 และเข็มยาวชี้เลข 2 (เวลา 11.10 น.)</div>
+                          <div className="text-primary mt-1">
+                            * ภาพที่วาดจะแสดงในวงกลมของใบพิมพ์คัดกรองหน้า 3 อัตโนมัติ
+                          </div>
+                        </div>
+                        <div className="d-flex flex-wrap gap-2">
+                          <ChoiceButton active={Number(formData.s16.clockScore) === 2} variant="success" onClick={() => updateSection('s16', { clockScore: 2 })}>
+                            วาดถูกต้อง (2 คะแนน)
+                          </ChoiceButton>
+                          <ChoiceButton active={Number(formData.s16.clockScore) === 0} variant="danger" onClick={() => updateSection('s16', { clockScore: 0 })}>
+                            ไม่ถูกต้อง (0 คะแนน)
+                          </ChoiceButton>
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div className="mb-2">
