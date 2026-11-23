@@ -6,6 +6,7 @@ import { swal } from '@/lib/survey-feedback';
 import HosxpStatusSection from './HosxpStatusSection';
 import RiskScreeningSection from './RiskScreeningSection';
 import OvScreeningSection from './OvScreeningSection';
+import AnnualHealthScreening2570Modal from './AnnualHealthScreening2570Modal';
 import { supabase } from '@/lib/supabase';
 
 const RELATIONS = [
@@ -41,10 +42,38 @@ export default function PersonCard({
   const [cidDraft, setCidDraft] = useState(person.cid && person.cid !== '-' ? person.cid : '');
   const [birthDraft, setBirthDraft] = useState(person.birthDate ? String(person.birthDate).slice(0, 10) : '');
   const [identityError, setIdentityError] = useState('');
+  const [showScreening2570, setShowScreening2570] = useState(false);
+  const [screening2570Summary, setScreening2570Summary] = useState(null);
+  const [loadingScreening2570, setLoadingScreening2570] = useState(false);
 
   const isStaff = user && ['admin', 'staff'].includes(user.role);
   const isNewWebPerson = String(person.personId || '').startsWith('P-');
   const hasValidCid = /^\d{13}$/.test(String(person.cid || '').trim());
+
+  useEffect(() => {
+    setScreening2570Summary(null);
+  }, [person.personId]);
+
+  useEffect(() => {
+    if (!expanded || !person.personId || !user) return;
+    let active = true;
+    setLoadingScreening2570(true);
+    fetch(`/api/health-screening-2570?personIds=${encodeURIComponent(person.personId)}`, {
+      cache: 'no-store',
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!active || !json?.ok) return;
+        setScreening2570Summary(json.statuses?.[person.personId] || null);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setLoadingScreening2570(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [expanded, person.personId, user]);
 
   useEffect(() => {
     if (!focused) {
@@ -606,6 +635,68 @@ export default function PersonCard({
                   </>
                 ) : null}
               </div>
+            )}
+
+            {/* กล่องคัดกรองภาวะสุขภาพประจำปี 2570 (ครบ 22 หมวดตามช่วงอายุ) */}
+            <div
+              className={`p-3 rounded-3 border mb-2 ${
+                screening2570Summary?.screened
+                  ? 'bg-info-subtle border-info-subtle'
+                  : 'bg-primary-subtle border-primary-subtle'
+              }`}
+              style={{ borderRadius: 14 }}
+            >
+              <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                  <div className="fw-bold text-dark" style={{ fontSize: '.98rem' }}>
+                    🩺 คัดกรองภาวะสุขภาพประจำปี 2570
+                  </div>
+                  {loadingScreening2570 ? (
+                    <div className="small text-muted">กำลังตรวจสอบสถานะคัดกรองปี 70...</div>
+                  ) : screening2570Summary?.screened ? (
+                    <div className="mt-1 d-flex flex-wrap align-items-center gap-1">
+                      <span className="badge bg-success text-white">
+                        ✅ คัดกรองปี 70 แล้ว (วันที่ {screening2570Summary.screenDate || '-'} • สถานะ{' '}
+                        {screening2570Summary.overallStatus || 'ปกติ'})
+                      </span>
+                      {Array.isArray(screening2570Summary.ppSpecialCodes) &&
+                        screening2570Summary.ppSpecialCodes.length > 0 && (
+                          <span className="badge bg-white text-dark border">
+                            PP: {screening2570Summary.ppSpecialCodes.join(', ')}
+                          </span>
+                        )}
+                    </div>
+                  ) : (
+                    <div className="small text-muted mt-1">
+                      ยังไม่ได้บันทึกผลคัดกรองปี 2570 • กดเปิดแบบฟอร์มอัจฉริยะเลือกหมวดตามอายุ/เพศอัตโนมัติ
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className={`btn fw-bold shadow-sm ${
+                    screening2570Summary?.screened ? 'btn-outline-primary bg-white' : 'btn-primary text-white'
+                  }`}
+                  style={{ minHeight: 48, borderRadius: 12, fontSize: '.95rem' }}
+                  onClick={() => setShowScreening2570(true)}
+                >
+                  {screening2570Summary?.screened
+                    ? '✏️ ดู / แก้ไข / พิมพ์ใบคัดกรองปี 70'
+                    : '🩺 คัดกรองภาวะสุขภาพประจำปี 2570 (ครบตามช่วงอายุ)'}
+                </button>
+              </div>
+            </div>
+
+            {showScreening2570 && (
+              <AnnualHealthScreening2570Modal
+                person={person}
+                user={user}
+                onClose={() => setShowScreening2570(false)}
+                onSaved={(summary) => {
+                  if (summary) setScreening2570Summary(summary);
+                }}
+              />
             )}
 
             {/* ประวัติการคัดกรองเดิม (แสดงเฉพาะเมื่อมีข้อมูลเดิมเก็บไว้ เพื่อไม่ให้รกหน้าจอ อสม.) */}

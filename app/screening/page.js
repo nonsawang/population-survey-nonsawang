@@ -11,6 +11,7 @@ import RegistrationStatus from '@/components/RegistrationStatus';
 import RegisterScreeningPerson from '@/components/RegisterScreeningPerson';
 import TopBar from '@/components/TopBar';
 import CloseRightsReview from '@/components/CloseRightsReview';
+import AnnualHealthScreening2570Modal from '@/components/survey/AnnualHealthScreening2570Modal';
 
 import { searchScreeningPeople, maskedScreeningCid } from '@/lib/screening-search';
 
@@ -25,7 +26,18 @@ export default function ScreeningPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [registerOpen,setRegisterOpen]=useState(false);
-  const [currentKPI, setCurrentKPI] = useState(null);
+  const [currentKPI, setCurrentKPI] = useState('ANNUAL2570');
+  const [annualModalPerson, setAnnualModalPerson] = useState(null);
+  const [annualQuery, setAnnualQuery] = useState('');
+  const [annualAppliedQuery, setAnnualAppliedQuery] = useState('');
+  const [annualMoo, setAnnualMoo] = useState('');
+  const [annualFilter, setAnnualFilter] = useState('all');
+  const [annualAgeGroup, setAnnualAgeGroup] = useState('all');
+  const [annualPage, setAnnualPage] = useState(1);
+  const [annualData, setAnnualData] = useState(null);
+  const [annualLoading, setAnnualLoading] = useState(false);
+  const [annualError, setAnnualError] = useState('');
+  const [annualRefresh, setAnnualRefresh] = useState(0);
   const [readingCard,setReadingCard]=useState(false);
   const [cardMessage,setCardMessage]=useState('');
   const cardRequest=useRef(0), cardBusy=useRef(false);
@@ -57,15 +69,60 @@ export default function ScreeningPage() {
     const params = new URLSearchParams(window.location.search);
     const kpi = params.get('kpi');
     const name = (params.get('q') || '').trim();
-    if (Object.hasOwn(KPI_INFO, kpi)) setCurrentKPI(kpi);
-    else worksheetName.current = name;
+    if (Object.hasOwn(KPI_INFO, kpi)) {
+      setCurrentKPI(kpi);
+    } else {
+      setCurrentKPI('ANNUAL2570');
+      worksheetName.current = name;
+    }
     if (name) {
       setSearchTerm(name);
       setAppliedTerm(name);
+      setAnnualQuery(name);
+      setAnnualAppliedQuery(name);
     }
   }, []);
   const doSearch = () => { setAppliedTerm(searchTerm); setPage(1); setRetry(n=>n+1); };
   useEffect(() => { const timer=setTimeout(()=>setAppliedTerm(searchTerm),300);return ()=>clearTimeout(timer); },[searchTerm]);
+  useEffect(() => { const timer=setTimeout(()=>setAnnualAppliedQuery(annualQuery),320);return ()=>clearTimeout(timer); },[annualQuery]);
+  useEffect(() => {
+    if (!user || currentKPI !== 'ANNUAL2570') return;
+    let active = true;
+    const controller = new AbortController();
+    setAnnualLoading(true);
+    setAnnualError('');
+    const qs = new URLSearchParams({
+      mode: 'search',
+      q: annualAppliedQuery,
+      moo: annualMoo,
+      filter: annualFilter,
+      ageGroup: annualAgeGroup,
+      page: String(annualPage),
+    });
+    fetch(`/api/health-screening-2570?${qs.toString()}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then((res) => res.json().then((j) => ({ ok: res.ok, j })))
+      .then(({ ok, j }) => {
+        if (!active) return;
+        if (!ok || !j?.ok) throw new Error(j?.error || 'โหลดข้อมูลไม่สำเร็จ');
+        setAnnualData(j);
+      })
+      .catch((err) => {
+        if (active && err.name !== 'AbortError') {
+          setAnnualError(err.message || 'โหลดรายชื่อคัดกรองปี 2570 ไม่สำเร็จ');
+        }
+      })
+      .finally(() => {
+        if (active) setAnnualLoading(false);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [user, currentKPI, annualAppliedQuery, annualMoo, annualFilter, annualAgeGroup, annualPage, annualRefresh]);
+
   useEffect(() => { if (!loading && !user) router.push('/login'); }, [user, loading, router]);
   const dirty=selected && (result!==(selected.hasResult?selected.status:'') || screenDate!==(selected.screenDate && selected.screenDate!=='-'?selected.screenDate:screeningToday()));
   const canLeave=()=>!dirty||window.confirm('มีผลที่ยังไม่ได้บันทึก ต้องการออกจากรายการนี้หรือไม่?');
@@ -79,7 +136,14 @@ export default function ScreeningPage() {
       if(token!==cardRequest.current)return;
       if(!validateCID(card.cid).valid){setCardMessage('เลขบัตรไม่ผ่านการตรวจสอบ กรุณาลองอ่านใหม่');return;}
       setSelected(null);setSaveMessage('');setSaveOk(false);
-      setSearchMode('cid');setSearchTerm(card.cid);setAppliedTerm(card.cid);setPage(1);setRetry(n=>n+1);
+      if (currentKPI === 'ANNUAL2570') {
+        setAnnualQuery(card.cid);
+        setAnnualAppliedQuery(card.cid);
+        setAnnualPage(1);
+        setAnnualRefresh(n=>n+1);
+      } else {
+        setSearchMode('cid');setSearchTerm(card.cid);setAppliedTerm(card.cid);setPage(1);setRetry(n=>n+1);
+      }
       setCardMessage('อ่านบัตรแล้ว — ค้นหารายชื่อในฐานข้อมูล กรุณาตรวจรายชื่อก่อนบันทึกผล');
     }catch(error){if(token===cardRequest.current)setCardMessage(error instanceof SyntaxError?'ข้อมูลบัตรไม่สมบูรณ์ กรุณาลองใหม่':error.message);}
     finally{cardBusy.current=false;setReadingCard(false);}
@@ -97,7 +161,7 @@ export default function ScreeningPage() {
     const request=++requestId.current;
     const controller=new AbortController();
     setCandidates([]); setStats(null); setLoadError(''); setLoadingCandidates(false);
-    if (!user || !currentKPI || searching || !search.ready) return;
+    if (!user || !currentKPI || currentKPI === 'ANNUAL2570' || searching || !search.ready) return;
     setLoadingCandidates(true);
     (async()=>{
       try {
@@ -149,8 +213,21 @@ export default function ScreeningPage() {
           <span className="btn btn-sm flex-fill rounded-pill text-white" style={{background:'var(--primary)'}}><i className="fa-solid fa-clipboard-check"/> คัดกรอง</span>
         </div>
 
-        {/* KPI Buttons */}
+        {/* Main Mode & KPI Buttons */}
         <div className="card border-0 shadow-sm mb-3 p-3" style={{borderRadius:14}}>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => selectKPI('ANNUAL2570')}
+            className={`btn w-100 fw-bold mb-2 ${
+              currentKPI === 'ANNUAL2570'
+                ? 'btn-primary text-white shadow-sm'
+                : 'btn-outline-primary'
+            }`}
+            style={{ minHeight: 50, borderRadius: 12, fontSize: '.98rem' }}
+          >
+            🩺 คัดกรองภาวะสุขภาพประจำปี 2570 (แบบฟอร์มรวม 22 หมวด + รหัส PP Special)
+          </button>
           <div className="row g-2">
             {Object.entries(KPI_INFO).map(([key, info]) => (
               <div className="col-6 col-md-3" key={key}>
@@ -162,9 +239,222 @@ export default function ScreeningPage() {
           </div>
         </div>
 
-        {currentKPI && <ScreeningOverview key={currentKPI} kpi={currentKPI} refresh={retry}/>}
+        {currentKPI === 'ANNUAL2570' && (
+          <div className="fade-in">
+            {annualData?.stats && (
+              <div className="row text-center g-2 mb-3">
+                {[
+                  { label: 'กลุ่มเป้าหมายทั้งหมด', val: annualData.stats.total, color: '#2563eb' },
+                  { label: 'คัดกรองปี 70 แล้ว', val: annualData.stats.screened, color: '#059669' },
+                  { label: 'รอคัดกรองปี 70', val: annualData.stats.pending, color: '#d97706' },
+                  { label: 'พบความเสี่ยง', val: annualData.stats.withRisk, color: '#dc2626' },
+                ].map(({ label, val, color }) => (
+                  <div className="col-6 col-md-3" key={label}>
+                    <div className="card border-0 shadow-sm p-2" style={{ borderLeft: `4px solid ${color}`, borderRadius: 12 }}>
+                      <h5 className="mb-0 fw-bold" style={{ color }}>{Number(val || 0).toLocaleString('th-TH')}</h5>
+                      <small className="text-muted">{label}</small>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="card shadow-sm border-0" style={{ borderRadius: 14 }}>
+              <div className="card-header text-white py-3" style={{ background: 'var(--primary)' }}>
+                <h6 className="mb-0 fw-bold">
+                  🩺 คัดกรองภาวะสุขภาพประจำปี 2570 (ครบ 22 หมวดตามเกณฑ์อายุ/เพศ)
+                </h6>
+                <small className="opacity-75">
+                  ค้นหาผู้รับบริการ กดเปิดแบบฟอร์ม 22 หมวด บันทึกผล คำนวณรหัส PP Special และพิมพ์ใบคัดกรอง A4
+                </small>
+              </div>
+              <div className="card-body p-3 p-md-4">
+                <div className="mb-3">
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary w-100"
+                    onClick={handleReadCard}
+                    disabled={readingCard || saving}
+                  >
+                    <i className="fa-solid fa-id-card me-2" aria-hidden="true" />
+                    {readingCard ? 'กำลังอ่านบัตร…' : 'อ่านบัตรประชาชนเพื่อค้นหา (คัดกรองปี 2570)'}
+                  </button>
+                  {cardMessage && <p className="small mt-2 mb-0 text-primary">{cardMessage}</p>}
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setAnnualAppliedQuery(annualQuery);
+                    setAnnualPage(1);
+                    setAnnualRefresh((n) => n + 1);
+                  }}
+                  className="row g-2 mb-3"
+                >
+                  <div className="col-12 col-md-4">
+                    <input
+                      type="search"
+                      className="form-control"
+                      style={{ minHeight: 44 }}
+                      placeholder="ค้นหาชื่อ เลขบัตร บ้านเลขที่..."
+                      value={annualQuery}
+                      onChange={(e) => {
+                        setAnnualQuery(e.target.value);
+                        setAnnualPage(1);
+                      }}
+                    />
+                  </div>
+                  <div className="col-6 col-md-2">
+                    <select
+                      className="form-select"
+                      style={{ minHeight: 44 }}
+                      value={annualMoo}
+                      onChange={(e) => {
+                        setAnnualMoo(e.target.value);
+                        setAnnualPage(1);
+                      }}
+                    >
+                      <option value="">ทุกหมู่</option>
+                      {(annualData?.villages || []).map((m) => (
+                        <option key={m} value={m}>หมู่ {m}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-6 col-md-3">
+                    <select
+                      className="form-select"
+                      style={{ minHeight: 44 }}
+                      value={annualAgeGroup}
+                      onChange={(e) => {
+                        setAnnualAgeGroup(e.target.value);
+                        setAnnualPage(1);
+                      }}
+                    >
+                      <option value="all">ทุกช่วงอายุ</option>
+                      <option value="elderly60">ผู้สูงอายุ 60+ (22 หมวด)</option>
+                      <option value="35plus">อายุ 35 ปีขึ้นไป</option>
+                      <option value="working15_59">วัยทำงาน 15–59 ปี</option>
+                      <option value="child0_14">เด็ก 0–14 ปี</option>
+                    </select>
+                  </div>
+                  <div className="col-12 col-md-3">
+                    <select
+                      className="form-select"
+                      style={{ minHeight: 44 }}
+                      value={annualFilter}
+                      onChange={(e) => {
+                        setAnnualFilter(e.target.value);
+                        setAnnualPage(1);
+                      }}
+                    >
+                      <option value="all">สถานะ: ทั้งหมด</option>
+                      <option value="pending">ยังไม่คัดกรองปี 70</option>
+                      <option value="screened">คัดกรองปี 70 แล้ว</option>
+                      <option value="risk">พบความเสี่ยง</option>
+                    </select>
+                  </div>
+                </form>
+
+                {annualLoading && (
+                  <div className="text-center py-4">
+                    <span className="spinner-border text-primary me-2" /> กำลังโหลดรายชื่อคัดกรองปี 2570...
+                  </div>
+                )}
+                {annualError && <div className="alert alert-danger">{annualError}</div>}
+
+                {!annualLoading && !annualError && (
+                  <>
+                    <div className="small text-muted mb-2">
+                      แสดง {(annualData?.rows || []).length} จาก {(annualData?.totalFiltered || 0).toLocaleString('th-TH')} คน • หน้า {annualPage}
+                    </div>
+                    <div className="row g-2">
+                      {(annualData?.rows || []).map((p) => {
+                        const age = Number(p.profile?.age ?? p.age ?? 0);
+                        const groupLabel =
+                          age >= 60
+                            ? 'ผู้สูงอายุ 60+ (ครบ 22 หมวด)'
+                            : age >= 35
+                            ? `35–59 ปี (${p.targetCount} หมวด)`
+                            : age >= 15
+                            ? `15–34 ปี (${p.targetCount} หมวด)`
+                            : `เด็ก 0–14 ปี (${p.targetCount} หมวด)`;
+                        const sc = p.screening?.screened
+                          ? p.screening.riskCount > 0
+                            ? 'danger'
+                            : 'success'
+                          : 'warning';
+                        return (
+                          <div className="col-md-6" key={p.personId}>
+                            <div className={`card h-100 border-${sc} shadow-sm`} style={{ borderRadius: 12 }}>
+                              <div className="card-body p-3 d-flex flex-column justify-content-between gap-2">
+                                <div>
+                                  <div className="d-flex justify-content-between align-items-start gap-2">
+                                    <div className="fw-bold">{p.fullname}</div>
+                                    <span className={`badge bg-${sc === 'warning' ? 'warning-subtle text-warning-emphasis border border-warning-subtle' : sc === 'danger' ? 'danger' : 'success'}`}>
+                                      {p.screening?.screened
+                                        ? p.screening.overallStatus
+                                        : 'รอคัดกรองปี 70'}
+                                    </span>
+                                  </div>
+                                  <div className="small text-muted mt-1">
+                                    อายุ {p.age} ปี • บ้าน {p.house} ม.{p.moo} • เลขบัตร {maskedScreeningCid(p.cid)}
+                                  </div>
+                                  <div className="mt-1 d-flex flex-wrap gap-1">
+                                    <span className="badge bg-light text-dark border">{groupLabel}</span>
+                                    {p.screening?.screenDate && (
+                                      <span className="badge bg-info-subtle text-info-emphasis border border-info-subtle">
+                                        ตรวจ {p.screening.screenDate}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  className={`btn btn-sm fw-bold w-100 ${
+                                    p.screening?.screened ? 'btn-outline-primary' : 'btn-primary text-white'
+                                  }`}
+                                  style={{ minHeight: 42, borderRadius: 10 }}
+                                  onClick={() => setAnnualModalPerson(p)}
+                                >
+                                  {p.screening?.screened ? '✏️ ดู / แก้ไข / พิมพ์ใบคัดกรองปี 70' : '🩺 เปิดแบบฟอร์มคัดกรองปี 70'}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {(annualData?.totalFiltered || 0) > (annualData?.pageSize || 24) && (
+                      <div className="d-flex justify-content-between mt-3">
+                        <button
+                          type="button"
+                          className="btn btn-outline-primary"
+                          disabled={annualPage === 1}
+                          onClick={() => setAnnualPage((n) => n - 1)}
+                        >
+                          ก่อนหน้า
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline-primary"
+                          disabled={annualPage * (annualData?.pageSize || 24) >= (annualData?.totalFiltered || 0)}
+                          onClick={() => setAnnualPage((n) => n + 1)}
+                        >
+                          ถัดไป
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {currentKPI && currentKPI !== 'ANNUAL2570' && <ScreeningOverview key={currentKPI} kpi={currentKPI} refresh={retry}/>}
         {/* Search & Results */}
-        {currentKPI && (
+        {currentKPI && currentKPI !== 'ANNUAL2570' && (
           <div className="card shadow-sm border-0 fade-in" style={{borderRadius:14}}>
             <div className="card-header text-white py-3" style={{background:'var(--primary)'}}>
               <h6 className="mb-0 fw-bold"><i className={`fa-solid ${KPI_INFO[currentKPI].icon} me-2`}/>{KPI_INFO[currentKPI].name} <small className="d-block opacity-75" style={{fontSize:'.75rem'}}>{KPI_INFO[currentKPI].desc}</small></h6>
@@ -191,7 +481,7 @@ export default function ScreeningPage() {
                   {!loadingCandidates && !loadError && <p role="status" aria-live="polite" className="small text-muted">{searching?'กำลังค้นหา...':!search.ready?search.message:stats?.total?`พบ ${stats.total.toLocaleString('th-TH')} คน • หน้า ${page} / ${Math.ceil(stats.total/20)}`:stats?.nonTarget?`พบรายชื่อในฐาน ${stats.nonTarget.toLocaleString('th-TH')} คน แต่ไม่ใช่กลุ่มเป้าหมายของ${KPI_INFO[currentKPI].name} ตามเกณฑ์อายุ เพศ และสถานะทะเบียนที่ระบบกำหนด`:'ไม่พบรายชื่อในข้อมูลที่บัญชีนี้เข้าถึง กรุณาตรวจคำค้นหรือให้เจ้าหน้าที่ตรวจทะเบียน'}</p>}
                   {!loadingCandidates && !loadError && !searching && filtered.length > 0 && (
                     <div className="row g-2">
-                      {filtered.map((p,i) => {
+                      {filtered.map((p) => {
                         const sc = p.hasResult ? (['ปกติ','ผ่าน','สมวัย'].includes(p.status) ? 'success' : 'danger') : 'warning';
                         return (
                           <div className="col-md-6" key={p.personId}>
@@ -236,17 +526,23 @@ export default function ScreeningPage() {
                         <input id="screening-date" type="date" max={screeningToday()} disabled={saving} className="form-control form-control-lg" value={screenDate} onChange={e => {setScreenDate(e.target.value);setSaveMessage('');setSaveOk(false);}} />
                       </div>
                     </div>
-                    {saveMessage && <div className={saveOk?"alert alert-success mt-3":"alert alert-danger mt-3"} role={saveOk?"status":"alert"}>{saveMessage}</div>}<div className="d-flex gap-2 mt-4 justify-content-end screening-save-actions">
-                      <button className="btn btn-secondary rounded-pill" disabled={saving} onClick={() => {if(canLeave())setSelected(null);}}><i className="fa-solid fa-arrow-left me-1"/> {saveOk?'ค้นหาคนถัดไป':'กลับรายชื่อ'}</button>
-                      <button className="btn btn-success btn-lg rounded-pill px-4" onClick={handleSave} disabled={saving||!result||!screenDate||(saveOk&&!dirty)}>
-                        {saving ? <><span className="spinner-border spinner-border-sm me-1"/>บันทึก...</> : <><i className="fa-solid fa-save me-1"/> บันทึกผล</>}
+                    {saveMessage && <div className={saveOk?"alert alert-success mt-3":"alert alert-danger mt-3"} role={saveOk?"status":"alert"}>{saveMessage}</div>}
+                    <div className="d-flex flex-wrap gap-2 mt-4 justify-content-between screening-save-actions">
+                      <button type="button" className="btn btn-outline-primary fw-bold rounded-pill" disabled={saving} onClick={() => setAnnualModalPerson(selected)}>
+                        🩺 เปิดแบบฟอร์มคัดกรองสุขภาพประจำปี 2570 (22 หมวด) ของคนนี้
                       </button>
+                      <div className="d-flex gap-2 ms-auto">
+                        <button className="btn btn-secondary rounded-pill" disabled={saving} onClick={() => {if(canLeave())setSelected(null);}}><i className="fa-solid fa-arrow-left me-1"/> {saveOk?'ค้นหาคนถัดไป':'กลับรายชื่อ'}</button>
+                        <button className="btn btn-success btn-lg rounded-pill px-4" onClick={handleSave} disabled={saving||!result||!screenDate||(saveOk&&!dirty)}>
+                          {saving ? <><span className="spinner-border spinner-border-sm me-1"/>บันทึก...</> : <><i className="fa-solid fa-save me-1"/> บันทึกผล</>}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {selected && ['staff','admin'].includes(user.role) && <CloseRightsReview key={[selected.personId,currentKPI,screenDate,result,dirty,saving].join('|')} person={selected} kpi={currentKPI} serviceName={KPI_INFO[currentKPI].name} date={screenDate} result={result} saved={selected.hasResult && !dirty} busy={saving} />} 
+              {selected && ['staff','admin'].includes(user.role) && <CloseRightsReview key={[selected.personId,currentKPI,screenDate,result,dirty,saving].join('|')} person={selected} kpi={currentKPI} serviceName={KPI_INFO[currentKPI].name} date={screenDate} result={result} saved={selected.hasResult && !dirty} busy={saving} />}
               {selected && <ScreeningHistory key={selected.personId+currentKPI} personId={selected.personId} kpi={currentKPI} refresh={retry}/>}
               {/* Stats */}
               {stats && (
@@ -262,10 +558,18 @@ export default function ScreeningPage() {
           </div>
         )}
       </div>
+      {annualModalPerson && (
+        <AnnualHealthScreening2570Modal
+          person={annualModalPerson}
+          user={user}
+          onClose={() => setAnnualModalPerson(null)}
+          onSaved={() => {
+            setAnnualRefresh((n) => n + 1);
+          }}
+        />
+      )}
     </>
   );
 }
 
 function pct(n,d) { return d > 0 ? (n/d*100).toFixed(1) : '0.0'; }
-
-
