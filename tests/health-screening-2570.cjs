@@ -180,7 +180,10 @@ const { pathToFileURL } = require('node:url');
   assert.deepEqual(evaluateSleep({ hasSleepProblem: false, daytimeFatigue: false }).codes, []);
   assert.deepEqual(evaluateSleep({ hasSleepProblem: true, daytimeFatigue: false }).codes, ['1B1213']);
 
-  assert.equal(evaluateMna({ mna1: 2, mna2: 3, mna3: 2, mna4: 2, mna5: 2, calfCm: '32' }, 24).code, '1K10');
+  const mnaNorm = evaluateMna({ mna1: 2, mna2: 3, mna3: 2, mna4: 2, mna5: 2, calfCm: '32' }, 24);
+  assert.equal(mnaNorm.total, 14);
+  assert.equal(mnaNorm.code, '1K10');
+  assert.equal(evaluateMna({ mna1: 2, mna2: 3, mna3: 2, mna4: 2, mna5: 2, calfCm: '32' }, null).total, 14);
   assert.equal(evaluateMna({ mna1: 1, mna2: 2, mna3: 1, mna4: 2, mna5: 1, calfCm: '32' }, 20).code, '1K11');
   assert.equal(evaluateMna({ mna1: 0, mna2: 0, mna3: 0, mna4: 0, mna5: 1, calfCm: '28' }, 17).code, '1K12');
 
@@ -200,10 +203,14 @@ const { pathToFileURL } = require('node:url');
   assert.equal(adlBed.total, 3);
   assert.equal(adlBed.code, '1B1282');
 
-  // 6. Full evaluation & Print HTML escaping
+  // 6. Full evaluation & Print HTML (4-page exact layout + XSS escaping)
   const fullForm = createDefaultScreening2570Form(elderMan, '2026-11-23');
   fullForm.s1 = { weightKg: '62', heightCm: '165', waistCm: '80' };
+  fullForm.s2 = { sbp1: '146', dbp1: '86', pulse1: '78', sbp2: '132', dbp2: '76', pulse2: '74' };
+  fullForm.s3 = { fastingType: 'fasting', dtxMgDl: '108' };
   fullForm.personalChronic.other = '<script>alert(1)</script>';
+  fullForm.consent.staffName = 'อสม.ใจดี <b>รักชุมชน</b>';
+  fullForm.consent.patientSignatureDataUrl = 'javascript:alert(1)';
   const fullEval = evaluateFullScreening2570(fullForm, elderMan);
   assert.ok(fullEval.ppSpecialCodes.includes('1B52'));
   assert.ok(fullEval.ppSpecialCodes.includes('1B600'));
@@ -214,8 +221,28 @@ const { pathToFileURL } = require('node:url');
   const html = buildScreening2570PrintHtml(fullForm, elderMan, fullEval);
   assert.ok(html.includes('แบบฟอร์มสำหรับคัดกรองภาวะสุขภาพประจำปีงบประมาณ 2570'));
   assert.ok(html.includes('นายบุญมี รักษ์ดี'));
+  assert.equal((html.match(/class="a4-page"/g) || []).length, 4, 'ต้องมีครบ 4 หน้า A4');
+  assert.ok(html.includes('ชีพจร'));
+  assert.ok(html.includes('>78<') && html.includes('>74<'));
+  assert.ok(html.includes('<span class="val-hit">146</span>'));
+  assert.ok(html.includes('<span class="val-hit">132</span>'));
+  assert.ok(html.includes('<span class="val-hit">108</span>'));
+  assert.ok(html.includes('class="clock-circle"'));
+  assert.ok(html.includes('<svg viewBox="0 0 460') && html.includes('เดินไประยะ 3 เมตร'));
+  assert.ok(html.includes('class="nbox is-on"'));
+  assert.ok(html.includes('class="adl-tbl"'));
   assert.ok(!html.includes('<script>alert(1)</script>'));
   assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+  assert.ok(!html.includes('javascript:alert(1)'));
+
+  // Under-60 person should NOT have elderly sections 13-22 pre-checked when showAll22 is false
+  const youngForm = createDefaultScreening2570Form(youngMan, '2026-11-23');
+  const youngHtml = buildScreening2570PrintHtml(youngForm, youngMan);
+  assert.equal((youngHtml.match(/class="a4-page"/g) || []).length, 4);
+  const page4Start = youngHtml.lastIndexOf('class="a4-page"');
+  const youngPage4 = youngHtml.slice(page4Start);
+  assert.ok(!youngPage4.includes('class="nbox is-on"'), 'คนอายุ < 60 ปีต้องไม่ติ๊กช่องคะแนน MNA แทน');
+  assert.ok(!youngPage4.includes('<span class="tick">✓</span>'), 'คนอายุ < 60 ปีต้องไม่ติ๊กช่อง ADL แทน');
 
   // 7. Static check that migration SQL exists
   const sql = fs.readFileSync(

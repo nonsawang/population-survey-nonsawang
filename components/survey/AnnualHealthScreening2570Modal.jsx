@@ -724,6 +724,15 @@ export default function AnnualHealthScreening2570Modal({
                           value={formData.s2.dbp1}
                           onChange={(e) => updateSection('s2', { dbp1: e.target.value })}
                         />
+                        <span className="input-group-text">P</span>
+                        <input
+                          type="number"
+                          className="form-control"
+                          placeholder="ชีพจร"
+                          aria-label="ชีพจร ครั้งที่ 1 (ครั้ง/นาที)"
+                          value={formData.s2.pulse1 || ''}
+                          onChange={(e) => updateSection('s2', { pulse1: e.target.value })}
+                        />
                       </div>
                     </div>
                     <div className="col-md-6">
@@ -745,6 +754,15 @@ export default function AnnualHealthScreening2570Modal({
                           placeholder="ตัวล่าง (DBP)"
                           value={formData.s2.dbp2}
                           onChange={(e) => updateSection('s2', { dbp2: e.target.value })}
+                        />
+                        <span className="input-group-text">P</span>
+                        <input
+                          type="number"
+                          className="form-control"
+                          placeholder="ชีพจร"
+                          aria-label="ชีพจร ครั้งที่ 2 (ครั้ง/นาที)"
+                          value={formData.s2.pulse2 || ''}
+                          onChange={(e) => updateSection('s2', { pulse2: e.target.value })}
                         />
                       </div>
                     </div>
