@@ -1,6 +1,6 @@
 'use client';
 import { queueHouseGps } from '@/lib/house-gps.mjs';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
@@ -17,6 +17,7 @@ import PendingTransfersBanner from '@/components/PendingTransfersBanner';
 import { getSwal, swal, Toast, showLoading, closeLoading } from '@/lib/survey-feedback';
 import { surveyErrorMessage } from '@/lib/survey-errors.mjs';
 import { loadSurveyProgress, inProgressScope } from '@/lib/survey-progress.mjs';
+import { mapHouseDuplicatesByDupId } from '@/lib/person-duplicate-merge.mjs';
 
 export default function SurveyPage() {
   const { user, loading } = useAuth();
@@ -80,6 +81,12 @@ export default function SurveyPage() {
   // ✅ จำกัดหมู่สำหรับ vhv
   const allowedMoos = user?.role === 'vhv' ? String(user.moo || '').split(',').map(m => m.trim()).filter(Boolean) : null;
   const visibleMoos = allowedMoos ? VALID_MOOS.filter(m => allowedMoos.includes(m)) : VALID_MOOS;
+  const isStaff = ['admin', 'staff'].includes(user?.role);
+  const houseDupMap = useMemo(() => {
+    if (!isStaff || !results?.length) return {};
+    return mapHouseDuplicatesByDupId(results);
+  }, [isStaff, results]);
+  const houseDupList = useMemo(() => Object.values(houseDupMap), [houseDupMap]);
 
   useEffect(() => { if (!loading && !user) router.push('/login'); }, [user, loading, router]);
   useEffect(() => {
@@ -131,6 +138,11 @@ export default function SurveyPage() {
       surveyExpected: Object.fromEntries(['moo','house','vhv','relation','chronic','residency_type','person_discharge_id','status_model_version'].map(key => [key,r[key] ?? null])),
       cid: r.cid||'-',
       birthDate: r.birth_date||'',
+      title: r.title||'',
+      fname: r.fname||'',
+      lname: r.lname||'',
+      moo: r.moo ? String(r.moo).trim() : '',
+      house: r.house ? String(r.house).trim() : '',
       fullname: (r.title||'')+(r.fname||'')+' '+(r.lname||''),
       age: calculateAge(r.birth_date),
       relation: r.relation||'ไม่ระบุ',
@@ -271,6 +283,7 @@ const submitVhvChange = async () => {
             action: 'preview',
             targetMoo: moveMoo,
             targetHouse: moveHouse.trim(),
+            personId: moveTarget.personId,
           }),
         });
         const data = await res.json().catch(() => null);
@@ -306,6 +319,24 @@ const submitVhvChange = async () => {
         text: 'ไม่อนุญาตให้ย้ายเข้าบ้านเลขที่ที่ยังไม่มีในทะเบียนสำรวจ กรุณาตรวจสอบบ้านเลขที่และหมู่ปลายทาง',
       });
       return;
+    }
+    const dupCount =
+      movePreview?.duplicateNewPeople?.length || movePreview?.duplicateNewPersonCount || 0;
+    if (dupCount > 0) {
+      const dupNames = movePreview?.duplicateNewPeople?.length
+        ? movePreview.duplicateNewPeople
+            .map((d) => `• ${d.fullname} (${d.person_id} — ${d.matchReason})`)
+            .join('\n')
+        : `พบรายการคนเพิ่มใหม่ (P-...) ที่มีข้อมูลคล้ายกันจำนวน ${dupCount} รายการในบ้านปลายทาง`;
+      const confirmDup = await swal({
+        icon: 'warning',
+        title: 'พบชื่อคนเพิ่มใหม่ (P-...) ซ้ำในบ้านปลายทาง',
+        text: `${dupNames}\n\nหากย้ายเข้าไปตอนนี้จะมีชื่อซ้ำ 2 รายการในบ้าน ${moveHouse.trim()} ม.${moveMoo} (สามารถให้เจ้าหน้าที่กด "รวมและลบคนเพิ่มใหม่ (P-...)" ภายหลังได้)\nต้องการดำเนินการย้ายต่อหรือไม่?`,
+        showCancelButton: true,
+        confirmButtonText: 'ยืนยันย้ายเข้าบ้านนี้',
+        cancelButtonText: 'กลับไปตรวจสอบก่อน',
+      });
+      if (!confirmDup?.isConfirmed) return;
     }
     showLoading('กำลังดำเนินการย้ายบ้าน...');
     try {
@@ -950,6 +981,19 @@ const submitVhvChange = async () => {
                 </div>
                 {/* 🟢 จบส่วนหัวข้อบ้าน */}
 
+                {isStaff && houseDupList.length > 0 && (
+                  <div className="alert alert-warning border-warning shadow-sm mb-3 small" style={{ borderRadius: 12 }}>
+                    <div className="fw-bold text-dark">
+                      <i className="fa-solid fa-code-merge me-1" />
+                      พบรายชื่อคนเพิ่มใหม่ (P-...) ที่ซ้ำกับรหัส HOSxP ในบ้านนี้ {houseDupList.length} คู่
+                    </div>
+                    <div className="text-muted mt-1">
+                      กด <strong>เปิดดู</strong> ที่การ์ดคนเพิ่มใหม่ แล้วกดปุ่ม{' '}
+                      <strong>🔗 รวมและลบคนเพิ่มใหม่ (P-...)</strong> เพื่อโอนข้อมูลสำรวจเข้าสู่รหัส HOSxP ตัวจริงและลบชื่อซ้ำออกได้ทันที
+                    </div>
+                  </div>
+                )}
+
                 <div className="mb-2 fw-bold text-dark" style={{ fontSize: '1rem' }}>
                   👨‍👩‍👧‍👦 รายชื่อสมาชิกในบ้าน ({results.length} คน)
                 </div>
@@ -959,6 +1003,7 @@ const submitVhvChange = async () => {
                     key={p.personId}
                     person={p}
                     pendingTransfer={pendingTransfersMap[p.personId]}
+                    duplicateHosxpMatch={houseDupMap[p.personId] || null}
                     onSave={handleSave}
                     onMove={openMoveModal}
                     onRefresh={searchDataSilent}
@@ -1138,6 +1183,38 @@ const submitVhvChange = async () => {
                       ) : (
                         <div className="text-muted mt-1">
                           ข้อมูลรายละเอียดบ้านปลายทางจะตรวจสอบและยืนยันโดย อสม.หมู่ {movePreview.targetMoo} หรือเจ้าหน้าที่
+                        </div>
+                      )}
+                      {(movePreview.duplicateNewPeople?.length > 0 ||
+                        movePreview.duplicateNewPersonCount > 0) && (
+                        <div
+                          className="alert alert-danger py-2 px-3 mt-2 mb-0 small"
+                          style={{ borderRadius: 10 }}
+                        >
+                          <div className="fw-bold">
+                            ⚠️ พบบุคคลเพิ่มใหม่ (P-...) ในบ้านปลายทางที่อาจเป็นคนเดียวกัน (
+                            {movePreview.duplicateNewPeople?.length ||
+                              movePreview.duplicateNewPersonCount}{' '}
+                            รายการ)
+                          </div>
+                          {movePreview.duplicateNewPeople?.length ? (
+                            <ul className="mb-1 mt-1 ps-3">
+                              {movePreview.duplicateNewPeople.map((d) => (
+                                <li key={d.person_id}>
+                                  <strong>{d.fullname}</strong> ({d.person_id}) — {d.matchReason}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <div className="mt-1">
+                              บ้าน {movePreview.targetHouse} ม.{movePreview.targetMoo} มีรายการคนเพิ่มใหม่
+                              (P-...) ที่มีข้อมูลคล้ายกันอยู่แล้ว
+                            </div>
+                          )}
+                          <div className="text-muted">
+                            แนะนำให้เจ้าหน้าที่ตรวจหรือกดรวม/ลบชื่อซ้ำ (P-...) หลังย้ายเข้า
+                            เพื่อไม่ให้แสดงชื่อซ้ำ 2 คนในบ้านเดียวกัน
+                          </div>
                         </div>
                       )}
                     </div>

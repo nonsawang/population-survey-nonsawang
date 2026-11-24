@@ -5,7 +5,7 @@ const {PGlite}=require('@electric-sql/pglite'),fs=require('node:fs'),assert=requ
  CREATE FUNCTION app_private.in_scope(text) RETURNS boolean LANGUAGE sql AS $$SELECT $1='1'$$;
  CREATE TABLE population(moo text,house text,latitude double precision,longitude double precision,updated_at timestamptz);
  INSERT INTO population(moo,house) VALUES('1','10'),('1','11');`);
- for(const f of ['20261028_house_gps.sql','20261105_house_gps_revision.sql','20261109_house_gps_dispatch_approval.sql','20261114_house_gps_batch_approval.sql'])await db.exec(fs.readFileSync('migrations/'+f,'utf8'));
+ for(const f of ['20261028_house_gps.sql','20261105_house_gps_revision.sql','20261109_house_gps_dispatch_approval.sql','20261114_house_gps_batch_approval.sql','20261124_house_gps_float_tolerance.sql'])await db.exec(fs.readFileSync('migrations/'+f,'utf8'));
  const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222';
  await db.query('INSERT INTO house_gps_batches(id,completed_at) VALUES($1,now())',[a]);
  await db.query("INSERT INTO house_gps_snapshot VALUES($1,'1','1','1','10','16','103'),($1,'2','1','1','11','16','103')",[a]);
@@ -26,5 +26,15 @@ const {PGlite}=require('@electric-sql/pglite'),fs=require('node:fs'),assert=requ
  await db.exec("UPDATE house_gps_batches SET captured_at=now()-interval '25 hours'");
  assert.equal((await batch([items[1]]))[0].reason,'GPS_SNAPSHOT_REQUIRED');
  assert.equal((await db.query('SELECT approved_at FROM house_gps_queue WHERE id=$1',[b])).rows[0].approved_at,null);
- console.log('PASS: preview no writes, role, duplicates, mixed batch, claim race, repeated approval, changed reference, stale snapshot');
+ const c='33333333-3333-4333-8333-333333333333';
+ await db.query("INSERT INTO population(moo,house) VALUES('1','12')");
+ await db.query("INSERT INTO house_gps_snapshot VALUES($1,'3','1','1','12',NULL,NULL)",[a]);
+ await db.exec("UPDATE house_gps_batches SET captured_at=now()");
+ await db.query("SELECT house_gps_request($1,'1','12',16.097634199225398,103.67544114589699,14)",[c]);
+ const highPreview=await batch([{id:c,latitude:16.0976341992254,longitude:103.675441145897}]);
+ assert.equal(highPreview[0].status,'ready');
+ assert.equal((await batch([{id:c,latitude:16.0976352,longitude:103.675441145897}]))[0].reason,'GPS_REFERENCE_CHANGED');
+ assert.equal((await batch([{id:c,latitude:null,longitude:103.675441145897}]))[0].reason,'GPS_REFERENCE_CHANGED');
+ assert.equal((await batch([{id:c,latitude:16.0976341992254,longitude:103.675441145897,batchId:highPreview[0].batchId}],true))[0].status,'approved');
+ console.log('PASS: preview no writes, role, duplicates, mixed batch, claim race, repeated approval, changed reference, stale snapshot, high-precision float tolerance');
 }finally{await db.close();}})().catch(e=>{console.error(e);process.exit(1)});

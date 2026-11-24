@@ -8,6 +8,7 @@ import {
   databaseConfig,
 } from '@/lib/server-auth';
 import { VALID_MOOS, sanitizeInput } from '@/lib/utils';
+import { findDuplicateMatches } from '@/lib/person-duplicate-merge.mjs';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -133,6 +134,7 @@ export async function POST(request) {
     if (action === 'preview') {
       const targetMoo = String(body?.targetMoo || '').trim();
       const targetHouse = sanitizeInput(String(body?.targetHouse || '').trim());
+      const personId = String(body?.personId || '').trim();
       if (!VALID_MOOS.includes(targetMoo) || !targetHouse || targetHouse.length > 50) {
         return authResponse(
           { error: 'กรุณาระบุหมู่และบ้านเลขที่ปลายทางให้ถูกต้อง', code: 'INVALID_TARGET_HOUSE' },
@@ -148,6 +150,65 @@ export async function POST(request) {
         },
         token
       );
+
+      if (result?.ok && result?.exists && personId && personId.length <= 100) {
+        try {
+          const { url, key } = databaseConfig(true);
+          const srHeaders = { apikey: key, Authorization: `Bearer ${key}` };
+          const [movingRes, destTempRes] = await Promise.all([
+            fetch(
+              `${url}/rest/v1/population?${new URLSearchParams({
+                person_id: `eq.${personId}`,
+                select: 'person_id,cid,title,fname,lname,birth_date,moo,house',
+                limit: '1',
+              })}`,
+              { headers: srHeaders, cache: 'no-store', signal: AbortSignal.timeout(8000) }
+            ),
+            fetch(
+              `${url}/rest/v1/population?${new URLSearchParams({
+                moo: `eq.${targetMoo}`,
+                house: `eq.${targetHouse}`,
+                person_id: 'like.P-*',
+                select:
+                  'person_id,cid,title,fname,lname,birth_date,moo,house,relation,residency_type,chronic',
+                limit: '100',
+              })}`,
+              { headers: srHeaders, cache: 'no-store', signal: AbortSignal.timeout(8000) }
+            ),
+          ]);
+
+          if (movingRes.ok && destTempRes.ok) {
+            const movingRows = await movingRes.json();
+            const destTempMembers = await destTempRes.json();
+            const movingPerson = movingRows?.[0];
+            if (movingPerson && Array.isArray(destTempMembers) && destTempMembers.length > 0) {
+              const matches = findDuplicateMatches(
+                { ...movingPerson, moo: targetMoo, house: targetHouse },
+                destTempMembers
+              );
+              if (matches.length > 0) {
+                result.duplicateNewPersonCount = matches.length;
+                // Minimal disclosure: expose matched member details only when target village is in scope.
+                if (result.inScope === true) {
+                  result.duplicateNewPeople = matches.map((m) => ({
+                    person_id: m.personId,
+                    fullname: m.fullname,
+                    birth_date: m.birthDate || null,
+                    relation: m.raw?.relation || 'ผู้อาศัย',
+                    residency_type: String(m.raw?.residency_type ?? ''),
+                    chronic: m.raw?.chronic || '-',
+                    matchReason: m.matchReason,
+                    matchCode: m.matchCode,
+                  }));
+                }
+              }
+            }
+          }
+        } catch {
+          // Best-effort duplicate check; never block preview on lookup failure.
+        }
+      }
+
       return authResponse(result);
     }
 

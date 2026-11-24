@@ -3,10 +3,11 @@ import { useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, CircleMarker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { normalizeGpsCoord } from '@/lib/house-gps.mjs';
 
 const pinIcon = L.divIcon({className:'',html:'<span style="display:block;background:#2563eb;border:3px solid white;border-radius:50%;width:24px;height:24px;box-shadow:0 0 4px #333"></span>',iconSize:[24,24],iconAnchor:[12,12]});
 export default function HouseGpsRevision({ row, context, onClose, onSaved }) {
-  const [point, setPoint] = useState([row.latitude, row.longitude]);
+  const [point, setPoint] = useState([normalizeGpsCoord(row.latitude), normalizeGpsCoord(row.longitude)]);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -18,7 +19,7 @@ export default function HouseGpsRevision({ row, context, onClose, onSaved }) {
   async function save() {
     if (lock.current || !checked || reason.trim().length < 3) return;
     lock.current = true; setBusy(true); setError('');
-    const payload = {action:'revise',oldId:row.id,batchId:context.batchId,expectedState:context.state,latitude:point[0],longitude:point[1],reason:reason.trim()};
+    const payload = {action:'revise',oldId:row.id,batchId:context.batchId,expectedState:context.state,latitude:normalizeGpsCoord(point[0]),longitude:normalizeGpsCoord(point[1]),reason:reason.trim()};
     const signature = JSON.stringify(payload);
     if (attempt.current?.signature !== signature) attempt.current = {signature,id:crypto.randomUUID()};
     try {
@@ -36,7 +37,7 @@ export default function HouseGpsRevision({ row, context, onClose, onSaved }) {
       <TileLayer attribution="© Esri" url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"/>
       <CircleMarker center={[row.latitude,row.longitude]} radius={7} pathOptions={{color:'#d97706'}}><Popup>พิกัดที่บันทึกเดิม</Popup></CircleMarker>
       {hasReference && <CircleMarker center={reference.map(Number)} radius={9} pathOptions={{color:'#16a34a'}}><Popup>พิกัดอ้างอิง HOSxP</Popup></CircleMarker>}
-      <Marker icon={pinIcon} position={point} draggable={!busy} eventHandlers={{dragend:e=>{const p=e.target.getLatLng();setPoint([p.lat,p.lng]);setChecked(false);}}}/>
+      <Marker icon={pinIcon} position={point} draggable={!busy} eventHandlers={{dragend:e=>{const p=e.target.getLatLng();setPoint([normalizeGpsCoord(p.lat),normalizeGpsCoord(p.lng)]);setChecked(false);}}}/>
     </MapContainer>
     <p className="small mt-2">ลากหมุดสีน้ำเงินไปตำแหน่งใหม่ • {point.map(v=>Number(v).toFixed(6)).join(', ')}</p>
     <label className="d-block">เหตุผลการแก้ไข<textarea className="form-control" minLength={3} maxLength={500} disabled={busy} value={reason} onChange={e=>{setReason(e.target.value);setChecked(false);}}/></label>

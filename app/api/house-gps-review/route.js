@@ -2,6 +2,7 @@ import { authResponse, currentUser, databaseConfig, getSessionToken, sameOrigin,
 import { VALID_MOOS } from '@/lib/utils';
 export const dynamic = 'force-dynamic';
 const statuses=['all','awaiting','approved','sent','conflict','other'];
+const roundCoord = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 1e7) / 1e7 : v);
 function applyFilters(q,{moo,status,search,actors=[]}) {
  if(moo)q.set('moo','eq.'+moo);
  const parts=[];
@@ -59,8 +60,8 @@ export async function POST(request) {
           p_id: body.id,
           p_batch_id: body.batchId,
           p_expected_state: body.expectedState,
-          p_lat: body.latitude,
-          p_lng: body.longitude,
+          p_lat: roundCoord(body.latitude),
+          p_lng: roundCoord(body.longitude),
           p_reason: body.reason,
         };
     const { url, key } = databaseConfig();

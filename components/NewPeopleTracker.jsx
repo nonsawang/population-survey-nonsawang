@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { calculateAge } from '@/lib/utils';
+import MergeNewPersonModal from './survey/MergeNewPersonModal';
 
 const CATEGORIES = [
   {
@@ -82,6 +83,8 @@ export default function NewPeopleTracker({ user, onOpenHouse, refreshKey = 0 }) 
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
   const [notice, setNotice] = useState('');
+  const [mergingRow, setMergingRow] = useState(null);
+  const isStaff = user && ['admin', 'staff'].includes(user.role);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -865,6 +868,16 @@ export default function NewPeopleTracker({ user, onOpenHouse, refreshKey = 0 }) 
                                 🏠 เปิดบ้าน
                               </button>
                             )}
+                            {isStaff && (
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-danger fw-semibold"
+                                title="รวมและลบคนเพิ่มใหม่ (P-...) ที่ซ้ำกับรหัส HOSxP"
+                                onClick={() => setMergingRow(row)}
+                              >
+                                🔗 รวม/ลบซ้ำ
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -900,6 +913,24 @@ export default function NewPeopleTracker({ user, onOpenHouse, refreshKey = 0 }) 
           </div>
         )}
       </div>
+
+      {mergingRow && isStaff && (
+        <MergeNewPersonModal
+          dupPerson={mergingRow}
+          onClose={() => setMergingRow(null)}
+          onMerged={(result) => {
+            const deletedName = mergingRow.fullname || mergingRow.person_id;
+            setMergingRow(null);
+            const extra = result?.transferredFields?.length
+              ? ` (โอน: ${result.transferredFields.join(', ')})`
+              : '';
+            setNotice(
+              `✅ รวมและลบ ${deletedName} (${result?.deletedPersonId || mergingRow.person_id}) เข้าสู่รหัส HOSxP ${result?.targetPersonId || ''} เรียบร้อยแล้ว${extra}`
+            );
+            load();
+          }}
+        />
+      )}
     </section>
   );
 }

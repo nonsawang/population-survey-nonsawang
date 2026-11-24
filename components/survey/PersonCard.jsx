@@ -7,6 +7,7 @@ import HosxpStatusSection from './HosxpStatusSection';
 import RiskScreeningSection from './RiskScreeningSection';
 import OvScreeningSection from './OvScreeningSection';
 import AnnualHealthScreening2570Modal from './AnnualHealthScreening2570Modal';
+import MergeNewPersonModal from './MergeNewPersonModal';
 import { supabase } from '@/lib/supabase';
 
 const RELATIONS = [
@@ -33,6 +34,7 @@ export default function PersonCard({
   onSurveyConfirmed,
   onNextPending,
   defaultExpanded = false,
+  duplicateHosxpMatch = null,
 }) {
   const [relValue, setRelValue] = useState(person.relation);
   const [saving, setSaving] = useState(false);
@@ -45,6 +47,7 @@ export default function PersonCard({
   const [showScreening2570, setShowScreening2570] = useState(false);
   const [screening2570Summary, setScreening2570Summary] = useState(null);
   const [loadingScreening2570, setLoadingScreening2570] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
 
   const isStaff = user && ['admin', 'staff'].includes(user.role);
   const isNewWebPerson = String(person.personId || '').startsWith('P-');
@@ -338,6 +341,15 @@ export default function PersonCard({
                   🆕 คนเพิ่มใหม่ (มีเลขบัตรแล้ว)
                 </span>
               )}
+
+              {isNewWebPerson && isStaff && duplicateHosxpMatch && (
+                <span
+                  className="badge bg-info-subtle text-info-emphasis border border-info-subtle px-2 py-2"
+                  style={{ fontSize: '.78rem', borderRadius: 10 }}
+                >
+                  🔁 ซ้ำกับรหัส HOSxP (#{duplicateHosxpMatch.target.personId})
+                </span>
+              )}
             </div>
           </button>
 
@@ -381,28 +393,51 @@ export default function PersonCard({
                         <strong className="text-danger">⚠️ ยังไม่ระบุเลขบัตร 13 หลัก</strong>
                       )}
                     </div>
+                    {isNewWebPerson && isStaff && duplicateHosxpMatch && (
+                      <div className="small mt-1 text-info-emphasis fw-semibold">
+                        🔁 พบซ้ำกับรหัส HOSxP ในบ้านนี้:{' '}
+                        <strong>{duplicateHosxpMatch.target.fullname}</strong> (
+                        {duplicateHosxpMatch.target.personId}) — {duplicateHosxpMatch.matchReason}
+                      </div>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    className={`btn fw-bold ${
-                      editingIdentity
-                        ? 'btn-secondary'
+                  <div className="d-flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={`btn fw-bold ${
+                        editingIdentity
+                          ? 'btn-secondary'
+                          : !hasValidCid
+                          ? 'btn-danger text-white'
+                          : 'btn-outline-primary bg-white'
+                      }`}
+                      style={{ minHeight: 44, borderRadius: 12, fontSize: '.92rem' }}
+                      onClick={() => {
+                        setIdentityError('');
+                        setEditingIdentity((v) => !v);
+                      }}
+                    >
+                      {editingIdentity
+                        ? 'ปิดช่องแก้ไข ▲'
                         : !hasValidCid
-                        ? 'btn-danger text-white'
-                        : 'btn-outline-primary bg-white'
-                    }`}
-                    style={{ minHeight: 44, borderRadius: 12, fontSize: '.92rem' }}
-                    onClick={() => {
-                      setIdentityError('');
-                      setEditingIdentity((v) => !v);
-                    }}
-                  >
-                    {editingIdentity
-                      ? 'ปิดช่องแก้ไข ▲'
-                      : !hasValidCid
-                      ? '✏️ กดกรอกเลขบัตร 13 หลัก'
-                      : '✏️ แก้ไขเลขบัตร / วันเกิด'}
-                  </button>
+                        ? '✏️ กดกรอกเลขบัตร 13 หลัก'
+                        : '✏️ แก้ไขเลขบัตร / วันเกิด'}
+                    </button>
+                    {isNewWebPerson && isStaff && (
+                      <button
+                        type="button"
+                        className={`btn fw-bold ${
+                          duplicateHosxpMatch
+                            ? 'btn-primary text-white'
+                            : 'btn-outline-dark bg-white'
+                        }`}
+                        style={{ minHeight: 44, borderRadius: 12, fontSize: '.9rem' }}
+                        onClick={() => setShowMergeModal(true)}
+                      >
+                        🔗 รวมและลบคนเพิ่มใหม่ (P-...)
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {editingIdentity && (
@@ -695,6 +730,27 @@ export default function PersonCard({
                 onClose={() => setShowScreening2570(false)}
                 onSaved={(summary) => {
                   if (summary) setScreening2570Summary(summary);
+                }}
+              />
+            )}
+
+            {showMergeModal && isNewWebPerson && isStaff && (
+              <MergeNewPersonModal
+                dupPerson={person}
+                onClose={() => setShowMergeModal(false)}
+                onMerged={(result) => {
+                  setShowMergeModal(false);
+                  const transferred = result?.transferredFields?.length
+                    ? `\n• โอนข้อมูล: ${result.transferredFields.join(', ')}`
+                    : '\n• ไม่พบข้อมูลใหม่ที่ต้องโอนเพิ่มเติม';
+                  swal({
+                    icon: 'success',
+                    title: 'รวมและลบรายการซ้ำเรียบร้อย',
+                    text: `รวม ${result?.deletedPersonId || person.personId} เข้าสู่รหัส HOSxP ${
+                      result?.targetPersonId || ''
+                    }${transferred}`,
+                  });
+                  onRefresh?.();
                 }}
               />
             )}

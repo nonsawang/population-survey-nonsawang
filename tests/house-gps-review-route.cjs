@@ -9,4 +9,5 @@ failCounts=true;d=await(await c.GET({url:'https://fixture/'})).json();assert.equ
 assert.equal((await c.GET({url:'https://fixture/?moo=999'})).status,400);
 body={action:'approve',id:'q'};calls=[];assert.equal((await c.POST({})).status,409);assert.equal(calls.length,0);
 body.batchId='b';assert.equal((await c.POST({})).status,409);assert.match(calls[0][0],/house_gps_batch_review/);approval='approved';assert.equal((await c.POST({})).status,200);
-console.log('PASS filters, names, exact counts >5000, count failures, invalid village, checked single approval');})().catch(e=>{console.error(e);process.exitCode=1});
+body={action:'revise',oldId:'q',id:'n',batchId:'b',expectedState:'pending',latitude:16.097634199225398,longitude:103.67544114589699,reason:'แก้หมุด'};calls=[];assert.equal((await c.POST({})).status,200);assert.match(calls[0][0],/house_gps_revise$/);const reviseArgs=JSON.parse(calls[0][1].body);assert.equal(reviseArgs.p_lat,16.0976342);assert.equal(reviseArgs.p_lng,103.6754411);
+console.log('PASS filters, names, exact counts >5000, count failures, invalid village, checked single approval, revise rounding');})().catch(e=>{console.error(e);process.exitCode=1});
