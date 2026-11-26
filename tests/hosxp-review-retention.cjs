@@ -7,6 +7,7 @@ CREATE TABLE hosxp_review_approvals(id int PRIMARY KEY,batch_id text REFERENCES 
 GRANT ALL ON hosxp_review_batches,hosxp_review_snapshot TO service_role;`);
 await db.exec(fs.readFileSync('migrations/20261029_hosxp_review_retention.sql','utf8'));
 await db.exec(fs.readFileSync('migrations/20261115_hosxp_review_retention_7_days.sql','utf8'));
+await db.exec(fs.readFileSync('migrations/20261126_hosxp_review_storage_guard.sql','utf8'));
 const rows=[{hosxp_person_id:'1',cid:'fixture',residency_type:'1',discharge_code:'9',source_updated_at:null}];
 const refresh=async r=>(await db.query("SELECT hosxp_review_refresh_v2('fixture',now(),$1::jsonb) r",[JSON.stringify(r)])).rows[0].r;
 assert.equal((await refresh(rows)).status,'created');assert.equal((await refresh(rows)).status,'unchanged');
@@ -26,6 +27,26 @@ await db.exec("UPDATE hosxp_review_batches SET captured_at=now()-interval '10 da
 const last=(await db.query('SELECT id FROM hosxp_review_batches WHERE completed_at IS NOT NULL ORDER BY captured_at DESC,id DESC LIMIT 1')).rows[0].id;
 await db.query('SELECT hosxp_review_maintain()');
 assert.equal((await db.query('SELECT count(*)::int n FROM hosxp_review_snapshot WHERE batch_id=$1',[last])).rows[0].n,1);
+// Verify 2-hour retention policy: 3h-old unreferenced non-latest pruned, 30m-old retained
+await db.exec(`INSERT INTO hosxp_review_batches VALUES
+  ('b_3h','fixture',now()-interval '3 hours',1,now(),now()-interval '3 hours'),
+  ('b_30m','fixture',now()-interval '30 minutes',1,now(),now()-interval '30 minutes'),
+  ('b_latest_5h','fixture',now()-interval '5 hours',1,null,now()-interval '5 hours');
+  UPDATE hosxp_review_batches SET captured_at=now()-interval '1 minute', completed_at=now() WHERE id='b_latest_5h';
+  INSERT INTO hosxp_review_snapshot VALUES
+  ('b_3h','p3h','x','1','9',null),
+  ('b_30m','p30m','x','1','9',null),
+  ('b_latest_5h','p5h','x','1','9',null);`);
+const mRes=(await db.query('SELECT hosxp_review_maintain() r')).rows[0].r;
+assert.ok(mRes.deleted_rows>=1 && mRes.deleted_batches>=1,'3-hour unreferenced batch must be pruned');
+assert.equal((await db.query("SELECT count(*)::int n FROM hosxp_review_batches WHERE id='b_3h'")).rows[0].n,0);
+assert.equal((await db.query("SELECT count(*)::int n FROM hosxp_review_snapshot WHERE batch_id='b_30m'")).rows[0].n,1);
+assert.equal((await db.query("SELECT count(*)::int n FROM hosxp_review_snapshot WHERE batch_id='b_latest_5h'")).rows[0].n,1);
+// Even if the latest completed batch is >2h old, it must still be kept
+await db.exec("UPDATE hosxp_review_batches SET captured_at=now()-interval '8 hours' WHERE id='b_30m'; UPDATE hosxp_review_batches SET captured_at=now()-interval '6 hours' WHERE id='b_latest_5h';");
+await db.query('SELECT hosxp_review_maintain()');
+assert.equal((await db.query("SELECT count(*)::int n FROM hosxp_review_batches WHERE id='b_30m'")).rows[0].n,0);
+assert.equal((await db.query("SELECT count(*)::int n FROM hosxp_review_snapshot WHERE batch_id='b_latest_5h'")).rows[0].n,1);
 for(const role of ['anon','authenticated']){await db.exec('SET ROLE '+role);await assert.rejects(refresh(rows),/permission denied/);await assert.rejects(db.query('SELECT hosxp_review_maintain()'),/permission denied/);await db.exec('RESET ROLE');}
 await db.exec('SET ROLE service_role');await assert.rejects(db.exec("DELETE FROM hosxp_review_snapshot"),/permission denied/);await db.exec('RESET ROLE');
 console.log('PASS: atomic refresh, exact no-change comparison, changed data, duplicate rejection, targeted evidence retention/FK, daily metrics, browser denial, legacy uploader fenced');
